@@ -1,0 +1,22 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Supprimer utilisateur • ParrainApp{% endblock %}
+{% block body_data_page %}users{% endblock %}
+{% block nav_users_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Supprimer l’utilisateur</h1>
+  <div class="text-secondary">Cette action est irréversible.</div>
+</header>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <p>Voulez-vous vraiment supprimer <strong>{{ object.username }}</strong> ({{ object.get_profile_display }}) ?</p>
+    <form method="post" class="d-grid d-sm-flex gap-2">
+      {% csrf_token %}
+      <button class="btn btn-danger">Supprimer</button>
+      <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}">Annuler</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

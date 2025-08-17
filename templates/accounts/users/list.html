@@ -1,0 +1,46 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Utilisateurs • ParrainApp{% endblock %}
+{% block body_data_page %}users{% endblock %}
+{% block nav_users_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Utilisateurs</h1>
+  <div class="text-secondary">Gestion des comptes et rôles.</div>
+</header>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div></div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'accounts:logout' %}">Déconnexion</a>
+    <a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light"><tr>
+        <th>Username</th><th>Email</th><th>Nom</th><th>Rôle</th><th>Entreprise</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ u.email|default:"–" }}</td>
+          <td>{{ u.last_name }} {{ u.first_name }}</td>
+          <td>{{ u.get_profile_display }}</td>
+          <td>{{ u.company|default:"–" }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:user_edit' u.pk %}">Modifier</a>
+            <a class="btn btn-sm btn-outline-danger" href="{% url 'accounts:user_delete' u.pk %}">Supprimer</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="text-center text-secondary">Aucun utilisateur.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

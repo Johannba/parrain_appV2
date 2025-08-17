@@ -1,0 +1,112 @@
+{% extends "base_dashboard.html" %}
+{% load static widget_tweaks %}
+
+{% block title %}Utilisateur • ParrainApp{% endblock %}
+{% block body_data_page %}users{% endblock %}
+{% block nav_users_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Utilisateur</h1>
+  <div class="text-secondary">Création / modification d’un compte.</div>
+</header>
+
+{# --- Résumé d'erreurs global --- #}
+{% if form.errors %}
+<div class="alert alert-danger d-flex align-items-start gap-2">
+  <div>⚠️</div>
+  <div>
+    <div class="fw-semibold mb-1">Le formulaire contient des erreurs.</div>
+    <ul class="mb-0 small">
+      {% for field in form %}
+        {% for error in field.errors %}
+          <li><strong>{{ field.label }} :</strong> {{ error }}</li>
+        {% endfor %}
+      {% endfor %}
+      {% for error in form.non_field_errors %}
+        <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" novalidate class="row g-3">
+      {% csrf_token %}
+
+      {# --- Username --- #}
+      <div class="col-md-6">
+        <label class="form-label">Nom d’utilisateur</label>
+        {% render_field form.username class+="form-control" placeholder="johann" %}
+      </div>
+
+      {# --- Email --- #}
+      <div class="col-md-6">
+        <label class="form-label">Email</label>
+        {% render_field form.email class+="form-control" placeholder="ex. nom@domaine.com" %}
+      </div>
+
+      {# --- First / Last name --- #}
+      <div class="col-md-6">
+        <label class="form-label">Prénom</label>
+        {% render_field form.first_name class+="form-control" %}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Nom</label>
+        {% render_field form.last_name class+="form-control" %}
+      </div>
+
+      {# --- Passwords visibles seulement en création (UserCreateForm expose password1/2) --- #}
+      {% if form.password1 %}
+      <div class="col-md-6">
+        <label class="form-label">Mot de passe</label>
+        {% render_field form.password1 class+="form-control" autocomplete="new-password" %}
+        <div class="form-text">{{ form.password1.help_text }}</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Confirmation</label>
+        {% render_field form.password2 class+="form-control" autocomplete="new-password" %}
+      </div>
+      {% endif %}
+
+      {# --- Rôle --- #}
+      <div class="col-md-6">
+        <label class="form-label">Rôle</label>
+        {% if form.profile.field.widget.input_type == "select" %}
+          {% render_field form.profile class+="form-select" %}
+        {% else %}
+          {% render_field form.profile class+="form-control" %}
+        {% endif %}
+      </div>
+
+      {# --- Company --- #}
+      <div class="col-md-6">
+        <label class="form-label">Entreprise</label>
+        {% if form.company.field.widget.input_type == "select" %}
+          {% render_field form.company class+="form-select" %}
+        {% else %}
+          {% render_field form.company class+="form-control" %}
+        {% endif %}
+        <div class="form-text">Obligatoire pour Admin / Opérateur. Laisser vide pour Superadmin.</div>
+      </div>
+
+      {# --- Actif (présent en édition) --- #}
+      {% if form.is_active %}
+      <div class="col-12">
+        <div class="form-check">
+          {% render_field form.is_active class+="form-check-input" %}
+          <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Actif</label>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="col-12 d-grid d-sm-flex gap-2">
+        <button class="btn btn-primary">Enregistrer</button>
+        <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

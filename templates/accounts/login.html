@@ -1,0 +1,92 @@
+{% load static widget_tweaks %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion • ParrainApp</title>
+  <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="col-md-5 col-lg-4 mx-auto">
+      <div class="text-center mb-4">
+        <a class="navbar-brand d-inline-flex align-items-center gap-2 text-decoration-none" href="#">
+          <span class="brand-dot"></span>
+          <span class="fw-bold" style="color:var(--brand-ink)">ParrainApp</span>
+        </a>
+      </div>
+
+      {% if form.errors %}
+      <div class="alert alert-danger d-flex align-items-start gap-2">
+        <div>⚠️</div>
+        <div>
+          <div class="fw-semibold mb-1">Impossible de vous connecter.</div>
+          <ul class="mb-0 small">
+            {% for field in form %}
+              {% for error in field.errors %}
+                <li><strong>{{ field.label }} :</strong> {{ error }}</li>
+              {% endfor %}
+            {% endfor %}
+            {% for error in form.non_field_errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card shadow-sm">
+        <div class="card-body p-4">
+          <h1 class="h5 mb-3">Connexion</h1>
+
+          <form method="post" novalidate class="vstack gap-3">
+            {% csrf_token %}
+
+            <div>
+              <label class="form-label" for="{{ form.username.id_for_label }}">Nom d’utilisateur</label>
+              {% render_field form.username class+="form-control" placeholder="ex. johann" %}
+            </div>
+
+            <div>
+              <label class="form-label" for="{{ form.password.id_for_label }}">Mot de passe</label>
+              <div class="input-group">
+                {% render_field form.password class+="form-control" autocomplete="current-password" %}
+                <button type="button" class="btn btn-outline-secondary" id="togglePwd">Afficher</button>
+              </div>
+            </div>
+
+            {% if form.remember %}
+            <div class="form-check">
+              {% render_field form.remember class+="form-check-input" %}
+              <label class="form-check-label" for="{{ form.remember.id_for_label }}">Se souvenir de moi</label>
+            </div>
+            {% endif %}
+
+            <button class="btn btn-primary w-100">Se connecter</button>
+          </form>
+        </div>
+      </div>
+
+      <p class="text-center text-secondary small mt-3 mb-0">
+        Besoin d’aide ? Contactez l’administrateur de la plateforme.
+      </p>
+    </div>
+  </div>
+
+  <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+  <script>
+    (function(){
+      const btn = document.getElementById('togglePwd');
+      if(!btn) return;
+      btn.addEventListener('click', function(){
+        const input = document.getElementById('{{ form.password.id_for_label }}');
+        if(!input) return;
+        input.type = input.type === 'password' ? 'text' : 'password';
+        this.textContent = input.type === 'password' ? 'Afficher' : 'Masquer';
+      });
+    })();
+  </script>
+</body>
+</html>

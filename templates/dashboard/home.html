@@ -1,0 +1,72 @@
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ParrainApp{% endblock %}</title>
+  <!-- Bootstrap + thème local -->
+  <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body data-page="{% block body_data_page %}{% endblock %}">
+  <!-- TOP BAR (horizontal) -->
+  <header class="topbar border-bottom sticky-top">
+    <div class="topbar-gradient">
+      <div class="container py-3">
+        <div class="d-flex align-items-center justify-content-between gap-3">
+          <a class="navbar-brand d-flex align-items-center gap-2 text-white text-decoration-none" href="{% url 'dashboard_home' %}">
+            <span class="brand-dot"></span>
+            <span class="fw-bold">ParrainApp</span>
+          </a>
+          <form class="d-none d-md-flex" role="search" style="min-width: 380px;">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">🔎</span>
+              <input class="form-control" type="search" placeholder="Rechercher (clients, parrains…)" aria-label="Search">
+            </div>
+          </form>
+          <div class="d-flex align-items-center gap-2">
+            <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
+            <a class="btn btn-sm btn-primary" href="{% url 'accounts:company_list' %}">Entreprises</a>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
+                {{ request.user.get_username|default:"Compte" }}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="#">Profil</a></li>
+                <li><a class="dropdown-item" href="#">Paramètres</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'accounts:logout' %}">Déconnexion</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HORIZONTAL NAV (pills) -->
+    <div class="topbar-nav bg-white">
+      <div class="container">
+        <ul class="nav nav-pills gap-1 py-2" id="mainNav">
+          <li class="nav-item"><a class="nav-link {% block nav_dashboard_active %}{% endblock %}" href="{% url 'dashboard_home' %}">Tableau de bord</a></li>
+          <li class="nav-item"><a class="nav-link {% block nav_users_active %}{% endblock %}" href="{% url 'accounts:user_list' %}">Utilisateurs</a></li>
+          <li class="nav-item"><a class="nav-link {% block nav_companies_active %}{% endblock %}" href="{% url 'accounts:company_list' %}">Entreprises</a></li>
+          <!-- nav métiers (quand on branchera les templates) -->
+          <li class="nav-item"><a class="nav-link" href="#">Parrains</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Parrainés</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Récompenses</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Statistiques</a></li>
+        </ul>
+      </div>
+    </div>
+  </header>
+
+  <main class="container my-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+  <script src="{% static 'js/app.js' %}"></script>
+</body>
+</html>

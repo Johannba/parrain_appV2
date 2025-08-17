@@ -1,0 +1,103 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Tableau de bord (Entreprise) • ParrainApp{% endblock %}
+{% block body_data_page %}dashboard{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">
+    Tableau de bord — {{ company.name|default:"Mon entreprise" }}
+  </h1>
+  <div class="text-secondary">
+    Vue d’ensemble des parrainages, cadeaux et activité récente de l’entreprise.
+  </div>
+</header>
+
+{# On réutilise exactement la même grille que le superadmin, c’est le même design. #}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Parrainages (mois)</div>
+          <div class="stat-num">18</div>
+        </div>
+        <span class="badge badge-soft">+8% vs. N-1</span>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Cadeaux distribués</div>
+          <div class="stat-num">47</div>
+        </div>
+        <span class="badge text-bg-success">OK</span>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Cadeaux en attente</div>
+          <div class="stat-num">2</div>
+        </div>
+        <span class="badge text-bg-warning">Action</span>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Base clients</div>
+          <div class="stat-num">320</div>
+        </div>
+        <span class="badge text-bg-secondary">Actifs</span>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="fw-semibold">Raccourcis</div>
+        <small class="text-secondary">Modules</small>
+      </div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Inscrire un parrain</a></div>
+          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Enregistrer un parrainé</a></div>
+          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Gérer les récompenses</a></div>
+          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Voir les statistiques</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Activité récente</div>
+      <div class="card-body">
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item d-flex justify-content-between align-items-start">
+            <div class="ms-2 me-auto"><div class="fw-semibold">Parrainage validé</div> Client ACME → « -15% »</div>
+            <span class="badge text-bg-success rounded-pill">OK</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between align-items-start">
+            <div class="ms-2 me-auto"><div class="fw-semibold">Cadeau en attente</div> Envoyer le lien au parrain</div>
+            <span class="badge text-bg-warning rounded-pill">2</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between align-items-start">
+            <div class="ms-2 me-auto"><div class="fw-semibold">Base clients</div> 1 nouveau contact importé</div>
+            <span class="badge text-bg-secondary rounded-pill">+1</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

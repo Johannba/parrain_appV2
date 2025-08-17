@@ -1,0 +1,42 @@
+:root{
+  --brand-primary:#E1007A; /* magenta boutons */
+  --brand-gradient-start:#251053;
+  --brand-gradient-end:#1A0D3A;
+  --brand-ink:#1E164B;
+}
+
+body{background-color:#f8f9fb}
+
+.topbar-gradient{
+  background: linear-gradient(140deg, var(--brand-gradient-start) 0%, var(--brand-gradient-end) 100%);
+}
+.navbar-brand .brand-dot{
+  width: 14px; height:14px; display:inline-block; border-radius:50%;
+  background: var(--brand-primary);
+  box-shadow: 0 0 0 .2rem rgba(225,0,122,.15);
+}
+.btn-primary{
+  --bs-btn-bg: var(--brand-primary);
+  --bs-btn-border-color: var(--brand-primary);
+  --bs-btn-hover-bg: #c40069;
+  --bs-btn-hover-border-color: #c40069;
+}
+.topbar .form-control{ border-radius:.6rem; }
+.topbar .input-group-text{ border-radius:.6rem 0 0 .6rem; }
+.topbar-nav .nav-link{
+  color:#5b5b7b;
+  border-radius:.6rem;
+}
+.topbar-nav .nav-link.active,
+.topbar-nav .nav-link:hover{
+  color:#fff;
+  background: linear-gradient(140deg, var(--brand-gradient-start) 0%, var(--brand-gradient-end) 100%);
+}
+.section-title{
+  color: var(--brand-ink);
+  font-weight:800;
+}
+.card{ border-radius:1rem; }
+.stat-num{ font-weight:800; font-size:2rem; }
+.badge-soft{ background-color: rgba(30,22,75,.06); color: var(--brand-ink); }
+.table thead th{ white-space:nowrap }
