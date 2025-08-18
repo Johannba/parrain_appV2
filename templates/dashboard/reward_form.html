@@ -1,0 +1,111 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Créer une récompense — {{ client.last_name }} {{ client.first_name }}{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <div class="d-flex align-items-center justify-content-between">
+    <div>
+      <h1 class="h4 section-title mb-1">Créer une récompense</h1>
+      <div class="text-secondary">
+        Client : <strong>{{ client.last_name }} {{ client.first_name }}</strong> • Entreprise : {{ client.company.name }}
+      </div>
+    </div>
+    <div class="d-none d-md-block">
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard:client_detail' client.id %}">← Retour à la fiche</a>
+    </div>
+  </div>
+</header>
+
+<div class="row g-3">
+  <!-- Formulaire -->
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="fw-semibold">Nouvelle récompense</div>
+        <small class="text-secondary">Renseigne l’intitulé, le canal, etc.</small>
+      </div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="mb-3">
+            {% with field=form.label %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            {% endwith %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                {% with field=form.channel %}
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  <div class="form-text">Ex : Mail, SMS, …</div>
+                  {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+                {% endwith %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                {% with field=form.code %}
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  <div class="form-text">Ex : AB-123-456</div>
+                  {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+                {% endwith %}
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            {% with field=form.state %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            {% endwith %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:client_detail' client.id %}">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panneau récap client -->
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Client</div>
+      <div class="card-body">
+        <div class="vstack small gap-1 mb-3">
+          <div><span class="text-secondary">Nom :</span> {{ client.last_name|default:"—" }}</div>
+          <div><span class="text-secondary">Prénom :</span> {{ client.first_name|default:"—" }}</div>
+          <div><span class="text-secondary">Téléphone :</span> {{ client.phone|default:"—" }}</div>
+          <div><span class="text-secondary">Email :</span> {{ client.email|default:"—" }}</div>
+          <div><span class="text-secondary">Entreprise :</span> {{ client.company.name }}</div>
+        </div>
+
+        <div class="alert alert-info mb-0">
+          La récompense sera rattachée à <strong>{{ client.last_name }} {{ client.first_name }}</strong> et à
+          <strong>{{ client.company.name }}</strong>.
+        </div>
+      </div>
+      <div class="card-footer bg-transparent">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:client_detail' client.id %}">Voir la fiche client</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

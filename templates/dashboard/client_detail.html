@@ -1,0 +1,109 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Fiche client — {{ client.last_name }} {{ client.first_name }}{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Fiche client</h1>
+  <div class="text-secondary">Informations, parrainages et récompenses</div>
+</header>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+          <h3 class="h6 mb-0">Informations</h3>
+          {% if client.is_referrer %}<span class="badge text-bg-info">Parrain</span>{% endif %}
+        </div>
+        <div class="vstack gap-1 small">
+          <div><span class="text-secondary">Nom :</span> {{ client.last_name|default:"—" }}</div>
+          <div><span class="text-secondary">Prénom :</span> {{ client.first_name|default:"—" }}</div>
+          <div><span class="text-secondary">Téléphone :</span> {{ client.phone|default:"—" }}</div>
+          <div><span class="text-secondary">Email :</span> {{ client.email|default:"—" }}</div>
+        </div>
+        <hr>
+        <div class="small">
+          <span class="text-secondary">A parrainé :</span>
+          <strong>{{ referrals_made|length }}</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="row g-3">
+
+      <!-- Actions rapides (placeholders) -->
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">Actions rapides</div>
+            <small class="text-secondary">Gagner du temps</small>
+          </div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Envoyer un lien</a></div>
+              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Ajouter un parrainé</a></div>
+              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Créer un cadeau</a></div>
+              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Exporter PDF</a></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Liste des parrainés -->
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-header">Parrainés</div>
+          <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+              <thead class="table-light">
+                <tr><th>Filleul</th><th>Date</th><th>Statut</th></tr>
+              </thead>
+              <tbody>
+                {% for ref in referrals_made %}
+                  <tr>
+                    <td>{{ ref.referee.last_name }} {{ ref.referee.first_name }}</td>
+                    <td>{{ ref.created_at|date:"d/m/Y" }}</td>
+                    <td>{{ ref.get_status_display }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-center text-secondary">Aucun parrainé.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Où il est filleul -->
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-header">Parrain de ce client</div>
+          <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+              <thead class="table-light">
+                <tr><th>Parrain</th><th>Date</th><th>Statut</th></tr>
+              </thead>
+              <tbody>
+                {% for ref in referrals_received %}
+                  <tr>
+                    <td>{{ ref.referrer.last_name }} {{ ref.referrer.first_name }}</td>
+                    <td>{{ ref.created_at|date:"d/m/Y" }}</td>
+                    <td>{{ ref.get_status_display }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-center text-secondary">Aucun parrain trouvé.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /row -->
+  </div>
+</div>
+{% endblock %}

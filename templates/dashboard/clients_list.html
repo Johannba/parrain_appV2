@@ -1,0 +1,32 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Clients{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h4 section-title mb-0">Clients</h1>
+  <div class="mb-3 d-flex gap-2">
+  <a class="btn btn-primary" href="{% url 'dashboard:client_create' %}">Créer un client</a>
+  <a class="btn btn-outline-primary" href="{% url 'dashboard:referral_create' %}">Créer un parrainage</a>
+</div>
+
+  <div class="btn-group">
+    <a href="{% url 'dashboard:clients_list' %}?type=tous"
+       class="btn btn-sm {% if filter_type == 'tous' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+       Tous
+    </a>
+    <a href="{% url 'dashboard:clients_list' %}?type=parrains"
+       class="btn btn-sm {% if filter_type == 'parrains' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+       Parrains
+    </a>
+    <a href="{% url 'dashboard:clients_list' %}?type=filleuls"
+       class="btn btn-sm {% if filter_type == 'filleuls' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+       Filleuls
+    </a>
+  </div>
+</div>
+
+{% include "partials/_clients_table.html" %}
+{% endblock %}
