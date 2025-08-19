@@ -155,17 +155,21 @@ class UserDeleteView(DeleteView):
 def company_list(request):
     require_superadmin(request.user)
     companies = Company.objects.all().order_by("name")
-    return render(request, "accounts/companies/list.html", {"companies": companies})
+    return render(request, "accounts/compagnies/list.html", {"companies": companies})
 
 @login_required
 def company_create(request):
-    from django.forms import ModelForm
+    from django.forms import ModelForm, TextInput, CheckboxInput
     require_superadmin(request.user)
 
     class CompanyForm(ModelForm):
         class Meta:
             model = Company
-            fields = ("name", "slug", "is_active")
+            fields = ("name", "is_active")
+            widgets = {
+                "name": TextInput(attrs={"class": "form-control", "placeholder": "Nom"}),
+                "is_active": CheckboxInput(attrs={"class": "form-check-input"}),
+            }
 
     if request.method == "POST":
         form = CompanyForm(request.POST)
@@ -174,7 +178,7 @@ def company_create(request):
             return redirect("accounts:company_list")
     else:
         form = CompanyForm()
-    return render(request, "accounts/companies/form.html", {"form": form})
+    return render(request, "accounts/compagnies/form.html", {"form": form})
 
 @login_required
 def company_update(request, pk):
@@ -184,7 +188,7 @@ def company_update(request, pk):
     class CompanyForm(ModelForm):
         class Meta:
             model = Company
-            fields = ("name", "slug", "is_active")
+            fields = ("name", "is_active")
 
     company = get_object_or_404(Company, pk=pk)
     if request.method == "POST":
@@ -194,4 +198,16 @@ def company_update(request, pk):
             return redirect("accounts:company_list")
     else:
         form = CompanyForm(instance=company)
-    return render(request, "accounts/companies/form.html", {"form": form, "company": company})
+    return render(request, "accounts/compagnies/form.html", {"form": form, "company": company})
+
+
+@login_required
+def company_delete(request, pk):
+    require_superadmin(request.user)
+    company = get_object_or_404(Company, pk=pk)
+
+    if request.method == "POST":
+        company.delete()
+        return redirect("accounts:company_list")
+
+    return render(request, "accounts/compagnies/confirm_delete.html", {"company": company})

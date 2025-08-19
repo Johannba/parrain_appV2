@@ -1,28 +1,21 @@
 {% extends "base_dashboard.html" %}
 {% block title %}Créer un parrainage{% endblock %}
-{% block body_data_page %}clients{% endblock %}
-{% block nav_clients_active %}active{% endblock %}
+{% block body_data_page %}referrals{% endblock %}
+{% block nav_referrals_active %}active{% endblock %}
 
 {% block content %}
-<header class="mb-4">
-  <div class="d-flex align-items-center justify-content-between">
-    <div>
-      <h1 class="h4 section-title mb-1">Créer un parrainage</h1>
-      <div class="text-secondary">Entreprise : {{ company.name }}</div>
-    </div>
-    <div class="d-none d-md-block">
-      <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">← Retour à la liste</a>
-    </div>
+<header class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h4 section-title mb-1">Créer un parrainage</h1>
+    <div class="text-secondary">Sélectionnez un <strong>Parrain</strong> et un <strong>Filleul</strong> de la même entreprise.</div>
   </div>
+  <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">← Retour</a>
 </header>
 
 <div class="row g-3">
-  <div class="col-lg-7">
+  <div class="col-xl-8">
     <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="fw-semibold">Sélectionne le parrain et le filleul</div>
-        <small class="text-secondary">Tous deux doivent appartenir à {{ company.name }}</small>
-      </div>
+      <div class="card-header">Sélection</div>
       <div class="card-body">
         {% if form.non_field_errors %}
           <div class="alert alert-danger">
@@ -32,42 +25,46 @@
 
         <form method="post" novalidate>
           {% csrf_token %}
+
           <div class="mb-3">
-            <label class="form-label" for="{{ form.referrer.id_for_label }}">{{ form.referrer.label }}</label>
+            <label class="form-label" for="{{ form.referrer.id_for_label }}">Parrain *</label>
             {{ form.referrer }}
-            <div class="form-text">Uniquement les clients « Parrains »</div>
+            <div class="form-text">Uniquement les clients marqués “Parrain”.</div>
             {% for e in form.referrer.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
           </div>
 
           <div class="mb-3">
-            <label class="form-label" for="{{ form.referee.id_for_label }}">{{ form.referee.label }}</label>
+            <label class="form-label" for="{{ form.referee.id_for_label }}">Filleul *</label>
             {{ form.referee }}
+            <div class="form-text">Uniquement les clients “non parrain”.</div>
             {% for e in form.referee.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
           </div>
 
+          {% if form.status %}
           <div class="mb-4">
-            <label class="form-label" for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
+            <label class="form-label" for="{{ form.status.id_for_label }}">Statut</label>
             {{ form.status }}
-            {% for e in form.status.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
           </div>
+          {% endif %}
 
           <div class="d-flex gap-2">
-            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <button class="btn btn-primary" type="submit">Créer</button>
             <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
           </div>
         </form>
+
       </div>
     </div>
   </div>
 
-  <div class="col-lg-5">
+  <div class="col-xl-4">
     <div class="card shadow-sm h-100">
-      <div class="card-header">Conseils</div>
-      <div class="card-body small">
+      <div class="card-header">Règles</div>
+      <div class="card-body small text-secondary">
         <ul class="mb-0">
-          <li>Le parrain doit être un client avec « Est un parrain » coché.</li>
-          <li>Le filleul peut être n’importe quel client de l’entreprise.</li>
-          <li>Tu peux changer le <em>Statut</em> (En attente, Validé, Rejeté).</li>
+          <li>Parrain et Filleul doivent appartenir à la <strong>même entreprise</strong>.</li>
+          <li>Le Parrain doit être <strong>is_referrer=True</strong>.</li>
+          <li>Le Filleul doit être <strong>is_referrer=False</strong>.</li>
         </ul>
       </div>
     </div>

@@ -3,7 +3,8 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
 from .models import Client, Referral, Reward
 # dashboard/views.py
-from django import forms
+
+from .forms import ClientForm, ReferralForm
 from django.shortcuts import get_object_or_404, redirect
 
 
@@ -38,145 +39,51 @@ def company_home(request):
     context = {"company": company}
     return render(request, "dashboard/company_home.html", context)
 
-
 def _require_company_staff(user):
-    if hasattr(user, "is_superadmin") and user.is_superadmin():
+    if getattr(user, "is_superadmin", lambda: False)():
         return
-    if hasattr(user, "is_admin_entreprise") and user.is_admin_entreprise():
+    if getattr(user, "is_admin_entreprise", lambda: False)():
         return
-    if hasattr(user, "is_operateur") and user.is_operateur():
+    if getattr(user, "is_operateur", lambda: False)():
         return
-    raise PermissionDenied("Accès réservé au personnel de l’entreprise.")
+    raise PermissionDenied
 
-# -------- Forms stylés ----------
-class ClientForm(forms.ModelForm):
-    class Meta:
-        model = Client
-        fields = ("first_name", "last_name", "email", "phone", "is_referrer")
-        labels = {
-            "first_name": "Prénom",
-            "last_name": "Nom",
-            "email": "Email",
-            "phone": "Téléphone",
-            "is_referrer": "Est un parrain ?",
-        }
-        widgets = {
-            "first_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex : Alice"}),
-            "last_name":  forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex : Martin"}),
-            "email":      forms.EmailInput(attrs={"class": "form-control", "placeholder": "exemple@domaine.com"}),
-            "phone":      forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex : 06 12 34 56 78"}),
-            "is_referrer": forms.CheckboxInput(attrs={"class": "form-check-input"}),
-        }
-class ReferralForm(forms.ModelForm):
-    class Meta:
-        model = Referral
-        fields = ("referrer", "referee", "status")
-        labels = {
-            "referrer": "Parrain",
-            "referee": "Filleul",
-            "status": "Statut",
-        }
-        widgets = {
-            "referrer": forms.Select(attrs={"class": "form-select"}),
-            "referee":  forms.Select(attrs={"class": "form-select"}),
-            "status":   forms.Select(attrs={"class": "form-select"}),
-        }
 
-    def __init__(self, *args, **kwargs):
-        company = kwargs.pop("company")
-        super().__init__(*args, **kwargs)
-
-        # Parrain = uniquement les clients marqués comme parrains
-        self.fields["referrer"].queryset = Client.objects.filter(
-            company=company, is_referrer=True
-        )
-        # Filleul = uniquement les clients NON parrains
-        self.fields["referee"].queryset = Client.objects.filter(
-            company=company, is_referrer=False
-        )
-
-        # Libellés lisibles
-        fmt = lambda o: f"{o.last_name} {o.first_name} — {o.email or '—'}"
-        self.fields["referrer"].label_from_instance = fmt
-        self.fields["referee"].label_from_instance  = fmt
-
-    def clean(self):
-        cleaned = super().clean()
-        referrer = cleaned.get("referrer")
-        referee  = cleaned.get("referee")
-
-        # Sécurité côté serveur (au cas où)
-        if referrer and not referrer.is_referrer:
-            self.add_error("referrer", "Le parrain doit être un client avec le statut « parrain ».")
-        if referee and referee.is_referrer:
-            self.add_error("referee", "Le filleul doit être un client non parrain.")
-        if referrer and referee:
-            if referrer.company_id != referee.company_id:
-                self.add_error("referee", "Parrain et filleul doivent appartenir à la même entreprise.")
-            if referrer.id == referee.id:
-                self.add_error("referee", "Le parrain et le filleul doivent être différents.")
-        return cleaned
-
-# -------- Vues CRUD (Create) ----------
 @login_required
 def client_create(request):
     _require_company_staff(request.user)
-    u = request.user
-    # Superadmin peut choisir l’entreprise via ?company=ID, sinon prend celle du user
-    company = getattr(u, "company", None)
-    if hasattr(u, "is_superadmin") and u.is_superadmin():
-        from accounts.models import Company
-        company_id = request.GET.get("company")
-        if company_id:
-            company = get_object_or_404(Company, pk=company_id)
-    if company is None:
-        raise PermissionDenied("Aucune entreprise associée.")
-
     if request.method == "POST":
-        form = ClientForm(request.POST)
+        form = ClientForm(request.POST, request=request)
         if form.is_valid():
             obj = form.save(commit=False)
-            obj.company = company
+            if not getattr(request.user, "is_superadmin", lambda: False)():
+                obj.company = request.user.company  # sécurité
             obj.save()
-            return redirect("dashboard:client_detail", pk=obj.pk)
+            return redirect("dashboard:clients_list")
     else:
-        form = ClientForm()
+        form = ClientForm(request=request)
+    return render(request, "dashboard/client_form.html", {"form": form})
 
-    return render(request, "dashboard/client_form.html", {"form": form, "company": company})
 
 @login_required
 def referral_create(request):
     _require_company_staff(request.user)
     u = request.user
-    # Contexte entreprise
-    if hasattr(u, "is_superadmin") and u.is_superadmin():
-        from accounts.models import Company
-        company_id = request.GET.get("company")
-        if company_id:
-            company = get_object_or_404(Company, pk=company_id)
-        else:
-            # fallback : si superadmin sans ?company, on interdit pour éviter de mélanger
-            raise PermissionDenied("Superadmin : préciser ?company=<id> pour créer un parrainage.")
-    else:
-        company = u.company
-        if company is None:
-            raise PermissionDenied("Aucune entreprise associée.")
+    is_super = getattr(u, "is_superadmin", lambda: False)()
+    current_company = None if is_super else getattr(u, "company", None)
 
     if request.method == "POST":
-        form = ReferralForm(request.POST, company=company)
+        form = ReferralForm(request.POST, request=request, company=current_company)
         if form.is_valid():
-            ref = form.save(commit=False)
-            ref.company = company
-            # Empêche parrain == filleul
-            if ref.referrer_id == ref.referee_id:
-                form.add_error("referee", "Le parrain et le filleul doivent être différents.")
-            else:
-                ref.save()
-                return redirect("dashboard:client_detail", pk=ref.referrer_id)
+            referral = form.save(commit=False)
+            # Company cohérente
+            referral.company = referral.referrer.company
+            referral.save()
+            return redirect("dashboard:clients_list")
     else:
-        form = ReferralForm(company=company)
+        form = ReferralForm(request=request, company=current_company)
 
-    return render(request, "dashboard/referral_form.html", {"form": form, "company": company})
+    return render(request, "dashboard/referral_form.html", {"form": form})
 
 
 @login_required
@@ -249,3 +156,72 @@ def reward_create(request, pk: int):
 
     return render(request, "dashboard/reward_form.html", {"form": form, "client": client})
 
+
+# ---------- Clients ----------
+@login_required
+def client_update(request, pk):
+    _require_company_staff(request.user)
+    obj = get_object_or_404(Client, pk=pk)
+    if not request.user.is_superadmin() and obj.company_id != request.user.company_id:
+        raise PermissionDenied("Accès refusé.")
+    if request.method == "POST":
+        form = ClientForm(request.POST, instance=obj, request=request)
+        if form.is_valid():
+            c = form.save(commit=False)
+            if not request.user.is_superadmin():
+                c.company = request.user.company
+            c.save()
+            return redirect("dashboard:clients_list")
+    else:
+        form = ClientForm(instance=obj, request=request)
+    return render(request, "dashboard/client_form.html", {"form": form})
+
+@login_required
+def client_delete(request, pk):
+    _require_company_staff(request.user)
+    obj = get_object_or_404(Client, pk=pk)
+    if not request.user.is_superadmin() and obj.company_id != request.user.company_id:
+        raise PermissionDenied("Accès refusé.")
+    if request.method == "POST":
+        obj.delete()
+        return redirect("dashboard:clients_list")
+    return render(request, "dashboard/confirm_delete.html", {
+        "title": "Supprimer le client",
+        "message": f"Supprimer définitivement {obj.last_name} {obj.first_name} ?",
+        "back_url": "dashboard:clients_list",
+    })
+
+# ---------- Parrainages ----------
+@login_required
+def referral_update(request, pk):
+    _require_company_staff(request.user)
+    obj = get_object_or_404(Referral, pk=pk)
+    if not request.user.is_superadmin() and obj.company_id != request.user.company_id:
+        raise PermissionDenied("Accès refusé.")
+    # contexte company pour filtrer les selects
+    current_company = None if request.user.is_superadmin() else request.user.company
+    if request.method == "POST":
+        form = ReferralForm(request.POST, instance=obj, request=request, company=current_company)
+        if form.is_valid():
+            r = form.save(commit=False)
+            r.company = r.referrer.company
+            r.save()
+            return redirect("dashboard:referrals_list")
+    else:
+        form = ReferralForm(instance=obj, request=request, company=current_company)
+    return render(request, "dashboard/referral_form.html", {"form": form})
+
+@login_required
+def referral_delete(request, pk):
+    _require_company_staff(request.user)
+    obj = get_object_or_404(Referral, pk=pk)
+    if not request.user.is_superadmin() and obj.company_id != request.user.company_id:
+        raise PermissionDenied("Accès refusé.")
+    if request.method == "POST":
+        obj.delete()
+        return redirect("dashboard:referrals_list")
+    return render(request, "dashboard/confirm_delete.html", {
+        "title": "Supprimer le parrainage",
+        "message": "Confirmer la suppression de ce parrainage ?",
+        "back_url": "dashboard:referrals_list",
+    })

@@ -1,11 +1,28 @@
 from django.contrib.auth.models import AbstractUser, PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils.text import slugify
 
 class Company(models.Model):
     name = models.CharField(max_length=150, unique=True)
     slug = models.SlugField(max_length=160, unique=True)
     is_active = models.BooleanField(default=True)
+    
+    def _build_unique_slug(self):
+        base = slugify(self.name or "")
+        slug = base or "entreprise"
+        i = 1
+        # Évite les collisions (ex: chrono-pizza, chrono-pizza-1, etc.)
+        while Company.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            i += 1
+            slug = f"{base}-{i}"
+        return slug
+
+    def save(self, *args, **kwargs):
+        # Remplit le slug uniquement s'il est vide (création ou si on l'efface volontairement)
+        if not self.slug:
+            self.slug = self._build_unique_slug()
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Entreprise"

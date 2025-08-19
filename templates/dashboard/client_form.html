@@ -1,28 +1,25 @@
 {% extends "base_dashboard.html" %}
-{% block title %}Créer un client{% endblock %}
+{% block title %}Créer / Modifier un client{% endblock %}
 {% block body_data_page %}clients{% endblock %}
 {% block nav_clients_active %}active{% endblock %}
 
 {% block content %}
-<header class="mb-4">
-  <div class="d-flex align-items-center justify-content-between">
-    <div>
-      <h1 class="h4 section-title mb-1">Créer un client</h1>
-      <div class="text-secondary">Entreprise : {{ company.name }}</div>
-    </div>
-    <div class="d-none d-md-block">
-      <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">← Retour à la liste</a>
-    </div>
+<header class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h4 section-title mb-1">Client</h1>
+    <div class="text-secondary">Créer ou modifier un client (parrain ou simple client).</div>
   </div>
+  <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">← Retour</a>
 </header>
 
 <div class="row g-3">
-  <div class="col-lg-7">
+  <div class="col-xl-8">
     <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="fw-semibold">Informations du client</div>
-        <small class="text-secondary">Remplir les champs ci-dessous</small>
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="fw-semibold">Informations</div>
+        <small class="text-secondary">Champs requis *</small>
       </div>
+
       <div class="card-body">
         {% if form.non_field_errors %}
           <div class="alert alert-danger">
@@ -33,43 +30,46 @@
         <form method="post" novalidate>
           {% csrf_token %}
 
-          <div class="row">
+          {# Superadmin voit le champ entreprise, Admin/Opérateur non #}
+          {% if form.company %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.company.id_for_label }}">Entreprise *</label>
+            {{ form.company }}
+            {% for e in form.company.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="row g-3">
             <div class="col-md-6">
-              <div class="mb-3">
-                <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
-                {{ form.last_name }}
-                {% for e in form.last_name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
-              </div>
+              <label class="form-label" for="{{ form.last_name.id_for_label }}">Nom *</label>
+              {{ form.last_name }}
+              {% for e in form.last_name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
             </div>
             <div class="col-md-6">
-              <div class="mb-3">
-                <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
-                {{ form.first_name }}
-                {% for e in form.first_name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
-              </div>
+              <label class="form-label" for="{{ form.first_name.id_for_label }}">Prénom *</label>
+              {{ form.first_name }}
+              {% for e in form.first_name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
             </div>
           </div>
 
-          <div class="row">
+          <div class="row g-3 mt-1">
             <div class="col-md-6">
-              <div class="mb-3">
-                <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
-                {{ form.email }}
-                {% for e in form.email.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
-              </div>
+              <label class="form-label" for="{{ form.email.id_for_label }}">Email</label>
+              {{ form.email }}
+              {% for e in form.email.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
             </div>
             <div class="col-md-6">
-              <div class="mb-3">
-                <label class="form-label" for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
-                {{ form.phone }}
-                {% for e in form.phone.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
-              </div>
+              <label class="form-label" for="{{ form.phone.id_for_label }}">Téléphone</label>
+              {{ form.phone }}
+              {% for e in form.phone.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
             </div>
           </div>
 
-          <div class="form-check mb-4">
-            {{ form.is_referrer }} <label class="form-check-label ms-1" for="{{ form.is_referrer.id_for_label }}">Est un parrain</label>
-            {% for e in form.is_referrer.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+          <hr class="my-4">
+
+          <div class="form-check mb-3">
+            {{ form.is_referrer }}
+            <label class="form-check-label" for="{{ form.is_referrer.id_for_label }}">Marquer comme <strong>Parrain</strong></label>
           </div>
 
           <div class="d-flex gap-2">
@@ -81,16 +81,12 @@
     </div>
   </div>
 
-  <div class="col-lg-5">
+  <div class="col-xl-4">
     <div class="card shadow-sm h-100">
-      <div class="card-header">Guide</div>
-      <div class="card-body small">
-        <p>Le client sera rattaché à <strong>{{ company.name }}</strong>.</p>
-        <ul class="mb-0">
-          <li><strong>Parrain</strong> : coche « Est un parrain ».</li>
-          <li><strong>Filleul</strong> : laisse la case décochée.</li>
-          <li>Email/phone facultatifs si tu veux créer vite puis compléter.</li>
-        </ul>
+      <div class="card-header">Aide</div>
+      <div class="card-body small text-secondary">
+        <p>Un <strong>Parrain</strong> peut parrainer des filleuls et recevoir des récompenses.</p>
+        <p>Les Admins/Opérateurs ne voient que leur entreprise. Le Superadmin peut choisir l’entreprise.</p>
       </div>
     </div>
   </div>

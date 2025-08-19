@@ -1,0 +1,20 @@
+{% extends "base_dashboard.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">{{ title }}</h1>
+  <div class="text-secondary">Action irréversible.</div>
+</header>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <p class="mb-4">{{ message }}</p>
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Confirmer la suppression</button>
+      <a href="{% url back_url %}" class="btn btn-outline-secondary">Annuler</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

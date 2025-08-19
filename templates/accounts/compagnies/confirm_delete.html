@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Supprimer l'entreprise{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h4 class="mb-3">Supprimer l'entreprise</h4>
+      <p>Êtes-vous sûr de vouloir supprimer l'entreprise 
+         <strong>{{ company.name }}</strong> ?</p>
+      <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Confirmer la suppression</button>
+        <a href="{% url 'accounts:company_list' %}" class="btn btn-secondary">Annuler</a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

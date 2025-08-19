@@ -26,6 +26,18 @@
           </td>
           <td class="text-end">
             <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:client_detail' c.id %}">Voir</a>
+              {% if c.id %}
+                <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:client_update' c.id %}">Modifier</a>
+
+                <form class="d-inline" action="{% url 'dashboard:client_delete' c.id %}" method="post"
+                      onsubmit="return confirm('Supprimer ce client ?');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
+                </form>
+            {% else %}
+                <button class="btn btn-sm btn-outline-secondary" disabled>Modifier</button>
+                <button class="btn btn-sm btn-outline-danger" disabled>Supprimer</button>
+            {% endif %}
           </td>
         </tr>
       {% empty %}

@@ -1,35 +1,55 @@
+{# templates/accounts/companies/list.html #}
 {% extends "base_dashboard.html" %}
-{% block title %}Entreprises • ParrainApp{% endblock %}
+{% block title %}Entreprises{% endblock %}
 {% block body_data_page %}companies{% endblock %}
 {% block nav_companies_active %}active{% endblock %}
 
 {% block content %}
-<header class="mb-4">
-  <h1 class="h4 section-title mb-1">Entreprises</h1>
-  <div class="text-secondary">Gestion des sociétés (Superadmin).</div>
-</header>
-
-<div class="d-flex justify-content-end mb-3">
+<header class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h4 section-title mb-1">Entreprises</h1>
+    <div class="text-secondary">Gestion réservée au Superadmin.</div>
+  </div>
   <a class="btn btn-primary" href="{% url 'accounts:company_create' %}">Créer une entreprise</a>
-</div>
+</header>
 
 <div class="card shadow-sm">
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
-      <thead class="table-light"><tr><th>Nom</th><th>Slug</th><th>Active</th><th></th></tr></thead>
-      <tbody>
-      {% for c in companies %}
+      <thead class="table-light">
         <tr>
-          <td>{{ c.name }}</td>
-          <td>{{ c.slug }}</td>
-          <td>{{ c.is_active|yesno:"Oui,Non" }}</td>
-          <td class="text-end">
-            <a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:company_edit' c.pk %}">Modifier</a>
-          </td>
+          <th>Nom</th>
+          <th>Slug</th>
+          <th>Statut</th>
+          <th class="text-end">Actions</th>
         </tr>
-      {% empty %}
-        <tr><td colspan="4" class="text-center text-secondary">Aucune entreprise.</td></tr>
-      {% endfor %}
+      </thead>
+      <tbody>
+        {% for c in companies %}
+          <tr>
+            <td class="fw-medium">{{ c.name }}</td>
+            <td><code class="small">{{ c.slug }}</code></td>
+            <td>
+              {% if c.is_active %}
+                <span class="badge rounded-pill" style="background: var(--brand-primary); color:#fff;">Active</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if c.id %}
+                <a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:company_update' c.id %}">Modifier</a>
+                <a class="btn btn-sm btn-outline-danger" href="{% url 'accounts:company_delete' c.id %}">Supprimer</a>
+              {% else %}
+                <span class="text-secondary small">ID manquant</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-secondary py-4">Aucune entreprise.</td>
+          </tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>

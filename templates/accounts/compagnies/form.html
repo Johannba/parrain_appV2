@@ -1,37 +1,60 @@
 {% extends "base_dashboard.html" %}
-{% block title %}Entreprise • ParrainApp{% endblock %}
+{% block title %}{% if company %}Modifier{% else %}Créer{% endif %} une entreprise{% endblock %}
 {% block body_data_page %}companies{% endblock %}
 {% block nav_companies_active %}active{% endblock %}
 
 {% block content %}
 <header class="mb-4">
-  <h1 class="h4 section-title mb-1">Entreprise</h1>
-  <div class="text-secondary">Ajouter / modifier une entreprise.</div>
+  <div class="d-flex align-items-center justify-content-between">
+    <div>
+      <h1 class="h4 section-title mb-1">
+        {% if company %}Modifier{% else %}Créer{% endif %} une entreprise
+      </h1>
+      <div class="text-secondary">Réservé au Superadmin.</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'accounts:company_list' %}">← Retour</a>
+  </div>
 </header>
 
-<div class="card shadow-sm">
-  <div class="card-body">
-    <form method="post" class="row g-3">
-      {% csrf_token %}
-      <div class="col-md-6">
-        <label class="form-label">Nom</label>
-        {{ form.name }}
-        {% for e in form.name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header">Informations</div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.name.id_for_label }}">Nom</label>
+            {{ form.name }}
+            {% for e in form.name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.slug.id_for_label }}">Slug</label>
+            {{ form.slug}}
+            <div class="form-text">Identifiant URL (ex: <code>chrono-pizza</code>)</div>
+            {% for e in form.slug.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+          </div>
+
+          <div class="form-check mb-4">
+            {{ form.is_active}}
+            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label>
+            {% for e in form.is_active.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-outline-secondary" href="{% url 'accounts:company_list' %}">Annuler</a>
+          </div>
+        </form>
       </div>
-      <div class="col-md-6">
-        <label class="form-label">Slug</label>
-        {{ form.slug }}
-        {% for e in form.slug.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Active</label>
-        {{ form.is_active }}
-      </div>
-      <div class="col-12 d-grid d-sm-flex gap-2">
-        <button class="btn btn-primary">Enregistrer</button>
-        <a class="btn btn-outline-secondary" href="{% url 'accounts:company_list' %}">Annuler</a>
-      </div>
-    </form>
+    </div>
   </div>
 </div>
 {% endblock %}
