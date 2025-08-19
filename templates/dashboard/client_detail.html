@@ -4,106 +4,205 @@
 {% block nav_clients_active %}active{% endblock %}
 
 {% block content %}
-<header class="mb-4">
+<style>
+  /* Hauteur fixe pour garder une page harmonisée ; scroll interne pour le contenu long */
+  .tall-card .card-body { max-height: 360px; overflow: auto; }
+  @media (min-width: 1400px){
+    .tall-card .card-body { max-height: 420px; }
+  }
+</style>
+
+<header class="mb-3">
   <h1 class="h4 section-title mb-1">Fiche client</h1>
-  <div class="text-secondary">Informations, parrainages et récompenses</div>
+  <div class="text-secondary">Informations, cadeaux et historique</div>
 </header>
 
 <div class="row g-3">
+
+  {# --------- COLONNE GAUCHE : Infos + Historique (avec pagination) --------- #}
   <div class="col-lg-4">
-    <div class="card shadow-sm h-100">
+    <div class="card shadow-sm mb-3">
       <div class="card-body">
-        <div class="d-flex justify-content-between mb-2">
-          <h3 class="h6 mb-0">Informations</h3>
-          {% if client.is_referrer %}<span class="badge text-bg-info">Parrain</span>{% endif %}
+        <div class="d-flex justify-content-between">
+          <h2 class="h6 mb-3">Informations</h2>
+          {% if client.is_referrer %}
+            <span class="badge text-bg-info">Parrain</span>
+          {% else %}
+            <span class="badge text-bg-secondary">Filleul</span>
+          {% endif %}
         </div>
-        <div class="vstack gap-1 small">
+
+        <div class="vstack gap-1 small mb-3">
           <div><span class="text-secondary">Nom :</span> {{ client.last_name|default:"—" }}</div>
           <div><span class="text-secondary">Prénom :</span> {{ client.first_name|default:"—" }}</div>
           <div><span class="text-secondary">Téléphone :</span> {{ client.phone|default:"—" }}</div>
           <div><span class="text-secondary">Email :</span> {{ client.email|default:"—" }}</div>
+          <div><span class="text-secondary">Entreprise :</span> {{ company.name }}</div>
         </div>
-        <hr>
-        <div class="small">
-          <span class="text-secondary">A parrainé :</span>
-          <strong>{{ referrals_made|length }}</strong>
+
+        <hr class="my-2">
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="fw-semibold">Historique des parrainages</div>
+          <small class="text-secondary">Derniers d’abord</small>
+        </div>
+
+        <div class="tall-card">
+          <div class="card-body p-0">
+            {% if history_page and history_page.object_list %}
+              <div class="list-group list-group-flush">
+                {% for r in history_page.object_list %}
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                      <div>
+                        {% if r.referrer_id == client.id %}
+                          <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
+                          <small class="text-secondary d-block">Parrainé par {{ client.first_name }} {{ client.last_name }}</small>
+                        {% else %}
+                          <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
+                          <small class="text-secondary d-block">Parrain de ce client</small>
+                        {% endif %}
+                      </div>
+                      <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="p-3 text-secondary">Aucun parrainage pour l’instant.</div>
+            {% endif %}
+          </div>
+          {% if history_page and history_page.paginator.num_pages > 1 %}
+            <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+              {% if history_page.has_previous %}
+                <a class="btn btn-sm btn-outline-secondary" href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">Préc.</a>
+              {% endif %}
+              <span class="small align-self-center">Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}</span>
+              {% if history_page.has_next %}
+                <a class="btn btn-sm btn-outline-secondary" href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">Suiv.</a>
+              {% endif %}
+            </div>
+          {% endif %}
         </div>
       </div>
     </div>
   </div>
 
+  {# --------- COLONNE DROITE : 3 BLOCS pleine largeur (les compteurs dans les titres) --------- #}
   <div class="col-lg-8">
-    <div class="row g-3">
 
-      <!-- Actions rapides (placeholders) -->
-      <div class="col-12">
-        <div class="card shadow-sm">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="fw-semibold">Actions rapides</div>
-            <small class="text-secondary">Gagner du temps</small>
-          </div>
-          <div class="card-body">
-            <div class="row g-2">
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Envoyer un lien</a></div>
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Ajouter un parrainé</a></div>
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Créer un cadeau</a></div>
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Exporter PDF</a></div>
-            </div>
-          </div>
-        </div>
+    {# 1) Cadeaux obtenus #}
+    <div class="card shadow-sm tall-card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cadeaux obtenus <span class="badge rounded-pill text-bg-success">{{ kpi_obtenus }}</span></span>
+        <a class="btn btn-sm btn-primary" href="{% url 'dashboard:reward_create' client.id %}">Créer une récompense</a>
       </div>
-
-      <!-- Liste des parrainés -->
-      <div class="col-12">
-        <div class="card shadow-sm">
-          <div class="card-header">Parrainés</div>
-          <div class="table-responsive">
-            <table class="table mb-0 align-middle">
-              <thead class="table-light">
-                <tr><th>Filleul</th><th>Date</th><th>Statut</th></tr>
-              </thead>
-              <tbody>
-                {% for ref in referrals_made %}
-                  <tr>
-                    <td>{{ ref.referee.last_name }} {{ ref.referee.first_name }}</td>
-                    <td>{{ ref.created_at|date:"d/m/Y" }}</td>
-                    <td>{{ ref.get_status_display }}</td>
-                  </tr>
-                {% empty %}
-                  <tr><td colspan="3" class="text-center text-secondary">Aucun parrainé.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
+      <div class="card-body">
+        {% if page_ok and page_ok.object_list %}
+          <div class="row g-2">
+            {% for rw in page_ok.object_list %}
+              <div class="col-12">
+                <div class="card h-100 border-0 shadow-sm">
+                  <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-semibold">{{ rw.label }}</div>
+                      <small class="text-secondary">Obtenu le {{ rw.created_at|date:"d/m/Y" }}</small>
+                    </div>
+                    <span class="badge text-bg-success">OK</span>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
           </div>
-        </div>
+        {% else %}
+          <div class="text-secondary">Aucun cadeau obtenu.</div>
+        {% endif %}
       </div>
+      {% if page_ok and page_ok.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+          {% if page_ok.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary" href="?ok={{ page_ok.previous_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Préc.</a>
+          {% endif %}
+          <span class="small align-self-center">Page {{ page_ok.number }}/{{ page_ok.paginator.num_pages }}</span>
+          {% if page_ok.has_next %}
+            <a class="btn btn-sm btn-outline-secondary" href="?ok={{ page_ok.next_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Suiv.</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
 
-      <!-- Où il est filleul -->
-      <div class="col-12">
-        <div class="card shadow-sm">
-          <div class="card-header">Parrain de ce client</div>
-          <div class="table-responsive">
-            <table class="table mb-0 align-middle">
-              <thead class="table-light">
-                <tr><th>Parrain</th><th>Date</th><th>Statut</th></tr>
-              </thead>
-              <tbody>
-                {% for ref in referrals_received %}
-                  <tr>
-                    <td>{{ ref.referrer.last_name }} {{ ref.referrer.first_name }}</td>
-                    <td>{{ ref.created_at|date:"d/m/Y" }}</td>
-                    <td>{{ ref.get_status_display }}</td>
-                  </tr>
-                {% empty %}
-                  <tr><td colspan="3" class="text-center text-secondary">Aucun parrain trouvé.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
+    {# 2) Cadeaux en attente #}
+    <div class="card shadow-sm tall-card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cadeaux en attente <span class="badge rounded-pill text-bg-warning">{{ kpi_attente }}</span></span>
+        <a class="btn btn-sm btn-primary" href="#">Envoyer par mail</a>
+      </div>
+      <div class="card-body">
+        {% if page_pending and page_pending.object_list %}
+          <div class="list-group list-group-flush">
+            {% for rw in page_pending.object_list %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold">{{ rw.label }}</div>
+                  <small class="text-secondary">Créée le {{ rw.created_at|date:"d/m/Y" }}</small>
+                </div>
+                <a class="btn btn-sm btn-outline-primary" href="#">Envoyer</a>
+              </div>
+            {% endfor %}
           </div>
-        </div>
+        {% else %}
+          <div class="text-secondary">Aucun cadeau en attente.</div>
+        {% endif %}
       </div>
+      {% if page_pending and page_pending.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+          {% if page_pending.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary" href="?pending={{ page_pending.previous_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Préc.</a>
+          {% endif %}
+          <span class="small align-self-center">Page {{ page_pending.number }}/{{ page_pending.paginator.num_pages }}</span>
+          {% if page_pending.has_next %}
+            <a class="btn btn-sm btn-outline-secondary" href="?pending={{ page_pending.next_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Suiv.</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
 
-    </div><!-- /row -->
+    {# 3) Cadeaux non utilisés #}
+    <div class="card shadow-sm tall-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cadeaux non utilisés <span class="badge rounded-pill text-bg-secondary">{{ kpi_nonutils }}</span></span>
+        <small class="text-secondary">Distribués mais non consommés</small>
+      </div>
+      <div class="card-body">
+        {% if page_unused and page_unused.object_list %}
+          <div class="list-group list-group-flush">
+            {% for rw in page_unused.object_list %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold">{{ rw.label }}</div>
+                  <small class="text-secondary">Distribué le {{ rw.created_at|date:"d/m/Y" }}</small>
+                </div>
+                <span class="badge text-bg-warning">En cours</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-secondary">Aucun cadeau non utilisé.</div>
+        {% endif %}
+      </div>
+      {% if page_unused and page_unused.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+          {% if page_unused.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary" href="?unused={{ page_unused.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">Préc.</a>
+          {% endif %}
+          <span class="small align-self-center">Page {{ page_unused.number }}/{{ page_unused.paginator.num_pages }}</span>
+          {% if page_unused.has_next %}
+            <a class="btn btn-sm btn-outline-secondary" href="?unused={{ page_unused.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">Suiv.</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
   </div>
 </div>
 {% endblock %}

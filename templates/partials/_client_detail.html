@@ -41,78 +41,160 @@
   <div class="col-lg-8">
     <div class="row g-3">
 
-      <!-- Actions rapides -->
-      <div class="col-12">
-        <div class="card shadow-sm">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="fw-semibold">Actions rapides</div>
-            <small class="text-secondary">Gagner du temps</small>
-          </div>
-          <div class="card-body">
-            <div class="row g-2">
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Envoyer un lien</a></div>
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Ajouter un parrainé</a></div>
-              <div class="col-6 col-md-3 d-grid">
-                <a class="btn btn-outline-primary" href="{% url 'dashboard:reward_create' client.id %}">Créer un cadeau</a>
-              </div>
-              <div class="col-6 col-md-3 d-grid"><a class="btn btn-outline-primary" href="#">Exporter PDF</a></div>
-            </div>
-          </div>
-        </div>
-      </div>
+     {# --- BLOCS CADEAUX (3 colonnes) --- #}
+<div class="col-12">
+  <div class="row g-3">
 
-      <!-- Cadeaux / Récompenses -->
-      <div class="col-12">
-        <div class="card shadow-sm">
-          <div class="card-header">Cadeaux</div>
-          <div class="card-body">
-            <div class="row g-3">
-              {% for r in rewards %}
-                <div class="col-md-6">
-                  <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                      <div class="d-flex justify-content-between">
-                        <div>
-                          <div class="fw-semibold">{{ r.label }}</div>
-                          <small class="text-secondary">Créée le {{ r.created_at|date:"d/m/Y" }}</small>
-                        </div>
-                        {% if r.state == "SENT" %}
-                          <span class="badge text-bg-success">OK</span>
-                        {% elif r.state == "PENDING" %}
-                          <span class="badge text-bg-warning">En attente</span>
-                        {% elif r.state == "DISABLED" %}
-                          <span class="badge text-bg-secondary">Désactivé</span>
-                        {% else %}
-                          <span class="badge text-bg-secondary">{{ r.get_state_display }}</span>
-                        {% endif %}
-                      </div>
-                      <hr>
-                      <div class="vstack small gap-1">
-                        <div><span class="text-secondary">État :</span> {{ r.get_state_display }}</div>
-                        <div><span class="text-secondary">Canal :</span> {{ r.channel|default:"—" }}</div>
-                        <div><span class="text-secondary">Code :</span> {{ r.code|default:"—" }}</div>
-                      </div>
+    {# Cadeau obtenu #}
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="fw-semibold">Cadeau obtenu</div>
+          <span class="badge text-bg-success">{{ gifts_obtained|length }}</span>
+        </div>
+        <div class="card-body">
+          {% if gifts_obtained %}
+            <div class="vstack gap-3">
+              {% for g in gifts_obtained %}
+                <div class="border rounded p-2">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="fw-semibold">{{ g.title }}</div>
+                      <small class="text-secondary">Créé le {{ g.created_at }}</small>
                     </div>
-                    <div class="card-footer bg-transparent">
-                      <div class="d-flex gap-2">
-                        <a class="btn btn-sm btn-outline-primary" href="#">Copier le lien</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="#">Désactiver</a>
-                      </div>
+                    <span class="badge text-bg-success">OK</span>
+                  </div>
+                  <hr class="my-2">
+                  <div class="vstack small gap-1">
+                    <div><span class="text-secondary">Canal :</span> {{ g.channel|default:"—" }}</div>
+                    <div><span class="text-secondary">Code :</span> {{ g.code|default:"—" }}</div>
+                  </div>
+                  {% if g.actions %}
+                    <div class="d-flex gap-2 mt-2">
+                      {% for btn in g.actions %}
+                        <a class="btn btn-sm btn-outline-primary" href="{{ btn.href }}">{{ btn.label }}</a>
+                      {% endfor %}
                     </div>
-                  </div>
-                </div>
-              {% empty %}
-                <div class="col-12">
-                  <div class="alert alert-info mb-0">
-                    Aucune récompense pour ce client.
-                    <a href="{% url 'dashboard:reward_create' client.id %}">Créer un cadeau</a>
-                  </div>
+                  {% endif %}
                 </div>
               {% endfor %}
-            </div><!-- row -->
-          </div><!-- body -->
-        </div><!-- card -->
+            </div>
+          {% else %}
+            <div class="text-secondary small">Aucun cadeau obtenu.</div>
+          {% endif %}
+        </div>
       </div>
+    </div>
+
+    {# Cadeau non-atteint (ou “non-entrant” selon ton wording) #}
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="fw-semibold">Cadeau non-atteint</div>
+          <span class="badge text-bg-warning">{{ gifts_not_achieved|length }}</span>
+        </div>
+        <div class="card-body">
+          {% if gifts_not_achieved %}
+            <div class="vstack gap-3">
+              {% for g in gifts_not_achieved %}
+                <div class="border rounded p-2">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="fw-semibold">{{ g.title }}</div>
+                      <small class="text-secondary">Créé le {{ g.created_at }}</small>
+                    </div>
+                    <span class="badge text-bg-warning">En attente</span>
+                  </div>
+                  <hr class="my-2">
+                  <div class="vstack small gap-1">
+                    <div><span class="text-secondary">Progression :</span> {{ g.progress|default:"—" }}</div>
+                    <div><span class="text-secondary">Objectif :</span> {{ g.goal|default:"—" }}</div>
+                  </div>
+                  {% if g.actions %}
+                    <div class="d-flex gap-2 mt-2">
+                      {% for btn in g.actions %}
+                        <a class="btn btn-sm btn-outline-primary" href="{{ btn.href }}">{{ btn.label }}</a>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-secondary small">Aucun cadeau en attente d’atteinte.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Cadeau non-utilisé #}
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="fw-semibold">Cadeau non-utilisé</div>
+          <span class="badge text-bg-secondary">{{ gifts_not_used|length }}</span>
+        </div>
+        <div class="card-body">
+          {% if gifts_not_used %}
+            <div class="vstack gap-3">
+              {% for g in gifts_not_used %}
+                <div class="border rounded p-2">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="fw-semibold">{{ g.title }}</div>
+                      <small class="text-secondary">Créé le {{ g.created_at }}</small>
+                    </div>
+                    <span class="badge text-bg-secondary">Non-utilisé</span>
+                  </div>
+                  <hr class="my-2">
+                  <div class="vstack small gap-1">
+                    <div><span class="text-secondary">Code :</span> {{ g.code|default:"—" }}</div>
+                    <div><span class="text-secondary">Expire le :</span> {{ g.expires_at|default:"—" }}</div>
+                  </div>
+                  {% if g.actions %}
+                    <div class="d-flex gap-2 mt-2">
+                      {% for btn in g.actions %}
+                        <a class="btn btn-sm btn-outline-primary" href="{{ btn.href }}">{{ btn.label }}</a>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-secondary small">Aucun cadeau en attente d’utilisation.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# --- Historique des parrainages (inchangé) --- #}
+<div class="col-12 mt-3">
+  <div class="card shadow-sm">
+    <div class="card-header">Historique des parrainages</div>
+    <div class="table-responsive">
+      <table class="table mb-0 align-middle">
+        <thead class="table-light">
+          <tr><th>Parrainé</th><th>Date</th><th>Récompense</th></tr>
+        </thead>
+        <tbody>
+          {% for h in referral_history %}
+            <tr>
+              <td>{{ h.referee_name }}</td>
+              <td>{{ h.date }}</td>
+              <td>{{ h.reward_title }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="text-secondary small">Aucun historique.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
       <!-- Historique des parrainages -->
       <div class="col-12">

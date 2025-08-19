@@ -62,3 +62,50 @@ body{background-color:#f8f9fb}
   --bs-btn-active-bg:#0a58ca;
   --bs-btn-active-border-color:#0a58ca;
 }
+/* Cartes : bords arrondis déjà gérés. On fixe des hauteurs de zones scrollables
+   pour éviter que les blocs grandissent avec le contenu. */
+.list-group-flush { /* rien, Bootstrap fait le job */ }
+.card .stat-num { line-height: 1; }
+
+/* (facultatif) compacter un peu les items des listes de cadeaux */
+.list-group-item .fw-semibold { font-weight: 600; }
+/* ========== Client detail layout ========== */
+.client-page { 
+  /* occupe la hauteur de l'écran sous la topbar */
+  min-height: calc(100vh - 120px);
+}
+
+/* Colonnes en piles flex pour pouvoir “étirer” les cartes */
+.client-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* même espacement que .g-3 */
+}
+
+/* Carte qui s'étire pour harmoniser la hauteur */
+.card.flex-fill {
+  height: 0;
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+/* Corps de carte qui scrolle sans faire grandir la carte */
+.card-body.scrollable {
+  overflow: auto;
+}
+
+/* Ligne des 3 KPI compacte */
+.kpi-card .stat-num{ font-size: 2.2rem; }
+
+/* 3 blocs cadeaux avec hauteur égale (1/3 de la colonne) */
+.rewards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.rewards-stack > .card.flex-fill { min-height: 0; }
+
+/* Sur très grands écrans, un peu plus d’air */
+@media (min-width: 1400px){
+  .client-page { min-height: calc(100vh - 140px); }
+}

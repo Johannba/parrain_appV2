@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import TextInput, EmailInput, CheckboxInput, Select
-from .models import Client, Referral, Company
+from .models import Client, Referral, Company, Reward
 
 class ClientForm(forms.ModelForm):
     class Meta:
@@ -34,7 +34,7 @@ class ClientForm(forms.ModelForm):
 class ReferralForm(forms.ModelForm):
     class Meta:
         model = Referral
-        fields = ("referrer", "referee", "status")
+        fields = ("referrer", "referee")
         widgets = {
             "referrer": forms.Select(attrs={"class": "form-select"}),
             "referee": forms.Select(attrs={"class": "form-select"}),
@@ -110,3 +110,13 @@ class ReferralForm(forms.ModelForm):
                 self.add_error("referee", "Ce filleul a déjà un parrainage dans cette entreprise.")
 
         return cleaned
+class RewardForm(forms.ModelForm):
+    class Meta:
+        model = Reward
+        fields = ("label", "code", "channel", "state")
+        widgets = {
+            "label":   forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex. -10% sur 1 achat"}),
+            "code":    forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex. AB-123-456"}),
+            "channel": forms.TextInput(attrs={"class": "form-control", "placeholder": "Mail, SMS…"}),
+            "state":   forms.Select(attrs={"class": "form-select"}),
+        }

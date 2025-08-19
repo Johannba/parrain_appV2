@@ -1,14 +1,17 @@
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
-from .models import Client, Referral
-
+from .models import Client, Referral,Reward
+from django.contrib import messages
 from django.db import IntegrityError
 from accounts.models import Company
 # dashboard/views.py
 
 from .forms import ClientForm, ReferralForm
 from django.shortcuts import get_object_or_404, redirect
+from django.core.paginator import Paginator
+
+from django.db.models import Q
 
 
 @login_required
@@ -133,7 +136,17 @@ def clients_list(request):
         "clients": qs, "filter_type": t
     })
 
-# FICHE CLIENT (parrainés + où il est filleul)
+# FICHE CLIENT (parrainés + où il est filleul + 3 blocs cadeaux)
+
+# dashboard/views.py
+
+# en haut du fichier si pas déjà importé
+from django.core.paginator import Paginator
+
+# dashboard/views.py
+from django.core.paginator import Paginator
+from django.db.models import Q
+
 @login_required
 def client_detail(request, pk: int):
     _require_company_staff(request.user)
@@ -143,44 +156,43 @@ def client_detail(request, pk: int):
     else:
         client = get_object_or_404(Client.objects.select_related("company"), pk=pk, company=u.company)
 
-    # Parrainés par ce client (s'il est parrain)
-    referrals_made = (Referral.objects
-                      .select_related("referee")
-                      .filter(company=client.company, referrer=client))
-    # Cas où ce client est lui-même filleul d’un autre parrain
-    referrals_received = (Referral.objects
-                          .select_related("referrer")
-                          .filter(company=client.company, referee=client))
+    # Historique : toutes les lignes où ce client est impliqué (parrain OU filleul)
+    history_qs = (
+        Referral.objects
+        .select_related("referrer", "referee")
+        .filter(company=client.company)
+        .filter(Q(referrer=client) | Q(referee=client))
+        .order_by("-created_at", "-id")
+    )
+    history_page = Paginator(history_qs, 8).get_page(request.GET.get("h"))
+
+    # Récompenses (adapte si tu as d’autres états)
+    rewards_ok      = Reward.objects.filter(company=client.company, client=client, state="SENT").order_by("-id")
+    rewards_pending = Reward.objects.filter(company=client.company, client=client, state="PENDING").order_by("-id")
+    rewards_unused  = Reward.objects.filter(company=client.company, client=client, state="DISABLED").order_by("-id")
+
+    # Compteurs (affichés dans les titres des blocs)
+    kpi_obtenus  = rewards_ok.count()
+    kpi_attente  = rewards_pending.count()
+    kpi_nonutils = rewards_unused.count()
+
+    # Pagination interne pour les 3 blocs (si tu en as besoin)
+    p_ok      = Paginator(rewards_ok, 5)
+    p_pending = Paginator(rewards_pending, 5)
+    p_unused  = Paginator(rewards_unused, 5)
 
     return render(request, "dashboard/client_detail.html", {
         "company": client.company,
         "client": client,
-        "referrals_made": referrals_made,
-        "referrals_received": referrals_received,
+        "history_page": history_page,       # ← pagination historique (gauche)
+        "page_ok": p_ok.get_page(request.GET.get("ok")),
+        "page_pending": p_pending.get_page(request.GET.get("pending")),
+        "page_unused": p_unused.get_page(request.GET.get("unused")),
+        "kpi_obtenus": kpi_obtenus,
+        "kpi_attente": kpi_attente,
+        "kpi_nonutils": kpi_nonutils,
     })
 
-@login_required
-def reward_create(request, pk: int):
-    _require_company_staff(request.user)
-    u = request.user
-    # sécurise l’accès au client
-    if hasattr(u, "is_superadmin") and u.is_superadmin():
-        client = get_object_or_404(Client, pk=pk)
-    else:
-        client = get_object_or_404(Client, pk=pk, company=u.company)
-
-    if request.method == "POST":
-        form = RewardForm(request.POST)
-        if form.is_valid():
-            reward = form.save(commit=False)
-            reward.client = client
-            reward.company = client.company
-            reward.save()
-            return redirect("dashboard:client_detail", pk=client.pk)
-    else:
-        form = RewardForm()
-
-    return render(request, "dashboard/reward_form.html", {"form": form, "client": client})
 
 
 # ---------- Clients ----------
@@ -251,3 +263,27 @@ def referral_delete(request, pk):
         "message": "Confirmer la suppression de ce parrainage ?",
         "back_url": "dashboard:referrals_list",
     })
+
+@login_required
+def reward_create(request, pk: int):
+    _require_company_staff(request.user)
+
+    u = request.user
+    # sécuriser l’accès au client selon le rôle
+    if hasattr(u, "is_superadmin") and u.is_superadmin():
+        client = get_object_or_404(Client, pk=pk)
+    else:
+        client = get_object_or_404(Client, pk=pk, company=u.company)
+
+    if request.method == "POST":
+        form = RewardForm(request.POST)
+        if form.is_valid():
+            reward = form.save(commit=False)
+            reward.client = client
+            reward.company = client.company
+            reward.save()
+            return redirect("dashboard:client_detail", pk=client.pk)
+    else:
+        form = RewardForm()
+
+    return render(request, "dashboard/reward_form.html", {"form": form, "client": client})

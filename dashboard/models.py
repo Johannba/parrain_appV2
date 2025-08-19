@@ -18,16 +18,10 @@ class Client(models.Model):
 
 
 class Referral(models.Model):
-    STATUS_CHOICES = (
-        ("PENDING", "En attente"),
-        ("OK", "Validé"),
-        ("CANCELLED", "Annulé"),
-    )
-
+ 
     company    = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="referrals")
     referrer   = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="referrals_made")
     referee    = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="referrals_received")
-    status     = models.CharField(max_length=16, choices=STATUS_CHOICES, default="PENDING")
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

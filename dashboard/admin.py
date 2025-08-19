@@ -13,10 +13,13 @@ class ClientAdmin(admin.ModelAdmin):
 
 @admin.register(Referral)
 class ReferralAdmin(admin.ModelAdmin):
-    list_display = ("referrer", "referee", "company", "status", "created_at")
-    list_filter = ("company", "status")
-    search_fields = ("referrer__last_name", "referee__last_name")
-
+    list_display  = ("id", "company", "referrer", "referee", "created_at")
+    list_filter   = ("company",)                # ← plus de "status" ici
+    search_fields = ("referrer__last_name", "referrer__first_name",
+                     "referee__last_name", "referee__first_name")
+    autocomplete_fields = ("company", "referrer", "referee")
+    date_hierarchy = "created_at"
+    
 @admin.register(Reward)
 class RewardAdmin(admin.ModelAdmin):
     list_display = ("client", "company", "label", "state", "channel", "code", "created_at")
