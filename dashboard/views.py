@@ -1,7 +1,10 @@
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
-from .models import Client, Referral, Reward
+from .models import Client, Referral
+
+from django.db import IntegrityError
+from accounts.models import Company
 # dashboard/views.py
 
 from .forms import ClientForm, ReferralForm
@@ -65,25 +68,48 @@ def client_create(request):
     return render(request, "dashboard/client_form.html", {"form": form})
 
 
+
 @login_required
 def referral_create(request):
     _require_company_staff(request.user)
+
     u = request.user
     is_super = getattr(u, "is_superadmin", lambda: False)()
-    current_company = None if is_super else getattr(u, "company", None)
+
+    # Entreprise courante pour le formulaire :
+    # - Admin/Opérateur : sa propre company
+    # - Superadmin : facultatif via ?company=<id> (sinon on prendra celle du parrain au moment du save)
+    current_company = None
+    if not is_super:
+        current_company = getattr(u, "company", None)
+    else:
+        cid = request.GET.get("company")
+        if cid:
+            current_company = get_object_or_404(Company, pk=cid)
 
     if request.method == "POST":
         form = ReferralForm(request.POST, request=request, company=current_company)
         if form.is_valid():
             referral = form.save(commit=False)
-            # Company cohérente
-            referral.company = referral.referrer.company
-            referral.save()
-            return redirect("dashboard:clients_list")
+
+            # Company cohérente (sécurité) :
+            # - si superadmin sans company explicite -> on dérive de referrer
+            # - sinon on force toujours la company cohérente
+            referral.company = current_company or getattr(referral.referrer, "company", None)
+
+            try:
+                referral.save()
+            except IntegrityError:
+                # Protège contre la contrainte d’unicité (company, referee) en base
+                form.add_error("referee", "Ce filleul a déjà un parrainage dans cette entreprise.")
+            else:
+                messages.success(request, "Parrainage créé.")
+                return redirect("dashboard:clients_list")
     else:
         form = ReferralForm(request=request, company=current_company)
 
     return render(request, "dashboard/referral_form.html", {"form": form})
+
 
 
 @login_required

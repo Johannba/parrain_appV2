@@ -50,7 +50,11 @@
           </form>
           <div class="d-flex align-items-center gap-2">
             <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
-            <a class="btn btn-sm btn-primary" href="{% url 'accounts:company_list' %}">Entreprises</a>
+            {% if request.user.profile == 'superadmin' %}
+                <a class="btn-sm btn-primary" href="{% url 'accounts:company_list' %}">
+                  Entreprises
+                </a>
+              {% endif %}
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
                 {{ request.user.get_username|default:"Compte" }}
@@ -73,7 +77,11 @@
         <ul class="nav nav-pills gap-1 py-2" id="mainNav">
           <li class="nav-item"><a class="nav-link {% block nav_dashboard_active %}{% endblock %}" href="{% url 'dashboard:root' %}">Tableau de bord</a></li>
           <li class="nav-item"><a class="nav-link {% block nav_users_active %}{% endblock %}" href="{% url 'accounts:user_list' %}">Utilisateurs</a></li>
-          <li class="nav-item"><a class="nav-link {% block nav_companies_active %}{% endblock %}" href="{% url 'accounts:company_list' %}">Entreprises</a></li>
+          <li class="nav-item">{% if request.user.profile == 'superadmin' %}
+                <a class="btn-sm btn-primary" href="{% url 'accounts:company_list' %}">
+                  Entreprises
+                </a>
+              {% endif %}</li>
           <!-- nav métiers (quand on branchera les templates) -->
           <li class="nav-item"><a class="nav-link {% block nav_clients_active %}{% endblock %}" href="{% url 'dashboard:clients_list' %}">Récompenses Parrains</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Gésion des Récompenses</a></li>
