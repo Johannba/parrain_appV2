@@ -21,33 +21,46 @@
                 <span class="fw-bold">ParrainApp</span>
             </a>
             <form class="d-none d-md-flex" role="search" method="get" action="" style="min-width: 480px;">
-                      <div class="input-group input-group-sm">
-                        <span class="input-group-text">🔎</span>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">🔎</span>
+                 <input type="hidden" name="type" value="{{ filter_type|default:'tous' }}">
 
-                        <!-- Ne JAMAIS lire request.GET dans le template.
-                            On n’utilise que les variables contextuelles (current_q / current_company). -->
-                        <input class="form-control"
-                              type="search"
-                              name="q"
-                              value="{{ current_q|default:'' }}"
-                              placeholder="Rechercher (nom, email, username)"
-                              aria-label="Search">
+                <input class="form-control"
+                      type="search"
+                      name="q"
+                      value="{{ current_q|default:'' }}"
+                      placeholder="Rechercher (nom, email, username)"
+                      aria-label="Search">
 
-                        {% if companies_for_filter and request.user.profile == 'superadmin' %}
-                          <select class="form-select" name="company" aria-label="Filtrer par entreprise">
-                            <option value="">Toutes les entreprises</option>
-                            {% for c in companies_for_filter %}
-                              <option value="{{ c.id }}"
-                                      {% if current_company|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
-                                {{ c.name }}
-                              </option>
-                            {% endfor %}
-                          </select>
-                        {% endif %}
+                {# ---- NOUVEAU : filtre par nom pour les parrains ---- #}
+                {% if filter_type == 'parrains' %}
+                  <input class="form-control"
+                        type="search"
+                        name="ref_name"
+                        value="{{ current_ref_name|default:'' }}"
+                        placeholder="Filtrer les parrains par nom"
+                        aria-label="Filtrer les parrains par nom">
+                {% endif %}
 
-                        <button class="btn btn-outline-light" type="submit">Filtrer</button>
+                {# On conserve le type courant lors du submit #}
+                <input type="hidden" name="type" value="{{ filter_type|default:'tous' }}">
+
+                {% if companies_for_filter and request.user.profile == 'superadmin' %}
+                  <select class="form-select" name="company" aria-label="Filtrer par entreprise">
+                    <option value="">Toutes les entreprises</option>
+                    {% for c in companies_for_filter %}
+                      <option value="{{ c.id }}"
+                              {% if current_company|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
+                        {{ c.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                {% endif %}
+
+                <button class="btn btn-outline-light" type="submit">Filtrer</button>
               </div>
-          </form>
+            </form>
+
           <div class="d-flex align-items-center gap-2">
             <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
             {% if request.user.profile == 'superadmin' %}
@@ -84,7 +97,7 @@
               {% endif %}</li>
           <!-- nav métiers (quand on branchera les templates) -->
           <li class="nav-item"><a class="nav-link {% block nav_clients_active %}{% endblock %}" href="{% url 'dashboard:clients_list' %}">Récompenses Parrains</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Gésion des Récompenses</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'rewards:list' %}">Gestion des Récompenses</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Statistiques</a></li>
         </ul>
       </div>

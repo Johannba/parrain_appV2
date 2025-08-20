@@ -114,16 +114,17 @@ def referral_create(request):
     return render(request, "dashboard/referral_form.html", {"form": form})
 
 
-
 @login_required
 def clients_list(request):
     _require_company_staff(request.user)
+
     u = request.user
     if hasattr(u, "is_superadmin") and u.is_superadmin():
         base_qs = Client.objects.all()
     else:
         base_qs = Client.objects.filter(company=u.company)
 
+    # Onglet (tous/parrains/filleuls)
     t = (request.GET.get("type") or "tous").lower()
     if t == "parrains":
         qs = base_qs.filter(is_referrer=True)
@@ -132,8 +133,22 @@ def clients_list(request):
     else:
         qs = base_qs
 
+    # Recherche texte (nom/prénom/email)
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        qs = qs.filter(
+            Q(last_name__icontains=q) |
+            Q(first_name__icontains=q) |
+            Q(email__icontains=q)
+        )
+
+    # Tri par nom
+    qs = qs.order_by("last_name", "first_name")
+
     return render(request, "dashboard/clients_list.html", {
-        "clients": qs, "filter_type": t
+        "clients": qs,
+        "filter_type": t,   # <-- utilisé par l’input hidden pour persister l’onglet
+        "current_q": q,     # <-- pour pré-remplir le champ
     })
 
 # FICHE CLIENT (parrainés + où il est filleul + 3 blocs cadeaux)

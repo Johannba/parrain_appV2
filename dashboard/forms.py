@@ -110,6 +110,8 @@ class ReferralForm(forms.ModelForm):
                 self.add_error("referee", "Ce filleul a déjà un parrainage dans cette entreprise.")
 
         return cleaned
+    
+    
 class RewardForm(forms.ModelForm):
     class Meta:
         model = Reward
@@ -120,3 +122,31 @@ class RewardForm(forms.ModelForm):
             "channel": forms.TextInput(attrs={"class": "form-control", "placeholder": "Mail, SMS…"}),
             "state":   forms.Select(attrs={"class": "form-select"}),
         }
+        
+        
+
+class RewardForm(forms.ModelForm):
+    class Meta:
+        model = Reward
+        fields = ("client", "label", "code", "channel", "state")
+        widgets = {
+            "client":  forms.Select(attrs={"class": "form-select"}),
+            "label":   forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex. -10% sur 1 achat"}),
+            "code":    forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex. AB-123-456"}),
+            "channel": forms.TextInput(attrs={"class": "form-control", "placeholder": "Mail, SMS…"}),
+            "state":   forms.Select(attrs={"class": "form-select"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+
+        u = getattr(request, "user", None)
+        is_super = hasattr(u, "is_superadmin") and u.is_superadmin()
+
+        # Un admin d’entreprise ne voit que ses clients
+        if is_super:
+            self.fields["client"].queryset = Client.objects.select_related("company").order_by("last_name","first_name")
+        else:
+            self.fields["client"].queryset = Client.objects.filter(company=u.company).order_by("last_name","first_name")
+        

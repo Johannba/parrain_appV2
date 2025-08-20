@@ -27,6 +27,7 @@ urlpatterns = [
     path('accounts/', include('accounts.urls')),
     path('dashboard/', include(('dashboard.urls', 'dashboard'), namespace='dashboard')),
     path('entreprise/', include('entreprises.urls', namespace='entreprises')),
+    path('rewards/', include(('rewards.urls',"rewards"), namespace='rewards')),
 ]
 
 

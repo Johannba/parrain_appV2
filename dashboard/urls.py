@@ -18,5 +18,5 @@ urlpatterns = [
     path("referrals/new/", views.referral_create, name="referral_create"),
     path("referrals/<int:pk>/edit/", views.referral_update, name="referral_update"),
     path("referrals/<int:pk>/delete/", views.referral_delete, name="referral_delete"),
-    # path("rewards/<int:pk>/send/", views.reward_send_one, name="reward_send_one"), 
+    
 ]

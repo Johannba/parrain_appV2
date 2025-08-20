@@ -1,0 +1,14 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Supprimer la récompense{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <p>Supprimer définitivement <strong>{{ reward.label }}</strong> pour {{ reward.client }} ?</p>
+    <form method="post" class="d-flex gap-2">
+      {% csrf_token %}
+      <button class="btn btn-danger">Supprimer</button>
+      <a class="btn btn-outline-secondary" href="{% url 'rewards:list' %}">Annuler</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

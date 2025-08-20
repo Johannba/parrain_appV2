@@ -1,0 +1,114 @@
+{# templates/rewards/list.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Récompenses • ParrainApp{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Récompenses</h1>
+  <div class="text-secondary">Définissez les cadeaux, probabilités et règles d’obtention.</div>
+</header>
+
+<div class="d-flex justify-content-end mb-3">
+  {# Garde le bouton + modal pour rester fidèle au design #}
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editReward">Ajouter une récompense</button>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header bg-success-subtle d-flex justify-content-between">
+        <span class="badge text-bg-success">Souvent</span><small class="text-secondary">~80/100</small>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6">-10% de remise</h3>
+        <div class="text-secondary small mb-3">Min obtention : 5 • Délai : 1 mois</div>
+        <div class="progress mb-3" style="height:6px"><div class="progress-bar" style="width:39%"></div></div>
+        <div class="mt-auto d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
+          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header bg-warning-subtle d-flex justify-content-between">
+        <span class="badge text-bg-warning">Moyen</span><small class="text-secondary">~19/100</small>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6">-20% de remise</h3>
+        <div class="text-secondary small mb-3">Min obtention : 10 • Délai : 1 mois</div>
+        <div class="progress mb-3" style="height:6px"><div class="progress-bar" style="width:41%"></div></div>
+        <div class="mt-auto d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
+          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header bg-danger-subtle d-flex justify-content-between">
+        <span class="badge text-bg-danger">Rare</span><small class="text-secondary">~1/100</small>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6">iPhone 16 Pro Max</h3>
+        <div class="text-secondary small mb-3">Min obtention : 100 • Délai : 3 mois</div>
+        <div class="border rounded-4 p-4 text-center bg-light mb-3">Image</div>
+        <div class="mt-auto d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
+          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header bg-dark-subtle d-flex justify-content-between">
+        <span class="badge text-bg-dark">Très rare</span><small class="text-secondary">~1/10000</small>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6">Voyage à Miami</h3>
+        <div class="text-secondary small mb-3">Min obtention : 1000 • Délai : 6 mois</div>
+        <div class="border rounded-4 p-4 text-center bg-light mb-3">Image</div>
+        <div class="mt-auto d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
+          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Modal (présentation conservée). Pour brancher au backend, change l’action vers {% url 'rewards:create' %} et mets les names de champs. #}
+<div class="modal fade" id="editReward" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Ajouter / modifier une récompense</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <form class="vstack gap-3" method="post" action="#">
+        {# {% csrf_token %}  ← à activer si tu postes réellement #}
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Nom</label><input class="form-control" placeholder="Ex. -10%"></div>
+          <div class="col-md-3"><label class="form-label">Catégorie</label><select class="form-select"><option>Souvent</option><option>Moyen</option><option>Rare</option><option>Très rare</option></select></div>
+          <div class="col-md-3"><label class="form-label">Probabilité</label><input class="form-control" placeholder="Ex. 80/100"></div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Minimum</label><input type="number" class="form-control" placeholder="5"></div>
+          <div class="col-md-6"><label class="form-label">Délai</label><select class="form-select"><option>1 mois</option><option>3 mois</option><option>6 mois</option></select></div>
+        </div>
+        <div><label class="form-label">Illustration</label><input type="file" class="form-control"></div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      {# Pour V1, on ferme simplement le modal #}
+      <button class="btn btn-primary" data-bs-dismiss="modal">Enregistrer</button>
+      {# Alternative si tu veux aller vers la vraie création Django : #}
+      {# <a class="btn btn-primary" href="{% url 'rewards:create' %}">Créer depuis le formulaire Django</a> #}
+    </div>
+  </div></div>
+</div>
+{% endblock %}
