@@ -5,69 +5,78 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}ParrainApp{% endblock %}</title>
+
   <!-- Bootstrap + thème local -->
   <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
+
 <body data-page="{% block body_data_page %}{% endblock %}">
   <!-- TOP BAR (horizontal) -->
   <header class="topbar border-bottom sticky-top">
     <div class="topbar-gradient">
       <div class="container py-3">
         <div class="d-flex align-items-center justify-content-between gap-3">
-            <a class="navbar-brand d-flex align-items-center gap-2 text-white text-decoration-none"
-                href="{% url 'dashboard:root' %}">
-                <span class="brand-dot"></span>
-                <span class="fw-bold">ParrainApp</span>
-            </a>
-            <form class="d-none d-md-flex" role="search" method="get" action="" style="min-width: 480px;">
-              <div class="input-group input-group-sm">
-                <span class="input-group-text">🔎</span>
-                 <input type="hidden" name="type" value="{{ filter_type|default:'tous' }}">
 
+          <!-- Marque -->
+          <a class="navbar-brand d-flex align-items-center gap-2 text-white text-decoration-none"
+             href="{% url 'dashboard:root' %}">
+            <span class="brand-dot"></span>
+            <span class="fw-bold">ParrainApp</span>
+          </a>
+
+          <!-- Recherche -->
+          <form class="d-none d-md-flex" role="search" method="get" action="" style="min-width: 480px;">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">🔎</span>
+
+              <!-- type de filtre courant (conservé au submit) -->
+              <input type="hidden" name="type" value="{{ filter_type|default:'tous' }}">
+
+              <input class="form-control"
+                     type="search"
+                     name="q"
+                     value="{{ current_q|default:'' }}"
+                     placeholder="Rechercher (nom, email, username)"
+                     aria-label="Search">
+
+              {# Filtre spécifique pour la vue Parrains (optionnel) #}
+              {% if filter_type == 'parrains' %}
                 <input class="form-control"
-                      type="search"
-                      name="q"
-                      value="{{ current_q|default:'' }}"
-                      placeholder="Rechercher (nom, email, username)"
-                      aria-label="Search">
+                       type="search"
+                       name="ref_name"
+                       value="{{ current_ref_name|default:'' }}"
+                       placeholder="Filtrer les parrains par nom"
+                       aria-label="Filtrer les parrains par nom">
+              {% endif %}
 
-                {# ---- NOUVEAU : filtre par nom pour les parrains ---- #}
-                {% if filter_type == 'parrains' %}
-                  <input class="form-control"
-                        type="search"
-                        name="ref_name"
-                        value="{{ current_ref_name|default:'' }}"
-                        placeholder="Filtrer les parrains par nom"
-                        aria-label="Filtrer les parrains par nom">
-                {% endif %}
+              {# Filtre entreprise visible pour superadmin #}
+              {% if companies_for_filter and request.user.profile == 'superadmin' %}
+                <select class="form-select" name="company" aria-label="Filtrer par entreprise">
+                  <option value="">Toutes les entreprises</option>
+                  {% for c in companies_for_filter %}
+                    <option value="{{ c.id }}"
+                            {% if current_company|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
+                      {{ c.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+              {% endif %}
 
-                {# On conserve le type courant lors du submit #}
-                <input type="hidden" name="type" value="{{ filter_type|default:'tous' }}">
+              <button class="btn btn-outline-light" type="submit">Filtrer</button>
+            </div>
+          </form>
 
-                {% if companies_for_filter and request.user.profile == 'superadmin' %}
-                  <select class="form-select" name="company" aria-label="Filtrer par entreprise">
-                    <option value="">Toutes les entreprises</option>
-                    {% for c in companies_for_filter %}
-                      <option value="{{ c.id }}"
-                              {% if current_company|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
-                        {{ c.name }}
-                      </option>
-                    {% endfor %}
-                  </select>
-                {% endif %}
-
-                <button class="btn btn-outline-light" type="submit">Filtrer</button>
-              </div>
-            </form>
-
+          <!-- Actions à droite -->
           <div class="d-flex align-items-center gap-2">
             <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
+
             {% if request.user.profile == 'superadmin' %}
-                <a class="btn-sm btn-primary" href="{% url 'accounts:company_list' %}">
-                  Entreprises
-                </a>
-              {% endif %}
+              <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:company_list' %}">
+                Entreprises
+              </a>
+            {% endif %}
+
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
                 {{ request.user.get_username|default:"Compte" }}
@@ -76,38 +85,73 @@
                 <li><a class="dropdown-item" href="#">Profil</a></li>
                 <li><a class="dropdown-item" href="#">Paramètres</a></li>
                 <li><hr class="dropdown-divider"></li>
-                 <li><a class="dropdown-item" href="{% url 'accounts:logout' %}">Déconnexion</a></li>
+                <li><a class="dropdown-item" href="{% url 'accounts:logout' %}">Déconnexion</a></li>
               </ul>
             </div>
           </div>
+
         </div>
       </div>
     </div>
 
-    <!-- HORIZONTAL NAV (pills) -->
+    <!-- NAV HORIZONTALE (pills) -->
     <div class="topbar-nav bg-white">
       <div class="container">
         <ul class="nav nav-pills gap-1 py-2" id="mainNav">
-          <li class="nav-item"><a class="nav-link {% block nav_dashboard_active %}{% endblock %}" href="{% url 'dashboard:root' %}">Tableau de bord</a></li>
-          <li class="nav-item"><a class="nav-link {% block nav_users_active %}{% endblock %}" href="{% url 'accounts:user_list' %}">Utilisateurs</a></li>
-          <li class="nav-item">{% if request.user.profile == 'superadmin' %}
-                <a class="btn-sm btn-primary" href="{% url 'accounts:company_list' %}">
-                  Entreprises
-                </a>
-              {% endif %}</li>
-          <!-- nav métiers (quand on branchera les templates) -->
-          <li class="nav-item"><a class="nav-link {% block nav_clients_active %}{% endblock %}" href="{% url 'dashboard:clients_list' %}">Récompenses Parrains</a></li>
-          <li class="nav-item"><a class="nav-link" href="{% url 'rewards:list' %}">Gestion des Récompenses</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Statistiques</a></li>
+          <li class="nav-item">
+            <a class="nav-link {% block nav_dashboard_active %}{% endblock %}"
+               href="{% url 'dashboard:root' %}">
+              Tableau de bord
+            </a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link {% block nav_users_active %}{% endblock %}"
+               href="{% url 'accounts:user_list' %}">
+              Utilisateurs
+            </a>
+          </li>
+
+          {% if request.user.profile == 'superadmin' %}
+            <li class="nav-item">
+              <a class="nav-link {% block nav_companies_active %}{% endblock %}"
+                 href="{% url 'accounts:company_list' %}">
+                Entreprises
+              </a>
+            </li>
+          {% endif %}
+
+          <!-- nav métiers -->
+          <li class="nav-item">
+            <a class="nav-link {% block nav_clients_active %}{% endblock %}"
+               href="{% url 'dashboard:clients_list' %}">
+              Récompenses Parrains
+            </a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link {% block nav_rewards_active %}{% endblock %}"
+               href="{% url 'rewards:list' %}">
+              Gestion des Récompenses
+            </a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link {% block nav_stats_active %}{% endblock %}" href="#">
+              Statistiques
+            </a>
+          </li>
         </ul>
       </div>
     </div>
   </header>
 
+  <!-- CONTENU -->
   <main class="container my-4">
     {% block content %}{% endblock %}
   </main>
 
+  <!-- JS -->
   <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
   <script src="{% static 'js/app.js' %}"></script>
 </body>

@@ -1,12 +1,18 @@
+{# templates/rewards/confirm_delete.html #}
 {% extends "base_dashboard.html" %}
 {% block title %}Supprimer la récompense{% endblock %}
+
 {% block content %}
+<header class="mb-3">
+  <h1 class="h4 section-title mb-1">Supprimer la récompense</h1>
+</header>
+
 <div class="card shadow-sm">
   <div class="card-body">
-    <p>Supprimer définitivement <strong>{{ reward.label }}</strong> pour {{ reward.client }} ?</p>
+    <p>Supprimer définitivement <strong>{{ reward.label }}</strong> ?</p>
     <form method="post" class="d-flex gap-2">
       {% csrf_token %}
-      <button class="btn btn-danger">Supprimer</button>
+      <button class="btn btn-danger" type="submit">Supprimer</button>
       <a class="btn btn-outline-secondary" href="{% url 'rewards:list' %}">Annuler</a>
     </form>
   </div>

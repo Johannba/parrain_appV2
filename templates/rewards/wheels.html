@@ -1,0 +1,79 @@
+{# templates/rewards/wheels.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Roue de probabilités • ParrainApp{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+
+{# Mini override pour “orange” Bootstrap (Rare) #}
+<style>
+  .text-bg-orange{color:#fff!important;background-color:#fd7e14!important}
+  .bg-orange-subtle{background-color:rgba(253,126,20,.15)!important}
+</style>
+
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Roue de probabilités</h1>
+  <div class="text-secondary">Exactement 80/100, 19/100, 1/100 et 1/10000 par entreprise.</div>
+</header>
+
+<div class="d-flex justify-content-end mb-3">
+  {# même placement que “Ajouter une récompense” dans ta maquette #}
+  <form method="post" action="{% url 'rewards:wheel_rebuild' base_key %}" class="me-2">
+    {% csrf_token %}
+    <button class="btn btn-outline-primary">Régénérer base (100)</button>
+  </form>
+  <form method="post" action="{% url 'rewards:wheel_rebuild' vr_key %}">
+    {% csrf_token %}
+    <button class="btn btn-outline-danger">Régénérer très rare (10 000)</button>
+  </form>
+</div>
+
+<div class="row g-3">
+  {# On reprend exactement la grille de 4 cards #}
+  {% for c in cards %}
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header d-flex justify-content-between
+           {% if c.code == 'souvent' %}bg-success-subtle
+           {% elif c.code == 'moyen' %}bg-warning-subtle
+           {% elif c.code == 'rare' %}bg-orange-subtle
+           {% else %}bg-danger-subtle
+           {% endif %}">
+        <span class="badge {{ c.badge_cl }}">{{ c.title }}</span>
+        <small class="text-secondary">{{ c.approx }}</small>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6">{{ c.title }} — restants dans le cycle : {{ c.remaining }} / {{ c.total }}</h3>
+        <div class="text-secondary small mb-3">
+          Curseur de la roue :
+          <strong>{{ c.progress }}%</strong>
+        </div>
+
+        <div class="progress mb-3" style="height:6px">
+          <div class="progress-bar" style="width: {{ c.progress }}%"></div>
+        </div>
+
+        <div class="mt-auto d-flex flex-wrap gap-2">
+          {% if c.code in 'souvent,moyen,rare' %}
+            <form method="post" action="{% url 'rewards:wheel_reset' base_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Remettre à zéro (base)</button>
+            </form>
+            <form method="post" action="{% url 'rewards:wheel_consume' base_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-primary">Consommer 1 tirage (test)</button>
+            </form>
+          {% else %}
+            <form method="post" action="{% url 'rewards:wheel_reset' vr_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Remettre à zéro (très rare)</button>
+            </form>
+            <form method="post" action="{% url 'rewards:wheel_consume' vr_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-primary">Consommer 1 tirage (test)</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

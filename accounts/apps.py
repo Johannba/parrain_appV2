@@ -5,6 +5,7 @@ class AccountsConfig(AppConfig):
     name = "accounts"
     verbose_name = "Comptes & Rôles"
 
-    def ready(self):
-        # place pour des signaux si besoin
-        pass
+    
+    # def ready(self):
+        # Charge les signaux
+        # import rewards.signals  # noqa

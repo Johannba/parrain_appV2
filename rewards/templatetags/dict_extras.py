@@ -1,6 +1,5 @@
-# rewards/templatetags/rewards_extras.py
+# core/templatetags/dict_extras.py
 from django import template
-
 register = template.Library()
 
 @register.filter

@@ -10,102 +10,97 @@
 </header>
 
 <div class="d-flex justify-content-end mb-3">
-  {# Garde le bouton + modal pour rester fidèle au design #}
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editReward">Ajouter une récompense</button>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editReward">
+    Ajouter une récompense
+  </button>
 </div>
 
 <div class="row g-3">
-  <div class="col-md-6 col-xl-3">
-    <div class="card h-100 shadow-sm">
-      <div class="card-header bg-success-subtle d-flex justify-content-between">
-        <span class="badge text-bg-success">Souvent</span><small class="text-secondary">~80/100</small>
-      </div>
-      <div class="card-body d-flex flex-column">
-        <h3 class="h6">-10% de remise</h3>
-        <div class="text-secondary small mb-3">Min obtention : 5 • Délai : 1 mois</div>
-        <div class="progress mb-3" style="height:6px"><div class="progress-bar" style="width:39%"></div></div>
-        <div class="mt-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
-          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% for r in page.object_list %}
+    <div class="col-md-6 col-xl-3">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header d-flex justify-content-between
+             {% if r.bucket == 'SOUVENT' %} bg-success-subtle
+             {% elif r.bucket == 'MOYEN' %} bg-info-subtle
+             {% elif r.bucket == 'RARE' %} bg-warning-subtle
+             {% else %} bg-danger-subtle
+             {% endif %}">
+          <span class="badge
+             {% if r.bucket == 'SOUVENT' %} text-bg-success
+             {% elif r.bucket == 'MOYEN' %} text-bg-info
+             {% elif r.bucket == 'RARE' %} text-bg-warning
+             {% else %} text-bg-danger
+             {% endif %}">
+            {% if r.bucket == "SOUVENT" %}Souvent
+            {% elif r.bucket == "MOYEN" %}Moyen
+            {% elif r.bucket == "RARE" %}Rare
+            {% else %}Très rare
+            {% endif %}
+          </span>
 
-  <div class="col-md-6 col-xl-3">
-    <div class="card h-100 shadow-sm">
-      <div class="card-header bg-info-subtle d-flex justify-content-between">
-        <span class="badge text-bg-info text-white">Moyen</span><small class="text-secondary">~19/100</small>
-      </div>
-      <div class="card-body d-flex flex-column">
-        <h3 class="h6">-20% de remise</h3>
-        <div class="text-secondary small mb-3">Min obtention : 10 • Délai : 1 mois</div>
-        <div class="progress mb-3" style="height:6px"><div class="progress-bar" style="width:41%"></div></div>
-        <div class="mt-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
-          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
+          {# Probabilités fixes mappées à la catégorie choisie dans le formulaire #}
+          <small class="text-secondary">
+            {% if r.bucket == "SOUVENT" %}~80/100
+            {% elif r.bucket == "MOYEN" %}~20/100
+            {% elif r.bucket == "RARE" %}~1/100
+            {% else %}~1/10000
+            {% endif %}
+          </small>
         </div>
-      </div>
-    </div>
-  </div>
 
-  <div class="col-md-6 col-xl-3">
-    <div class="card h-100 shadow-sm">
-      <div class="card-header bg-warning-subtle d-flex justify-content-between">
-        <span class="badge text-bg-warning text-white">Rare</span><small class="text-secondary">~1/100</small>
-      </div>
-      <div class="card-body d-flex flex-column">
-        <h3 class="h6">iPhone 16 Pro Max</h3>
-        <div class="text-secondary small mb-3">Min obtention : 100 • Délai : 3 mois</div>
-        <div class="mt-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
-          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
-        </div>
-      </div>
-    </div>
-  </div>
+        <div class="card-body d-flex flex-column">
+          <h3 class="h6 mb-2">{{ r.label }}</h3>
 
-  <div class="col-md-6 col-xl-3">
-    <div class="card h-100 shadow-sm">
-      <div class="card-header bg-danger-subtle d-flex justify-content-between">
-        <span class="badge text-bg-danger">Très rare</span><small class="text-secondary">~1/10000</small>
-      </div>
-      <div class="card-body d-flex flex-column">
-        <h3 class="h6">Voyage à Miami</h3>
-        <div class="text-secondary small mb-3">Min obtention : 1000 • Délai : 6 mois</div>
-        <div class="mt-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editReward">Modifier</button>
-          <button class="btn btn-sm btn-outline-secondary">Dupliquer</button>
+          <div class="text-secondary small mb-3">
+            Minimum parrainage requis :
+            {% if r.min_obtention is not None and r.min_obtention != "" %}
+              {{ r.min_obtention }}
+            {% else %}
+              —
+            {% endif %}
+          <div>
+            Délai :
+            {% if r.cooldown_days %}
+              {% if r.cooldown_days == 30 %}1 mois
+              {% elif r.cooldown_days == 60 %}2 mois
+              {% elif r.cooldown_days == 90 %}3 mois
+              {% elif r.cooldown_days == 120 %}4 mois
+              {% elif r.cooldown_days == 150 %}5 mois
+              {% elif r.cooldown_days == 180 %}6 mois
+              {% else %}
+                {{ r.cooldown_days }} j
+              {% endif %}
+            {% else %}—{% endif %}
+          </div>  
+          </div>
+
+          <div class="mt-auto d-flex gap-2">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'rewards:update' r.pk %}">Modifier</a>
+            <a class="btn btn-sm btn-outline-danger" href="{% url 'rewards:delete' r.pk %}">Supprimer</a>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  {% empty %}
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-body text-secondary">Aucune récompense.</div>
+      </div>
+    </div>
+  {% endfor %}
 </div>
 
-{# Modal (présentation conservée). Pour brancher au backend, change l’action vers {% url 'rewards:create' %} et mets les names de champs. #}
 <div class="modal fade" id="editReward" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header"><h5 class="modal-title">Ajouter / modifier une récompense</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-header">
+      <h5 class="modal-title">Ajouter / modifier une récompense</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
     <div class="modal-body">
-      <form class="vstack gap-3" method="post" action="#">
-        {# {% csrf_token %}  ← à activer si tu postes réellement #}
-        <div class="row g-3">
-          <div class="col-md-6"><label class="form-label">Nom</label><input class="form-control" placeholder="Ex. -10%"></div>
-          <div class="col-md-3"><label class="form-label">Catégorie</label><select class="form-select"><option>Souvent</option><option>Moyen</option><option>Rare</option><option>Très rare</option></select></div>
-          <div class="col-md-3"><label class="form-label">Probabilité</label><input class="form-control" placeholder="Ex. 80/100"></div>
-        </div>
-        <div class="row g-3">
-          <div class="col-md-6"><label class="form-label">Minimum</label><input type="number" class="form-control" placeholder="5"></div>
-          <div class="col-md-6"><label class="form-label">Délai</label><select class="form-select"><option>1 mois</option><option>3 mois</option><option>6 mois</option></select></div>
-        </div>
-        <div><label class="form-label">Illustration</label><input type="file" class="form-control"></div>
-      </form>
+      <p class="text-secondary small mb-0">Créez la récompense depuis le formulaire dédié.</p>
     </div>
     <div class="modal-footer">
-      {# Pour V1, on ferme simplement le modal #}
-      <button class="btn btn-primary" data-bs-dismiss="modal">Enregistrer</button>
-      {# Alternative si tu veux aller vers la vraie création Django : #}
-      {# <a class="btn btn-primary" href="{% url 'rewards:create' %}">Créer depuis le formulaire Django</a> #}
+      <a class="btn btn-primary" href="{% url 'rewards:create' %}">Créer depuis le formulaire Django</a>
     </div>
   </div></div>
 </div>

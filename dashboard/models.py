@@ -25,35 +25,49 @@ class Referral(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        # ❗ Un filleul (referee) ne peut exister qu'une seule fois par entreprise
         constraints = [
-            models.UniqueConstraint(
-                fields=["company", "referee"],
-                name="uniq_referee_per_company",
-            )
         ]
 
     def __str__(self):
         return f"{self.referrer} → {self.referee} ({self.company})"
 
+# rewards/models.py (ou dashboard/models.py si Reward est là)
+from django.db import models
+
 class Reward(models.Model):
-    """Récompense attribuée à un client (souvent le parrain)."""
-    STATE_CHOICES = [
+    STATE_CHOICES = (
         ("PENDING", "À envoyer"),
         ("SENT", "Envoyé"),
         ("DISABLED", "Désactivé"),
         ("ARCHIVED", "Archivé"),
-    ]
-    company    = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="rewards")
-    client     = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="rewards")
-    label      = models.CharField(max_length=200)            # ex: "-10% sur 1 achat"
-    code       = models.CharField(max_length=64, blank=True) # ex: "AB-123-456"
-    channel    = models.CharField(max_length=32, blank=True) # ex: "Mail", "SMS"…
-    state      = models.CharField(max_length=16, choices=STATE_CHOICES, default="PENDING")
-    created_at = models.DateTimeField(default=timezone.now)
+    )
 
-    class Meta:
-        ordering = ["-created_at"]
+    BUCKET_CHOICES = (
+        ("SOUVENT", "Souvent (~80/100)"),
+        ("MOYEN", "Moyen (~19/100)"),
+        ("RARE", "Rare (~1/100)"),
+        ("TRES_RARE", "Très rare (~1/10000)"),
+    )
+
+    company = models.ForeignKey("accounts.Company", on_delete=models.CASCADE, related_name="rewards")
+
+    label = models.CharField(max_length=120)
+    code = models.CharField(max_length=50, blank=True)
+    channel = models.CharField(max_length=50, blank=True)
+    state = models.CharField(max_length=12, choices=STATE_CHOICES, default="PENDING")
+
+    # ⚠️ NE PLUS ATTRIBUER À UN CLIENT — on garde le champ en optionnel pour compatibilité
+    client = models.ForeignKey("dashboard.Client", null=True, blank=True, on_delete=models.SET_NULL, related_name="rewards")
+
+    # Probabilité (catalogue)
+    bucket = models.CharField(max_length=10, choices=BUCKET_CHOICES, default="SOUVENT")
+    weight = models.PositiveIntegerField(default=1, help_text="Poids relatif dans sa catégorie")
+
+    # Optionnels pour l’UX (conserve le design 'Min obtention / Délai')
+    min_obtention = models.PositiveIntegerField(default=0, blank=True)
+    cooldown_days = models.PositiveIntegerField(default=0, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.label} ({self.get_state_display()})"
+        return self.label

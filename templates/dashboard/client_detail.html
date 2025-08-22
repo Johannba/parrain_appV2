@@ -5,7 +5,6 @@
 
 {% block content %}
 <style>
-  /* Hauteur fixe pour garder une page harmonisée ; scroll interne pour le contenu long */
   .tall-card .card-body { max-height: 360px; overflow: auto; }
   @media (min-width: 1400px){
     .tall-card .card-body { max-height: 420px; }
@@ -19,7 +18,7 @@
 
 <div class="row g-3">
 
-  {# --------- COLONNE GAUCHE : Infos + Historique (avec pagination) --------- #}
+  {# --------- COLONNE GAUCHE : Infos + Historique --------- #}
   <div class="col-lg-4">
     <div class="card shadow-sm mb-3">
       <div class="card-body">
@@ -53,8 +52,8 @@
               <div class="list-group list-group-flush">
                 {% for r in history_page.object_list %}
                   <div class="list-group-item">
-                    <div class="d-flex justify-content-between">
-                      <div>
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div class="me-2">
                         {% if r.referrer_id == client.id %}
                           <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
                           <small class="text-secondary d-block">Parrainé par {{ client.first_name }} {{ client.last_name }}</small>
@@ -62,8 +61,12 @@
                           <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
                           <small class="text-secondary d-block">Parrain de ce client</small>
                         {% endif %}
+                        <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
                       </div>
-                      <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
+                      <a class="btn btn-sm btn-primary"
+                         href="{% url 'dashboard:validate_referral_and_award' r.id %}">
+                        Valider + Tirer
+                      </a>
                     </div>
                   </div>
                 {% endfor %}
@@ -72,14 +75,21 @@
               <div class="p-3 text-secondary">Aucun parrainage pour l’instant.</div>
             {% endif %}
           </div>
+
           {% if history_page and history_page.paginator.num_pages > 1 %}
             <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
               {% if history_page.has_previous %}
-                <a class="btn btn-sm btn-outline-secondary" href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">Préc.</a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+                  Préc.
+                </a>
               {% endif %}
               <span class="small align-self-center">Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}</span>
               {% if history_page.has_next %}
-                <a class="btn btn-sm btn-outline-secondary" href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">Suiv.</a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+                  Suiv.
+                </a>
               {% endif %}
             </div>
           {% endif %}
@@ -88,7 +98,7 @@
     </div>
   </div>
 
-  {# --------- COLONNE DROITE : 3 BLOCS pleine largeur (les compteurs dans les titres) --------- #}
+  {# --------- COLONNE DROITE : 3 BLOCS --------- #}
   <div class="col-lg-8">
 
     {# 1) Cadeaux obtenus #}
@@ -97,6 +107,7 @@
         <span>Cadeaux distribués <span class="badge rounded-pill text-bg-success">{{ kpi_obtenus }}</span></span>
         <a class="btn btn-sm btn-primary" href="{% url 'dashboard:reward_create' client.id %}">Créer une récompense</a>
       </div>
+
       <div class="card-body">
         {% if page_ok and page_ok.object_list %}
           <div class="row g-2">
@@ -118,14 +129,21 @@
           <div class="text-secondary">Aucun cadeau obtenu.</div>
         {% endif %}
       </div>
+
       {% if page_ok and page_ok.paginator.num_pages > 1 %}
         <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
           {% if page_ok.has_previous %}
-            <a class="btn btn-sm btn-outline-secondary" href="?ok={{ page_ok.previous_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Préc.</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?ok={{ page_ok.previous_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Préc.
+            </a>
           {% endif %}
           <span class="small align-self-center">Page {{ page_ok.number }}/{{ page_ok.paginator.num_pages }}</span>
           {% if page_ok.has_next %}
-            <a class="btn btn-sm btn-outline-secondary" href="?ok={{ page_ok.next_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Suiv.</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?ok={{ page_ok.next_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Suiv.
+            </a>
           {% endif %}
         </div>
       {% endif %}
@@ -154,14 +172,21 @@
           <div class="text-secondary">Aucun cadeau en attente.</div>
         {% endif %}
       </div>
+
       {% if page_pending and page_pending.paginator.num_pages > 1 %}
         <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
           {% if page_pending.has_previous %}
-            <a class="btn btn-sm btn-outline-secondary" href="?pending={{ page_pending.previous_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Préc.</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?pending={{ page_pending.previous_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Préc.
+            </a>
           {% endif %}
           <span class="small align-self-center">Page {{ page_pending.number }}/{{ page_pending.paginator.num_pages }}</span>
           {% if page_pending.has_next %}
-            <a class="btn btn-sm btn-outline-secondary" href="?pending={{ page_pending.next_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">Suiv.</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?pending={{ page_pending.next_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Suiv.
+            </a>
           {% endif %}
         </div>
       {% endif %}
@@ -190,14 +215,21 @@
           <div class="text-secondary">Aucun cadeau non utilisé.</div>
         {% endif %}
       </div>
+
       {% if page_unused and page_unused.paginator.num_pages > 1 %}
         <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
           {% if page_unused.has_previous %}
-            <a class="btn btn-sm btn-outline-secondary" href="?unused={{ page_unused.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">Préc.</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?unused={{ page_unused.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">
+              Préc.
+            </a>
           {% endif %}
           <span class="small align-self-center">Page {{ page_unused.number }}/{{ page_unused.paginator.num_pages }}</span>
           {% if page_unused.has_next %}
-            <a class="btn btn-sm btn-outline-secondary" href="?unused={{ page_unused.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">Suiv.</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?unused={{ page_unused.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">
+              Suiv.
+            </a>
           {% endif %}
         </div>
       {% endif %}
