@@ -1,138 +1,75 @@
 # rewards/views.py
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.db.models import Q
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 
 from accounts.models import Company
-from dashboard.models import Reward
-from .forms import RewardForm
+from .models import RewardTemplate
+from .forms import RewardTemplateForm
 
-# -----------------------------
-# Helpers placés AVANT les vues
-# -----------------------------
-def _company_for(request):
-    """
-    Admin entreprise -> sa company
-    Superadmin       -> ?company=<slug|id> sinon None
-    """
-    c = getattr(getattr(request.user, "company", None), "id", None)
-    if c:
-        return request.user.company
-    company_param = (request.GET.get("company") or "").strip()
-    if company_param:
-        return (
-            Company.objects.filter(slug=company_param).first()
-            or Company.objects.filter(pk=company_param).first()
+BUCKET_UI = {
+    "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "80/100"},
+    "MOYEN":     {"label": "Moyen",     "badge": "info",    "prob": "19/100"},
+    "RARE":      {"label": "Rare",      "badge": "warning", "prob": "1/100"},
+    "TRES_RARE": {"label": "Très rare", "badge": "danger",  "prob": "1/10000"},
+}
+
+def _current_company(request):
+    # super simple : admin entreprise = user.company ; superadmin -> ?company=<id>
+    user = request.user
+    company = getattr(user, "company", None)
+    cid = (request.GET.get("company") or "").strip()
+    if getattr(user, "is_superadmin", lambda: False)() and cid:
+        company = get_object_or_404(Company, pk=cid)
+    return company
+
+def ensure_reward_templates(company):
+    """Crée les 4 lignes si manquantes, avec proba figées."""
+    for key, ui in BUCKET_UI.items():
+        obj, created = RewardTemplate.objects.get_or_create(
+            company=company, bucket=key,
+            defaults={
+                "label": "- 10 % de remise" if key in ("SOUVENT", "MOYEN") else (
+                    "iPhone 16 Pro Max" if key=="RARE" else "Voyage à Miami"
+                ),
+                "cooldown_months": 1 if key in ("SOUVENT", "MOYEN") else (3 if key=="RARE" else 6),
+                "probability_display": ui["prob"],
+            }
         )
-    return None
+        # si la ligne existe mais le texte affiché est vide (ancienne data), on le remet
+        if not obj.probability_display:
+            obj.probability_display = ui["prob"]
+            obj.save(update_fields=["probability_display"])
 
-def _qs_rewards_for(user, company=None):
-    if hasattr(user, "is_superadmin") and user.is_superadmin():
-        qs = Reward.objects.select_related("company").order_by("-created_at")
-        return qs.filter(company=company) if company else qs
-    if hasattr(user, "is_admin_entreprise") and user.is_admin_entreprise():
-        return (
-            Reward.objects.select_related("company")
-            .filter(company=user.company)
-            .order_by("-created_at")
-        )
-    return Reward.objects.none()
-
-# ------------
-# Vues
-# ------------
 @login_required
 def reward_list(request):
-    company = _company_for(request) or getattr(request.user, "company", None)
-
-    qs = _qs_rewards_for(request.user, company=company)
-
-    state = (request.GET.get("state") or "").strip()
-    q = (request.GET.get("q") or "").strip()
-
-    if state:
-        qs = qs.filter(state=state)
-    if q:
-        qs = qs.filter(
-            Q(label__icontains=q) |
-            Q(code__icontains=q)
-        )
-
-    page = Paginator(qs, 20).get_page(request.GET.get("page"))
-
-    base_qs = _qs_rewards_for(request.user, company=company)
-    kpis = {
-        "PENDING": base_qs.filter(state="PENDING").count(),
-        "SENT": base_qs.filter(state="SENT").count(),
-        "DISABLED": base_qs.filter(state="DISABLED").count(),
-        "ARCHIVED": base_qs.filter(state="ARCHIVED").count(),
-    }
-    kpi_labels = [
-        ("PENDING", "Cadeaux en attente"),
-        ("SENT", "Cadeaux envoyés"),
-        ("DISABLED", "Désactivés"),
-        ("ARCHIVED", "Archivés"),
-    ]
-
-    return render(request, "rewards/list.html", {
-        "page": page,
-        "state": state,
-        "q": q,
-        "kpis": kpis,
-        "kpi_labels": kpi_labels,
-        "state_choices": getattr(Reward, "STATE_CHOICES", ()),
-    })
-
-@login_required
-def reward_create(request):
-    company = _company_for(request) or getattr(request.user, "company", None)
+    company = _current_company(request)
     if not company:
-        messages.error(request, "Sélectionnez d’abord une entreprise.")
-        return redirect("dashboard:superadmin")
+        messages.error(request, "Aucune entreprise sélectionnée.")
+        return redirect("dashboard:root")
 
-    if request.method == "POST":
-        form = RewardForm(request.POST)
-        if form.is_valid():
-            r = form.save(commit=False)
-            r.company = company
-            r.client = None  # jamais d’attribution ici
-            r.save()
-            messages.success(request, "Récompense créée.")
-            return redirect("rewards:list")
-    else:
-        form = RewardForm()
-    return render(request, "rewards/form.html", {"form": form, "mode": "create"})
+    ensure_reward_templates(company)
+    items = RewardTemplate.objects.filter(company=company)
+
+    # pour l’affichage couleur/badge
+    items = [
+        (r, BUCKET_UI[r.bucket])
+        for r in items
+    ]
+    return render(request, "rewards/list.html", {"items": items})
 
 @login_required
 def reward_update(request, pk):
-    company = _company_for(request) or getattr(request.user, "company", None)
-    qs = _qs_rewards_for(request.user, company=company)
-    r = get_object_or_404(qs, pk=pk)
-
+    company = _current_company(request)
+    r = get_object_or_404(RewardTemplate, pk=pk, company=company)
     if request.method == "POST":
-        form = RewardForm(request.POST, instance=r)
+        form = RewardTemplateForm(request.POST, instance=r)
         if form.is_valid():
-            r = form.save(commit=False)
-            r.company = company
-            r.client = None
-            r.save()
+            form.save()
             messages.success(request, "Récompense mise à jour.")
             return redirect("rewards:list")
     else:
-        form = RewardForm(instance=r)
-    return render(request, "rewards/form.html", {"form": form, "mode": "update"})
+        form = RewardTemplateForm(instance=r)
+    return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket]})
 
-@login_required
-def reward_delete(request, pk):
-    company = _company_for(request) or getattr(request.user, "company", None)
-    qs = _qs_rewards_for(request.user, company=company)
-    r = get_object_or_404(qs, pk=pk)
 
-    if request.method == "POST":
-        r.delete()
-        messages.success(request, "Récompense supprimée.")
-        return redirect("rewards:list")
-
-    return render(request, "rewards/confirm_delete.html", {"reward": r})

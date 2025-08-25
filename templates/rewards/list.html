@@ -6,102 +6,34 @@
 {% block content %}
 <header class="mb-4">
   <h1 class="h4 section-title mb-1">Récompenses</h1>
-  <div class="text-secondary">Définissez les cadeaux, probabilités et règles d’obtention.</div>
+  <div class="text-secondary">Définissez les cadeaux (nom) et le délai. Les probabilités sont fixes.</div>
 </header>
 
-<div class="d-flex justify-content-end mb-3">
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editReward">
-    Ajouter une récompense
-  </button>
-</div>
-
-<div class="row g-3">
-  {% for r in page.object_list %}
-    <div class="col-md-6 col-xl-3">
-      <div class="card h-100 shadow-sm">
-        <div class="card-header d-flex justify-content-between
-             {% if r.bucket == 'SOUVENT' %} bg-success-subtle
-             {% elif r.bucket == 'MOYEN' %} bg-info-subtle
-             {% elif r.bucket == 'RARE' %} bg-warning-subtle
-             {% else %} bg-danger-subtle
-             {% endif %}">
-          <span class="badge
-             {% if r.bucket == 'SOUVENT' %} text-bg-success
-             {% elif r.bucket == 'MOYEN' %} text-bg-info
-             {% elif r.bucket == 'RARE' %} text-bg-warning
-             {% else %} text-bg-danger
-             {% endif %}">
-            {% if r.bucket == "SOUVENT" %}Souvent
-            {% elif r.bucket == "MOYEN" %}Moyen
-            {% elif r.bucket == "RARE" %}Rare
-            {% else %}Très rare
-            {% endif %}
-          </span>
-
-          {# Probabilités fixes mappées à la catégorie choisie dans le formulaire #}
-          <small class="text-secondary">
-            {% if r.bucket == "SOUVENT" %}~80/100
-            {% elif r.bucket == "MOYEN" %}~20/100
-            {% elif r.bucket == "RARE" %}~1/100
-            {% else %}~1/10000
-            {% endif %}
-          </small>
-        </div>
-
-        <div class="card-body d-flex flex-column">
-          <h3 class="h6 mb-2">{{ r.label }}</h3>
-
-          <div class="text-secondary small mb-3">
-            Minimum parrainage requis :
-            {% if r.min_obtention is not None and r.min_obtention != "" %}
-              {{ r.min_obtention }}
-            {% else %}
-              —
-            {% endif %}
-          <div>
-            Délai :
-            {% if r.cooldown_days %}
-              {% if r.cooldown_days == 30 %}1 mois
-              {% elif r.cooldown_days == 60 %}2 mois
-              {% elif r.cooldown_days == 90 %}3 mois
-              {% elif r.cooldown_days == 120 %}4 mois
-              {% elif r.cooldown_days == 150 %}5 mois
-              {% elif r.cooldown_days == 180 %}6 mois
-              {% else %}
-                {{ r.cooldown_days }} j
-              {% endif %}
-            {% else %}—{% endif %}
-          </div>  
+{% if not items %}
+  <div class="card shadow-sm"><div class="card-body text-secondary">Aucune récompense.</div></div>
+{% else %}
+  <div class="row g-3">
+    {% for r, ui in items %}
+      <div class="col-md-6 col-xl-3">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header bg-{{ ui.badge }}-subtle d-flex justify-content-between">
+            <span class="badge text-bg-{{ ui.badge }}">
+              {% if ui.label == "Moyen" %}Moyen{% else %}{{ ui.label }}{% endif %}
+            </span>
+            <small class="text-secondary">~{{ r.probability_display }}</small>
           </div>
-
-          <div class="mt-auto d-flex gap-2">
-            <a class="btn btn-sm btn-outline-primary" href="{% url 'rewards:update' r.pk %}">Modifier</a>
-            <a class="btn btn-sm btn-outline-danger" href="{% url 'rewards:delete' r.pk %}">Supprimer</a>
+          <div class="card-body d-flex flex-column">
+            <h3 class="h6">{{ r.label }}</h3>
+            <div class="text-secondary small mb-3">
+              Délai : {{ r.cooldown_months }} mois
+            </div>
+            <div class="mt-auto d-flex gap-2">
+              <a class="btn btn-sm btn-outline-primary" href="{% url 'rewards:update' r.pk %}">Modifier</a>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  {% empty %}
-    <div class="col-12">
-      <div class="card shadow-sm">
-        <div class="card-body text-secondary">Aucune récompense.</div>
-      </div>
-    </div>
-  {% endfor %}
-</div>
-
-<div class="modal fade" id="editReward" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header">
-      <h5 class="modal-title">Ajouter / modifier une récompense</h5>
-      <button class="btn-close" data-bs-dismiss="modal"></button>
-    </div>
-    <div class="modal-body">
-      <p class="text-secondary small mb-0">Créez la récompense depuis le formulaire dédié.</p>
-    </div>
-    <div class="modal-footer">
-      <a class="btn btn-primary" href="{% url 'rewards:create' %}">Créer depuis le formulaire Django</a>
-    </div>
-  </div></div>
-</div>
+    {% endfor %}
+  </div>
+{% endif %}
 {% endblock %}

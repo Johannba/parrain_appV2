@@ -9,8 +9,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from accounts.models import Company
-from dashboard.models import Client, Referral, Reward
-from .forms import ClientForm, ReferralForm, RewardForm
+from dashboard.models import Client, Referral
+from .forms import ClientForm, ReferralForm
+from rewards.models import Reward
+from rewards.forms import RewardTemplateForm
 
 # Tirage de récompense
 from rewards.services.probabilities import (
@@ -322,7 +324,7 @@ def reward_create(request, pk: int):
     )
 
     if request.method == "POST":
-        form = RewardForm(request.POST)
+        form = RewardTemplateForm(request.POST)
         if form.is_valid():
             reward = form.save(commit=False)
             reward.client = client
@@ -331,7 +333,7 @@ def reward_create(request, pk: int):
             messages.success(request, "Récompense créée.")
             return redirect("dashboard:client_detail", pk=client.pk)
     else:
-        form = RewardForm()
+        form = RewardTemplateForm()
 
     return render(request, "dashboard/reward_form.html", {"form": form, "client": client})
 

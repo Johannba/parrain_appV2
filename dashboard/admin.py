@@ -3,7 +3,7 @@ from django.contrib import admin
 # Register your models here.
 # dashboard/admin.py
 from django.contrib import admin
-from .models import Client, Referral, Reward
+from .models import Client, Referral
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
@@ -19,9 +19,4 @@ class ReferralAdmin(admin.ModelAdmin):
                      "referee__last_name", "referee__first_name")
     autocomplete_fields = ("company", "referrer", "referee")
     date_hierarchy = "created_at"
-    
-@admin.register(Reward)
-class RewardAdmin(admin.ModelAdmin):
-    list_display = ("client", "company", "label", "state", "channel", "code", "created_at")
-    list_filter = ("company", "state", "channel")
-    search_fields = ("client__last_name", "label", "code")
+
