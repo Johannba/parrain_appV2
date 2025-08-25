@@ -47,53 +47,67 @@
         </div>
 
         <div class="tall-card">
-          <div class="card-body p-0">
-            {% if history_page and history_page.object_list %}
-              <div class="list-group list-group-flush">
-                {% for r in history_page.object_list %}
-                  <div class="list-group-item">
-                    <div class="d-flex justify-content-between align-items-center">
-                      <div class="me-2">
-                        {% if r.referrer_id == client.id %}
-                          <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
-                          <small class="text-secondary d-block">Parrainé par {{ client.first_name }} {{ client.last_name }}</small>
-                        {% else %}
-                          <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
-                          <small class="text-secondary d-block">Parrain de ce client</small>
-                        {% endif %}
-                        <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
-                      </div>
-                      <a class="btn btn-sm btn-primary"
-                         href="{% url 'dashboard:validate_referral_and_award' r.id %}">
-                        Valider + Tirer
-                      </a>
-                    </div>
-                  </div>
-                {% endfor %}
+  <div class="card-body p-0">
+    {% if history_page and history_page.object_list %}
+      <div class="list-group list-group-flush">
+        {% for r in history_page.object_list %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="me-2">
+                {% if r.referrer_id == client.id %}
+                  <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
+                  <small class="text-secondary d-block">
+                    Parrainé par {{ client.first_name }} {{ client.last_name }}
+                  </small>
+                {% else %}
+                  <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
+                  <small class="text-secondary d-block">Parrain de ce client</small>
+                {% endif %}
+                <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
               </div>
-            {% else %}
-              <div class="p-3 text-secondary">Aucun parrainage pour l’instant.</div>
-            {% endif %}
-          </div>
 
-          {% if history_page and history_page.paginator.num_pages > 1 %}
-            <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
-              {% if history_page.has_previous %}
-                <a class="btn btn-sm btn-outline-secondary"
-                   href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
-                  Préc.
+              <div class="d-flex flex-column gap-1">
+                <a class="btn btn-sm btn-primary"
+                   href="{% url 'dashboard:validate_referral_and_award' r.id %}">
+                  Valider + Tirer
                 </a>
-              {% endif %}
-              <span class="small align-self-center">Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}</span>
-              {% if history_page.has_next %}
-                <a class="btn btn-sm btn-outline-secondary"
-                   href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
-                  Suiv.
-                </a>
-              {% endif %}
+
+                <form method="post"
+                      action="{% url 'dashboard:referral_delete' r.id %}"
+                      onsubmit="return confirm('Supprimer ce parrainage ?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="back_client" value="{{ client.id }}">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button>
+                </form>
+              </div>
             </div>
-          {% endif %}
-        </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="p-3 text-secondary">Aucun parrainage pour l’instant.</div>
+    {% endif %}
+  </div>
+
+  {% if history_page and history_page.paginator.num_pages > 1 %}
+    <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+      {% if history_page.has_previous %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+          Préc.
+        </a>
+      {% endif %}
+      <span class="small align-self-center">Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}</span>
+      {% if history_page.has_next %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+          Suiv.
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
       </div>
     </div>
   </div>

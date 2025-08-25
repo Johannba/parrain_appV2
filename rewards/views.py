@@ -6,6 +6,8 @@ from django.contrib import messages
 from accounts.models import Company
 from .models import RewardTemplate
 from .forms import RewardTemplateForm
+from dashboard.models import Referral
+from django.views.decorators.http import require_POST
 
 BUCKET_UI = {
     "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "80/100"},
@@ -73,3 +75,26 @@ def reward_update(request, pk):
     return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket]})
 
 
+def _can_manage_company(user, company) -> bool:
+    return (hasattr(user, "is_superadmin") and user.is_superadmin()) or (
+        hasattr(user, "company") and user.company_id == company.id
+    )
+
+@login_required
+@require_POST
+def referral_delete(request, pk: int):
+    referral = get_object_or_404(Referral.objects.select_related("company", "referrer", "referee"), pk=pk)
+
+    # sécurité : périmètre entreprise
+    if not _can_manage_company(request.user, referral.company):
+        messages.error(request, "Accès refusé.")
+        # on tente de revenir sur la fiche passée en paramètre, sinon liste
+        back_id = request.POST.get("back_client")
+        return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
+
+    # pour le redirect, on récupère la fiche d’où on a cliqué
+    back_client_id = request.POST.get("back_client") or referral.referee_id or referral.referrer_id
+
+    referral.delete()
+    messages.success(request, "Parrainage supprimé.")
+    return redirect("dashboard:client_detail", pk=back_client_id)

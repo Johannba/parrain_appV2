@@ -1,20 +1,33 @@
+{# dashboard/templates/dashboard/confirm_delete.html #}
 {% extends "base_dashboard.html" %}
 {% block title %}{{ title }}{% endblock %}
+{% block body_data_page %}clients{% endblock %}
 
 {% block content %}
-<header class="mb-4">
-  <h1 class="h4 section-title mb-1">{{ title }}</h1>
-  <div class="text-secondary">Action irréversible.</div>
-</header>
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h5 mb-3">{{ title }}</h1>
+        <p class="text-secondary mb-4">{{ message }}</p>
 
-<div class="card shadow-sm">
-  <div class="card-body">
-    <p class="mb-4">{{ message }}</p>
-    <form method="post">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-danger">Confirmer la suppression</button>
-      <a href="{% url back_url %}" class="btn btn-outline-secondary">Annuler</a>
-    </form>
+        <form method="post" action="{% url post_action post_kwargs.pk %}">
+          {% csrf_token %}
+          {# On renvoie l’info de la fiche d’où l’on vient si présent #}
+          {% if back_client_id %}
+            <input type="hidden" name="back_client" value="{{ back_client_id }}">
+          {% endif %}
+
+          <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary"
+               href="{% url back_url_name **back_url_kwargs %}">
+              Annuler
+            </a>
+            <button class="btn btn-danger" type="submit">Supprimer</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

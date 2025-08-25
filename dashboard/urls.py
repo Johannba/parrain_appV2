@@ -21,5 +21,6 @@ urlpatterns = [
     path("referrals/new/", views.referral_create, name="referral_create"),
     path("referrals/<int:pk>/edit/", views.referral_update, name="referral_update"),
     path("referrals/<int:pk>/delete/", views.referral_delete, name="referral_delete"),
-     path("referrals/<int:referral_id>/validate-award/", views.validate_referral_and_award, name="validate_referral_and_award"),
+    path("referrals/<int:referral_id>/validate-award/", views.validate_referral_and_award, name="validate_referral_and_award"),
+    path("referrals/<int:pk>/delete/", views.referral_delete, name="referral_delete"),
 ]

@@ -287,23 +287,41 @@ def referral_update(request, pk):
 
 
 @login_required
-def referral_delete(request, pk):
+def referral_delete(request, pk: int):
+    """
+    Supprime un parrainage.
+    - Si un champ POST 'back_client' est présent => on revient sur la fiche client.
+    - Sinon => on revient sur la liste des clients.
+    """
     _require_company_staff(request.user)
 
     obj = get_object_or_404(Referral, pk=pk)
-    if not _is_superadmin(request.user) and obj.company_id != request.user.company_id:
+
+    # Sécurité : un admin d’entreprise ne peut agir que sur sa company
+    if not _is_superadmin(request.user) and obj.company_id != getattr(request.user, "company_id", None):
         raise PermissionDenied("Accès refusé.")
+
+    # Détermine où revenir
+    back_client_id = request.POST.get("back_client") or request.GET.get("back_client")
+    back_url_name = "dashboard:client_detail" if back_client_id else "dashboard:clients_list"
+    back_url_kwargs = {"pk": back_client_id} if back_client_id else {}
 
     if request.method == "POST":
         obj.delete()
         messages.success(request, "Parrainage supprimé.")
-        return redirect("dashboard:referrals_list")
+        return redirect(back_url_name, **back_url_kwargs)
 
+    # GET : page de confirmation
     return render(request, "dashboard/confirm_delete.html", {
         "title": "Supprimer le parrainage",
         "message": "Confirmer la suppression de ce parrainage ?",
-        "back_url": "dashboard:referrals_list",
+        "post_action": "dashboard:referral_delete",
+        "post_kwargs": {"pk": obj.pk},
+        "back_url_name": back_url_name,
+        "back_url_kwargs": back_url_kwargs,
+        "back_client_id": back_client_id,  # pour renvoyer l’info dans le POST
     })
+
 
 
 # -------------------------------------------------------------
