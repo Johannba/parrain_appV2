@@ -1,0 +1,916 @@
+===== ./rewards/templatetags/ __init__.py =====
+===== ./rewards/templatetags/dict_extras.py =====
+# core/templatetags/dict_extras.py
+from django import template
+register = template.Library()
+
+@register.filter
+def get_item(d, key):
+    try:
+        return d.get(key)
+    except Exception:
+        return None===== ./rewards/signals.py =====
+===== ./rewards/views_wheels.py =====
+===== ./rewards/models.py =====
+# rewards/models.py
+from django.db import models
+from accounts.models import Company
+from dashboard.models import Client
+
+
+class ProbabilityWheel(models.Model):
+    """
+    Roue (pool) cyclique par entreprise.
+    - key   : identifie un tirage (ex: 'base_100', 'very_rare_10000')
+    - pool  : liste ordonnée des résultats (ex: ['SOUVENT','SOUVENT',...,'NO_HIT'])
+    - idx   : curseur de consommation
+    - size  : longueur totale du pool (copie pour debug)
+    """
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="probability_wheels"
+    )
+    key = models.SlugField(max_length=64)
+    pool = models.JSONField(default=list)
+    idx = models.PositiveIntegerField(default=0)
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = (("company", "key"),)
+        indexes = [models.Index(fields=["company", "key"])]
+
+    def __str__(self):
+        return f"{self.company} • {self.key} ({self.idx}/{self.size})"
+
+
+class RewardTemplate(models.Model):
+    """
+    Les 4 récompenses FIXES par entreprise : seules les infos 'métier' (nom, délai)
+    sont éditables ; les probabilités restent gérées ailleurs (roue/poids).
+    """
+    BUCKETS = (
+        ("SOUVENT", "Souvent"),
+        ("MOYEN", "Moyen"),
+        ("RARE", "Rare"),
+        ("TRES_RARE", "Très rare"),
+    )
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="reward_templates"
+    )
+    bucket = models.CharField(max_length=10, choices=BUCKETS)
+    # nom affiché (modifiable par l’admin – ex “-10%”, “iPhone 16”, etc.)
+    label = models.CharField(max_length=120, default="-10 % de remise")
+
+    # délai choisi par l’admin en mois (1..6) + miroir en jours pour calculs
+    cooldown_months = models.PositiveSmallIntegerField(default=1)
+    cooldown_days = models.PositiveIntegerField(default=30)
+
+    # uniquement pour affichage (ex “80/100”), calculé côté vue/service si tu préfères
+    probability_display = models.CharField(max_length=20, default="", editable=False)
+
+    class Meta:
+        unique_together = (("company", "bucket"),)
+        ordering = ("company", "bucket")
+
+    def save(self, *args, **kwargs):
+        # tient cooldown_days en phase avec cooldown_months
+        self.cooldown_days = int(self.cooldown_months) * 30
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.company} • {self.get_bucket_display()} • {self.label}"
+
+
+class Reward(models.Model):
+    """
+    Récompense INSTANTIÉE pour un client (clonée depuis un template).
+    """
+    BUCKETS = (
+        ("SOUVENT", "Souvent"),
+        ("MOYEN", "Moyen"),
+        ("RARE", "Rare"),
+        ("TRES_RARE", "Très rare"),
+    )
+
+    STATE_CHOICES = (
+        ("PENDING", "En attente"),
+        ("SENT", "Envoyée"),
+        ("DISABLED", "Désactivée"),
+        ("ARCHIVED", "Archivée"),
+    )
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="rewards"
+    )
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name="rewards"
+    )
+
+    # recopie du template au moment de l’attribution
+    label = models.CharField(max_length=255)
+    bucket = models.CharField(max_length=20, choices=BUCKETS)
+    cooldown_days = models.PositiveIntegerField(default=0)
+
+    state = models.CharField(max_length=20, choices=STATE_CHOICES, default="PENDING")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["company", "client", "state"])]
+
+    def __str__(self):
+        return f"{self.label} ({self.get_bucket_display()})"
+
+
+===== ./rewards/probabilities.py =====
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Iterable, List, Tuple
+from django.db import transaction
+from django.utils.text import slugify
+from rewards.models import ProbabilityWheel
+from accounts.models import Company
+
+# --------- Utilitaires de pool ----------
+def build_pool(pairs: Iterable[Tuple[int, str]]) -> List[str]:
+    """
+    Construit une liste ordonnée à partir de paires (occurences, valeur).
+    Exemple: [(80,'Souvent'), (20,'NO_HIT')] -> 100 cases.
+    """
+    pool: List[str] = []
+    for n, val in pairs:
+        if n < 0:
+            raise ValueError("n négatif")
+        pool.extend([val] * n)
+    return pool
+
+def interleave(pool: List[str]) -> List[str]:
+    """
+    Ré-ordonne le pool pour mieux répartir les valeurs (évite les clusters).
+    Stratégie simple: round-robin par groupes.
+    """
+    # On groupe par valeur
+    from collections import defaultdict, deque
+    buckets = defaultdict(deque)
+    for v in pool:
+        buckets[v].append(v)
+
+    # On itère tant qu'il reste des éléments
+    keys = sorted(buckets.keys(), key=lambda k: -len(buckets[k]))
+    out: List[str] = []
+    while any(buckets[k] for k in keys):
+        for k in keys:
+            if buckets[k]:
+                out.append(buckets[k].popleft())
+    return out
+
+# --------- API principale ----------
+@dataclass
+class WheelSpec:
+    key: str
+    # paires (occurences, label)
+    pairs: Tuple[Tuple[int, str], ...]
+
+def ensure_wheel(company: Company, spec: WheelSpec) -> ProbabilityWheel:
+    """
+    Crée ou met à jour la roue pour une entreprise donnée, selon la spec.
+    """
+    key = slugify(spec.key)
+    raw = build_pool(spec.pairs)
+    pool = interleave(raw) if len(set(raw)) > 1 else raw
+    with transaction.atomic():
+        obj, _created = ProbabilityWheel.objects.select_for_update().get_or_create(
+            company=company, key=key, defaults={"pool": pool, "size": len(pool), "idx": 0}
+        )
+        # Si la taille/def change, on remplace
+        if obj.size != len(pool) or obj.pool != pool:
+            obj.pool = pool
+            obj.size = len(pool)
+            # on préserve l’idx modulo la nouvelle taille
+            obj.idx = obj.idx % (len(pool) or 1)
+            obj.save(update_fields=["pool", "size", "idx"])
+    return obj
+
+def draw(company: Company, key: str) -> str:
+    """
+    Tire le prochain élément de la roue (déterministe, tourniquet), puis avance l’idx.
+    """
+    k = slugify(key)
+    with transaction.atomic():
+        wheel = ProbabilityWheel.objects.select_for_update().get(company=company, key=k)
+        if wheel.size == 0:
+            raise ValueError("Roue vide")
+        value = wheel.pool[wheel.idx]
+        wheel.idx = (wheel.idx + 1) % wheel.size
+        wheel.save(update_fields=["idx"])
+        return value
+
+# --------- Specs prêtes à l’emploi ----------
+BASE_100 = WheelSpec(
+    key="base_100",
+    pairs=((80, "Souvent"), (19, "Moyen"), (1, "Rare")),
+)
+VERY_RARE_10000 = WheelSpec(
+    key="very_rare_10000",
+    pairs=((9999, "NO_HIT"), (1, "Très rare")),
+)
+===== ./rewards/tests/__init__.py =====
+===== ./rewards/tests/test_smoke.py =====
+from django.test import TestCase
+
+class SmokeTest(TestCase):
+    def test_truth(self):
+        self.assertTrue(True)
+===== ./rewards/tests/test_probability.py =====
+import pytest
+from accounts.models import Company
+from rewards.services.probabilities import ensure_wheel, WheelSpec, draw
+
+pytestmark = pytest.mark.django_db
+
+def test_exact_ratio_80_100(client):
+    company = Company.objects.create(name="Test Co")
+    spec = WheelSpec(key="ratio_80_100", pairs=((80, "OK"), (20, "KO")))
+    ensure_wheel(company, spec)
+    hits = [draw(company, "ratio_80_100") for _ in range(100)]
+    assert hits.count("OK") == 80
+    assert hits.count("KO") == 20
+===== ./rewards/management/ __init__.py =====
+===== ./rewards/management/commands/init_probability_wheels.py =====
+from django.core.management.base import BaseCommand, CommandError
+from accounts.models import Company
+from rewards.services.probabilities import ensure_wheel, BASE_100, VERY_RARE_10000
+
+class Command(BaseCommand):
+    help = "Initialise les roues de probabilité pour une entreprise."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--company", required=True, help="Slug de l'entreprise")
+
+    def handle(self, *args, **options):
+        slug = options["company"]
+        try:
+            company = Company.objects.get(slug=slug)
+        except Company.DoesNotExist:
+            raise CommandError(f"Company '{slug}' introuvable")
+
+        specs = [BASE_100, VERY_RARE_10000]
+        for spec in specs:
+            ensure_wheel(company, spec)
+            self.stdout.write(self.style.SUCCESS(f"OK: {company} • {spec.key}"))
+===== ./rewards/management/commands/seed_wheels.py =====
+from django.core.management.base import BaseCommand
+from accounts.models import Company
+from rewards.services.probabilities import ensure_wheels_for_company
+
+class Command(BaseCommand):
+    help = "Initialise (ou ré-initialise) les roues de probabilités pour chaque entreprise."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--reset",
+            action="store_true",
+            help="Ré-initialise les roues (réécrit le pool et remet idx=0)."
+        )
+
+    def handle(self, *args, **options):
+        reset = options["reset"]
+        count = 0
+        for company in Company.objects.all():
+            ensure_wheels_for_company(company)
+            count += 1
+        self.stdout.write(self.style.SUCCESS(
+            f"Roues initialisées pour {count} entreprise(s)."
+        ))
+        if reset:
+            # Optionnel : si tu veux forcer un reset plus fort, tu peux
+            # étendre ensure_wheels_for_company pour régénérer les pools
+            self.stdout.write(self.style.WARNING(
+                "Option --reset indiquée : assure-toi que ensure_wheels_for_company "
+                "régénère les pools comme attendu."
+            ))
+===== ./rewards/management/commands/ __init__.py =====
+===== ./rewards/management/commands/rebuild_wheels.py =====
+from django.core.management.base import BaseCommand
+from accounts.models import Company
+from rewards.services.probabilities import get_or_build_wheel, DEFAULT_WEIGHTS
+
+class Command(BaseCommand):
+    help = "Reconstruit/initialise les roues de probabilité pour chaque entreprise."
+
+    def handle(self, *args, **opts):
+        for c in Company.objects.filter(is_active=True):
+            wheel = get_or_build_wheel(c, DEFAULT_WEIGHTS)
+            self.stdout.write(self.style.SUCCESS(f"{c.name}: {wheel.key} ({wheel.size} cases)"))
+===== ./rewards/__init__.py =====
+===== ./rewards/apps.py =====
+# rewards/apps.py
+from django.apps import AppConfig
+
+class RewardsConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "rewards"
+    verbose_name = "Récompenses"
+
+    def ready(self):
+        import rewards.signals  # <-- le bon import
+===== ./rewards/forms.py =====
+from django import forms
+from .models import RewardTemplate
+
+class RewardTemplateForm(forms.ModelForm):
+    # TypedChoiceField so we store an integer, not a string
+    cooldown_months = forms.TypedChoiceField(
+        choices=[(i, f"{i} mois") for i in range(1, 7)],
+        coerce=int,
+        label="Délai",
+        widget=forms.Select(attrs={"class": "form-select"})  # <-- Bootstrap styling here
+    )
+
+    class Meta:
+        model = RewardTemplate
+        fields = ("label", "cooldown_months")
+        labels = {"label": "Nom de la récompense"}
+        widgets = {
+            "label": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "Ex. -10 %"}
+            ),
+        }
+
+===== ./rewards/admin.py =====
+from django.contrib import admin
+from rewards.models import ProbabilityWheel
+
+@admin.register(ProbabilityWheel)
+class ProbabilityWheelAdmin(admin.ModelAdmin):
+    list_display = ("company", "key", "size", "idx")
+    list_filter = ("company", "key")
+    search_fields = ("company__name", "key")
+    readonly_fields = ("size", "idx")
+===== ./rewards/utils.py =====
+from django import template
+register = template.Library()
+
+@register.filter
+def get_item(d, key):
+    try:
+        return d.get(key)
+    except Exception:
+        return None
+===== ./rewards/urls.py =====
+# rewards/urls.py
+from django.urls import path
+from .views import reward_list, reward_update, referral_delete, reward_spin  # + reward_spin
+
+app_name = "rewards"
+
+urlpatterns = [
+    path("", reward_list, name="list"),
+    path("<int:pk>/edit/", reward_update, name="update"),
+    path("referrals/<int:pk>/delete/", referral_delete, name="referral_delete"),
+    # NEW: page d’animation de la roue pour une Reward donnée
+    path("spin/<int:reward_id>/", reward_spin, name="spin"),
+]
+===== ./rewards/services/probabilities.py =====
+# rewards/services/probabilities.py
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
+from django.db import transaction
+
+from accounts.models import Company
+from rewards.models import ProbabilityWheel
+
+# ⚠️ On garde les mêmes clés pour compatibilité (vues/templates/urls),
+#    mais on va désormais construire des pools de 1000 et 100_000 cases.
+BASE_KEY = "base_100"
+VERY_RARE_KEY = "very_rare_10000"
+
+# Tokens standardisés
+SOUVENT = "SOUVENT"
+MOYEN = "MOYEN"
+RARE = "RARE"
+TRES_RARE = "TRES_RARE"
+NO_HIT = "NO_HIT"
+
+# -----------------------------
+#   Composition EXACTE des pools
+# -----------------------------
+# Base = 1000 cases -> Rare = 1/1000 (0,1 %)
+# Répartition choisie (simple et lisible) :
+#   - 980 x Souvent
+#   -  19 x Moyen
+#   -   1 x Rare
+BASE_COUNTS = {
+    SOUVENT: 980,
+    MOYEN: 19,
+    RARE: 1,
+}
+BASE_SIZE = sum(BASE_COUNTS.values())  # 1000
+
+# Très rare = 100_000 cases -> 1/100_000 (0,001 %)
+VR_COUNTS = {
+    NO_HIT: 100_000 - 1,
+    TRES_RARE: 1,
+}
+VR_SIZE = sum(VR_COUNTS.values())  # 100_000
+
+
+def _build_base_pool() -> List[str]:
+    pool: List[str] = []
+    for token, n in BASE_COUNTS.items():
+        pool.extend([token] * n)
+    return pool
+
+
+def _build_very_rare_pool() -> List[str]:
+    pool: List[str] = []
+    for token, n in VR_COUNTS.items():
+        pool.extend([token] * n)
+    return pool
+
+
+@transaction.atomic
+def ensure_wheels(company: Company) -> Tuple[ProbabilityWheel, ProbabilityWheel]:
+    """
+    Crée (ou met à niveau) les deux roues pour l’entreprise.
+    - BASE_KEY      -> 1000 cases (980/19/1)
+    - VERY_RARE_KEY -> 100_000 cases (1 TRES_RARE)
+    """
+    base, _ = ProbabilityWheel.objects.get_or_create(
+        company=company,
+        key=BASE_KEY,
+        defaults={"pool": _build_base_pool(), "size": BASE_SIZE, "idx": 0},
+    )
+    very_rare, _ = ProbabilityWheel.objects.get_or_create(
+        company=company,
+        key=VERY_RARE_KEY,
+        defaults={"pool": _build_very_rare_pool(), "size": VR_SIZE, "idx": 0},
+    )
+
+    # Mise à niveau si l’ancienne taille (100 / 10_000) est encore en base
+    if base.size != BASE_SIZE:
+        base.pool, base.size, base.idx = _build_base_pool(), BASE_SIZE, 0
+        base.save(update_fields=["pool", "size", "idx"])
+
+    if very_rare.size != VR_SIZE:
+        very_rare.pool, very_rare.size, very_rare.idx = _build_very_rare_pool(), VR_SIZE, 0
+        very_rare.save(update_fields=["pool", "size", "idx"])
+
+    return base, very_rare
+
+
+def rebuild_wheel(company: Company, key: str) -> None:
+    """Régénère entièrement une roue (repart à idx=0)."""
+    if key == BASE_KEY:
+        pool, size = _build_base_pool(), BASE_SIZE
+    elif key == VERY_RARE_KEY:
+        pool, size = _build_very_rare_pool(), VR_SIZE
+    else:
+        raise ValueError(f"Clé de roue inconnue: {key}")
+
+    ProbabilityWheel.objects.update_or_create(
+        company=company, key=key,
+        defaults={"pool": pool, "size": size, "idx": 0}
+    )
+
+
+def reset_wheel(company: Company, key: str) -> None:
+    """Remet le curseur à zéro (sans toucher la composition)."""
+    wheel = ProbabilityWheel.objects.get(company=company, key=key)
+    wheel.idx = 0
+    wheel.save(update_fields=["idx"])
+
+
+def _consume_one(wheel: ProbabilityWheel) -> str:
+    value = wheel.pool[wheel.idx]
+    wheel.idx = (wheel.idx + 1) % wheel.size
+    wheel.save(update_fields=["idx"])
+    return value
+
+
+def tirer_recompense(company: Company) -> str:
+    """
+    Tirage déterministe EXACT (pas d’aléatoire) :
+      1) On consomme la roue VERY_RARE_KEY (1 / 100_000 par cycle).
+         -> si TRES_RARE : on retourne immédiatement TRES_RARE
+      2) Sinon, on consomme la roue BASE_KEY (980/19/1 sur 1000 exactement).
+    """
+    base, very_rare = ensure_wheels(company)
+    vr = _consume_one(very_rare)
+    if vr == TRES_RARE:
+        return TRES_RARE
+    return _consume_one(base)
+
+
+@dataclass
+class WheelSnapshot:
+    size: int
+    idx: int
+    progress_pct: int
+    remaining_by_token: Dict[str, int]
+    total_by_token: Dict[str, int]
+
+
+def _remaining_counts(pool: List[str], idx: int, tokens: List[str]) -> Dict[str, int]:
+    """Compte ce qu'il reste AVANT la fin du cycle actuel (de idx -> fin)."""
+    tail = pool[idx:]
+    out: Dict[str, int] = {}
+    for t in tokens:
+        out[t] = tail.count(t)
+    return out
+
+
+def get_snapshot(company: Company) -> Dict[str, WheelSnapshot]:
+    """Données pour l’UI (progression et restants par token)."""
+    base, very_rare = ensure_wheels(company)
+
+    base_tokens = [SOUVENT, MOYEN, RARE]
+    base_total = {t: base.pool.count(t) for t in base_tokens}
+    base_remaining = _remaining_counts(base.pool, base.idx, base_tokens)
+
+    vr_tokens = [TRES_RARE, NO_HIT]
+    vr_total = {t: very_rare.pool.count(t) for t in vr_tokens}
+    vr_remaining = _remaining_counts(very_rare.pool, very_rare.idx, vr_tokens)
+
+    return {
+        "base": WheelSnapshot(
+            size=base.size,
+            idx=base.idx,
+            progress_pct=int((base.idx / base.size) * 100) if base.size else 0,
+            remaining_by_token=base_remaining,
+            total_by_token=base_total,
+        ),
+        "very_rare": WheelSnapshot(
+            size=very_rare.size,
+            idx=very_rare.idx,
+            progress_pct=int((very_rare.idx / very_rare.size) * 100) if very_rare.size else 0,
+            remaining_by_token=vr_remaining,
+            total_by_token=vr_total,
+        ),
+    }
+===== ./rewards/views.py =====
+# rewards/views.py
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+
+from accounts.models import Company
+from .models import RewardTemplate,Reward
+from .forms import RewardTemplateForm
+from dashboard.models import Referral
+from django.views.decorators.http import require_POST
+
+BUCKET_UI = {
+    "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "980/1000"},
+    "MOYEN":     {"label": "Moyen",     "badge": "info",    "prob": "19/1000"},
+    "RARE":      {"label": "Rare",      "badge": "warning", "prob": "1/1000"},
+    "TRES_RARE": {"label": "Très rare", "badge": "danger",  "prob": "1/100000"},
+}
+
+def _current_company(request):
+    # super simple : admin entreprise = user.company ; superadmin -> ?company=<id>
+    user = request.user
+    company = getattr(user, "company", None)
+    cid = (request.GET.get("company") or "").strip()
+    if getattr(user, "is_superadmin", lambda: False)() and cid:
+        company = get_object_or_404(Company, pk=cid)
+    return company
+
+def ensure_reward_templates(company):
+    """Crée les 4 lignes si manquantes, avec proba figées."""
+    for key, ui in BUCKET_UI.items():
+        obj, created = RewardTemplate.objects.get_or_create(
+            company=company, bucket=key,
+            defaults={
+                "label": "- 10 % de remise" if key in ("SOUVENT", "MOYEN") else (
+                    "iPhone 16 Pro Max" if key=="RARE" else "Voyage à Miami"
+                ),
+                "cooldown_months": 1 if key in ("SOUVENT", "MOYEN") else (3 if key=="RARE" else 6),
+                "probability_display": ui["prob"],
+            }
+        )
+        # si la ligne existe mais le texte affiché est vide (ancienne data), on le remet
+        if not obj.probability_display:
+            obj.probability_display = ui["prob"]
+            obj.save(update_fields=["probability_display"])
+
+@login_required
+def reward_list(request):
+    company = _current_company(request)
+    if not company:
+        messages.error(request, "Aucune entreprise sélectionnée.")
+        return redirect("dashboard:root")
+
+    ensure_reward_templates(company)
+    items = RewardTemplate.objects.filter(company=company)
+
+    # ordre voulu : Souvent → Moyen → Rare → Très rare
+    order = {"SOUVENT": 0, "MOYEN": 1, "RARE": 2, "TRES_RARE": 3}
+    items = sorted(items, key=lambda r: order.get(r.bucket, 99))
+
+    # pour l’affichage couleur/badge
+    items = [
+        (r, BUCKET_UI[r.bucket])
+        for r in items
+    ]
+    return render(request, "rewards/list.html", {"items": items})
+
+@login_required
+def reward_update(request, pk):
+    company = _current_company(request)
+    r = get_object_or_404(RewardTemplate, pk=pk, company=company)
+    if request.method == "POST":
+        form = RewardTemplateForm(request.POST, instance=r)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Récompense mise à jour.")
+            return redirect("rewards:list")
+    else:
+        form = RewardTemplateForm(instance=r)
+    return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket]})
+
+
+def _can_manage_company(user, company) -> bool:
+    return (hasattr(user, "is_superadmin") and user.is_superadmin()) or (
+        hasattr(user, "company") and user.company_id == company.id
+    )
+
+@login_required
+@require_POST
+def referral_delete(request, pk: int):
+    referral = get_object_or_404(Referral.objects.select_related("company", "referrer", "referee"), pk=pk)
+
+    # sécurité : périmètre entreprise
+    if not _can_manage_company(request.user, referral.company):
+        messages.error(request, "Accès refusé.")
+        # on tente de revenir sur la fiche passée en paramètre, sinon liste
+        back_id = request.POST.get("back_client")
+        return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
+
+    # pour le redirect, on récupère la fiche d’où on a cliqué
+    back_client_id = request.POST.get("back_client") or referral.referee_id or referral.referrer_id
+
+    referral.delete()
+    messages.success(request, "Parrainage supprimé.")
+    return redirect("dashboard:client_detail", pk=back_client_id)
+
+
+# rewards/views.py (ajoute en haut)
+from .models import Reward  # pour charger la récompense réelle
+
+# ...
+
+@login_required
+def reward_spin(request, reward_id: int):
+    """
+    Page avec une roue animée qui s'arrête sur la récompense réellement créée.
+    """
+    reward = get_object_or_404(
+        Reward.objects.select_related("company", "client"),
+        pk=reward_id
+    )
+
+    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]  # 4 segments
+    segment = 360 / len(wheel_order)  # 90°
+    try:
+        idx = wheel_order.index(reward.bucket)
+    except ValueError:
+        idx = 0
+
+    target_angle = 4 * 360 + int(idx * segment + segment / 2)  # 4 tours + milieu du segment
+
+    ui = BUCKET_UI.get(reward.bucket, {"label": reward.bucket, "badge": "secondary"})
+    return render(request, "rewards/spin.html", {
+        "reward": reward,
+        "ui": ui,
+        "target_angle": target_angle,
+    })===== ./templates/rewards/form.html =====
+{# templates/rewards/form.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Modifier une récompense • ParrainApp{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+<header class="mb-3">
+  <h1 class="h4 section-title mb-1">Modifier « {{ tpl.label }} » ({{ ui.label }})</h1>
+  <div class="text-secondary">Probabilité : ~{{ tpl.probability_display }} (fixe)</div>
+</header>
+
+<div class="card shadow-sm">
+  <form method="post" class="card-body vstack gap-3">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label for="{{ form.label.id_for_label }}" class="form-label">Nom de la récompense</label>
+        {{ form.label }}
+      </div>
+      <div class="col-md-6">
+        <label for="{{ form.cooldown_months.id_for_label }}" class="form-label">Délai</label>
+        {{ form.cooldown_months }}  {# renders with class="form-select" #}
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <a href="{% url 'rewards:list' %}" class="btn btn-outline-secondary">Annuler</a>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+===== ./templates/rewards/wheels.html =====
+{# templates/rewards/wheels.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Roue de probabilités • ParrainApp{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+
+{# Mini override pour “orange” Bootstrap (Rare) #}
+<style>
+  .text-bg-orange{color:#fff!important;background-color:#fd7e14!important}
+  .bg-orange-subtle{background-color:rgba(253,126,20,.15)!important}
+</style>
+
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Roue de probabilités</h1>
+  <div class="text-secondary">Exactement 80/100, 19/100, 1/100 et 1/10000 par entreprise.</div>
+</header>
+
+<div class="d-flex justify-content-end mb-3">
+  {# même placement que “Ajouter une récompense” dans ta maquette #}
+  <form method="post" action="{% url 'rewards:wheel_rebuild' base_key %}" class="me-2">
+    {% csrf_token %}
+    <button class="btn btn-outline-primary">Régénérer base (100)</button>
+  </form>
+  <form method="post" action="{% url 'rewards:wheel_rebuild' vr_key %}">
+    {% csrf_token %}
+    <button class="btn btn-outline-danger">Régénérer très rare (10 000)</button>
+  </form>
+</div>
+
+<div class="row g-3">
+  {# On reprend exactement la grille de 4 cards #}
+  {% for c in cards %}
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header d-flex justify-content-between
+           {% if c.code == 'souvent' %}bg-success-subtle
+           {% elif c.code == 'moyen' %}bg-warning-subtle
+           {% elif c.code == 'rare' %}bg-orange-subtle
+           {% else %}bg-danger-subtle
+           {% endif %}">
+        <span class="badge {{ c.badge_cl }}">{{ c.title }}</span>
+        <small class="text-secondary">{{ c.approx }}</small>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6">{{ c.title }} — restants dans le cycle : {{ c.remaining }} / {{ c.total }}</h3>
+        <div class="text-secondary small mb-3">
+          Curseur de la roue :
+          <strong>{{ c.progress }}%</strong>
+        </div>
+
+        <div class="progress mb-3" style="height:6px">
+          <div class="progress-bar" style="width: {{ c.progress }}%"></div>
+        </div>
+
+        <div class="mt-auto d-flex flex-wrap gap-2">
+          {% if c.code in 'souvent,moyen,rare' %}
+            <form method="post" action="{% url 'rewards:wheel_reset' base_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Remettre à zéro (base)</button>
+            </form>
+            <form method="post" action="{% url 'rewards:wheel_consume' base_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-primary">Consommer 1 tirage (test)</button>
+            </form>
+          {% else %}
+            <form method="post" action="{% url 'rewards:wheel_reset' vr_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Remettre à zéro (très rare)</button>
+            </form>
+            <form method="post" action="{% url 'rewards:wheel_consume' vr_key %}">
+              {% csrf_token %}<button class="btn btn-sm btn-outline-primary">Consommer 1 tirage (test)</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
+===== ./templates/rewards/spin.html =====
+{% extends "base_dashboard.html" %}
+{% block title %}Roulette de récompense • ParrainApp{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Récompense attribuée</h1>
+  <div class="text-secondary">Visualisation animée (résultat réel).</div>
+</header>
+
+<div class="row g-4">
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body d-flex flex-column align-items-center">
+        <div class="position-relative" style="width:280px;height:280px;">
+          <div class="position-absolute top-0 start-50 translate-middle-x"
+               style="width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:26px solid var(--bs-primary);z-index:3;">
+          </div>
+          <div id="wheel" class="rounded-circle"
+               style="width:100%;height:100%;border:6px solid #fff;box-shadow:0 10px 30px rgba(0,0,0,.08);
+                      background:
+                        conic-gradient(
+                          rgba(25,135,84,.85) 0deg,   rgba(25,135,84,.85) 90deg,
+                          rgba(13,202,240,.85) 90deg, rgba(13,202,240,.85) 180deg,
+                          rgba(255,193,7,.90) 180deg, rgba(255,193,7,.90) 270deg,
+                          rgba(220,53,69,.90) 270deg, rgba(220,53,69,.90) 360deg
+                        );
+                      position:relative; z-index:1; transform:rotate(0deg);">
+          </div>
+        </div>
+
+        <div class="mt-4 text-center">
+          <div class="badge text-bg-{{ ui.badge }} px-3 py-2">Résultat : {{ ui.label }}</div>
+          <div class="mt-2 fw-semibold">{{ reward.label }}</div>
+          <div class="text-secondary small">Client #{{ reward.client_id }} • Reward #{{ reward.id }}</div>
+        </div>
+        <div class="mt-4">
+          <a href="{% url 'dashboard:client_detail' pk=reward.client_id %}" class="btn btn-outline-secondary">Retour fiche client</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const wheel = document.getElementById('wheel');
+  const target = {{ target_angle|default:1440 }};
+  wheel.style.transition = 'transform 2.2s cubic-bezier(.17,.67,.13,1.02)';
+  setTimeout(()=>{ wheel.style.transform = `rotate(${target}deg)`; }, 60);
+})();
+</script>
+{% endblock %}
+===== ./templates/rewards/list.html =====
+{# templates/rewards/list.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Récompenses • ParrainApp{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Récompenses</h1>
+  <div class="text-secondary">Définissez les cadeaux (nom) et le délai. Les probabilités sont fixes.</div>
+</header>
+
+{% if not items %}
+  <div class="card shadow-sm"><div class="card-body text-secondary">Aucune récompense.</div></div>
+{% else %}
+  <div class="row g-3">
+    {% for r, ui in items %}
+      <div class="col-md-6 col-xl-3">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header bg-{{ ui.badge }}-subtle d-flex justify-content-between">
+            <span class="badge text-bg-{{ ui.badge }}">
+              {% if ui.label == "Moyen" %}Moyen{% else %}{{ ui.label }}{% endif %}
+            </span>
+            <small class="text-secondary">~{{ r.probability_display }}</small>
+          </div>
+          <div class="card-body d-flex flex-column">
+            <h3 class="h6">{{ r.label }}</h3>
+            <div class="text-secondary small mb-3">
+              Délai : {{ r.cooldown_months }} mois
+            </div>
+            <div class="mt-auto d-flex gap-2">
+              <a class="btn btn-sm btn-outline-primary" href="{% url 'rewards:update' r.pk %}">Modifier</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}
+===== ./templates/rewards/confirm_delete.html =====
+{# templates/rewards/confirm_delete.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Supprimer la récompense{% endblock %}
+
+{% block content %}
+<header class="mb-3">
+  <h1 class="h4 section-title mb-1">Supprimer la récompense</h1>
+</header>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <p>Supprimer définitivement <strong>{{ reward.label }}</strong> ?</p>
+    <form method="post" class="d-flex gap-2">
+      {% csrf_token %}
+      <button class="btn btn-danger" type="submit">Supprimer</button>
+      <a class="btn btn-outline-secondary" href="{% url 'rewards:list' %}">Annuler</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

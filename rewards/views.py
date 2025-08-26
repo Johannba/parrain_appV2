@@ -4,16 +4,16 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
 from accounts.models import Company
-from .models import RewardTemplate
+from .models import RewardTemplate,Reward
 from .forms import RewardTemplateForm
 from dashboard.models import Referral
 from django.views.decorators.http import require_POST
 
 BUCKET_UI = {
-    "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "80/100"},
-    "MOYEN":     {"label": "Moyen",     "badge": "info",    "prob": "19/100"},
-    "RARE":      {"label": "Rare",      "badge": "warning", "prob": "1/100"},
-    "TRES_RARE": {"label": "Très rare", "badge": "danger",  "prob": "1/10000"},
+    "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "980/1000"},
+    "MOYEN":     {"label": "Moyen",     "badge": "info",    "prob": "19/1000"},
+    "RARE":      {"label": "Rare",      "badge": "warning", "prob": "1/1000"},
+    "TRES_RARE": {"label": "Très rare", "badge": "danger",  "prob": "1/100000"},
 }
 
 def _current_company(request):
@@ -52,6 +52,10 @@ def reward_list(request):
 
     ensure_reward_templates(company)
     items = RewardTemplate.objects.filter(company=company)
+
+    # ordre voulu : Souvent → Moyen → Rare → Très rare
+    order = {"SOUVENT": 0, "MOYEN": 1, "RARE": 2, "TRES_RARE": 3}
+    items = sorted(items, key=lambda r: order.get(r.bucket, 99))
 
     # pour l’affichage couleur/badge
     items = [
@@ -98,3 +102,35 @@ def referral_delete(request, pk: int):
     referral.delete()
     messages.success(request, "Parrainage supprimé.")
     return redirect("dashboard:client_detail", pk=back_client_id)
+
+
+# rewards/views.py (ajoute en haut)
+from .models import Reward  # pour charger la récompense réelle
+
+# ...
+
+@login_required
+def reward_spin(request, reward_id: int):
+    """
+    Page avec une roue animée qui s'arrête sur la récompense réellement créée.
+    """
+    reward = get_object_or_404(
+        Reward.objects.select_related("company", "client"),
+        pk=reward_id
+    )
+
+    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]  # 4 segments
+    segment = 360 / len(wheel_order)  # 90°
+    try:
+        idx = wheel_order.index(reward.bucket)
+    except ValueError:
+        idx = 0
+
+    target_angle = 4 * 360 + int(idx * segment + segment / 2)  # 4 tours + milieu du segment
+
+    ui = BUCKET_UI.get(reward.bucket, {"label": reward.bucket, "badge": "secondary"})
+    return render(request, "rewards/spin.html", {
+        "reward": reward,
+        "ui": ui,
+        "target_angle": target_angle,
+    })

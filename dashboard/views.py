@@ -11,14 +11,12 @@ from django.urls import reverse
 from accounts.models import Company
 from dashboard.models import Client, Referral
 from .forms import ClientForm, ReferralForm
-from rewards.models import Reward
+from rewards.models import Reward, RewardTemplate
 from rewards.forms import RewardTemplateForm
 
 # Tirage de récompense
-from rewards.services.probabilities import (
-    tirer_recompense, SOUVENT, MOYEN, RARE, TRES_RARE
-)
-
+from rewards.services.probabilities import tirer_recompense, SOUVENT, MOYEN, RARE, TRES_RARE
+from django.db import transaction
 
 # -------------------------------------------------------------
 # Helpers
@@ -360,8 +358,8 @@ def reward_create(request, pk: int):
 @transaction.atomic
 def validate_referral_and_award(request, referral_id: int):
     """
-    Valide un parrainage ET effectue 1 tirage sur la roue de proba de l’entreprise.
-    Crée une Reward alignée sur le token tiré. (Cadeau attribué au filleul)
+    Valide un parrainage et attribue la récompense au FILLEUL (referee),
+    puis redirige vers l'animation.
     """
     _require_company_staff(request.user)
 
@@ -370,40 +368,75 @@ def validate_referral_and_award(request, referral_id: int):
         pk=referral_id
     )
 
-    # Sécurité multi‑entreprises
     user_company = _company_for(request.user)
     if user_company and referral.company_id != user_company.id and not _is_superadmin(request.user):
         messages.error(request, "Ce parrainage n’appartient pas à votre entreprise.")
-        return redirect(reverse("dashboard:referrals_list"))
+        return redirect("dashboard:clients_list")
 
-    # Bénéficiaire : le filleul (adapter si tu préfères le parrain)
-    client: Client = referral.referee
+    # Bénéficiaire = FILLEUL
+    client = referral.referee
 
-    # Tirage EXACT via la roue de la company
+    # Tirage exact
     token = tirer_recompense(referral.company)
 
-    LABELS = {
-        SOUVENT:   "Récompense Souvent",
-        MOYEN:     "Récompense Moyen",
-        RARE:      "Récompense Rare",
-        TRES_RARE: "Récompense Très rare",
-    }
-    STATE = "PENDING"  # "SENT" si envoi instantané
+    # Clone du template correspondant au token tiré
+    tpl = get_object_or_404(RewardTemplate, company=referral.company, bucket=token)
 
     reward = Reward.objects.create(
         company=referral.company,
         client=client,
-        label=LABELS.get(token, "Récompense"),
-        code="",
-        channel="email",
-        state=STATE,
+        label=tpl.label,
+        bucket=token,
+        cooldown_days=tpl.cooldown_days,
+        state="PENDING",
     )
 
     messages.success(
         request,
-        f"Parrainage validé. Tirage : {token.replace('_',' ').title()} • "
-        f"Récompense #{reward.pk} créée pour {client}."
+        f"Parrainage validé. Récompense pour le filleul « {client} » : {tpl.label}."
     )
-    # Tu peux aussi rediriger vers la fiche client :
-    # return redirect("dashboard:client_detail", pk=client.pk)
-    return redirect(reverse("rewards:list"))
+    return redirect("rewards:spin", reward_id=reward.id)
+
+
+# ---------------------------
+# ATTRIBUER AU PARRAIN (referrer)
+# ---------------------------
+@login_required
+@transaction.atomic
+def validate_referral_and_award_referrer(request, referral_id: int):
+    """
+    Valide un parrainage et attribue la récompense au PARRAIN (referrer),
+    puis redirige vers l'animation.
+    """
+    _require_company_staff(request.user)
+
+    referral = get_object_or_404(
+        Referral.objects.select_related("referee", "referrer", "company"),
+        pk=referral_id
+    )
+
+    user_company = _company_for(request.user)
+    if user_company and referral.company_id != user_company.id and not _is_superadmin(request.user):
+        messages.error(request, "Ce parrainage n’appartient pas à votre entreprise.")
+        return redirect("dashboard:clients_list")
+
+    # Bénéficiaire = PARRAIN
+    client = referral.referrer
+
+    token = tirer_recompense(referral.company)
+    tpl = get_object_or_404(RewardTemplate, company=referral.company, bucket=token)
+
+    reward = Reward.objects.create(
+        company=referral.company,
+        client=client,
+        label=tpl.label,
+        bucket=token,
+        cooldown_days=tpl.cooldown_days,
+        state="PENDING",
+    )
+
+    messages.success(
+        request,
+        f"Parrainage validé. Récompense pour le parrain « {client} » : {tpl.label}."
+    )
+    return redirect("rewards:spin", reward_id=reward.id)
