@@ -112,25 +112,89 @@ from .models import Reward  # pour charger la récompense réelle
 @login_required
 def reward_spin(request, reward_id: int):
     """
-    Page avec une roue animée qui s'arrête sur la récompense réellement créée.
+    Page avec une roue animée et des couleurs qui correspondent au type de récompense.
+    - Segments fixes (SOUVENT/MOYEN/RARE/TRES_RARE) en vert/bleu/orange/rouge.
+    - Aiguille, bordure et lueur teintent selon la "badge" (success/info/warning/danger).
     """
     reward = get_object_or_404(
         Reward.objects.select_related("company", "client"),
         pk=reward_id
     )
 
-    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]  # 4 segments
+    # Ordre des 4 segments (90° par segment) :
+    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
     segment = 360 / len(wheel_order)  # 90°
     try:
         idx = wheel_order.index(reward.bucket)
     except ValueError:
         idx = 0
 
-    target_angle = 4 * 360 + int(idx * segment + segment / 2)  # 4 tours + milieu du segment
+    # 4 tours complets + position au centre du segment cible
+    target_angle = 4 * 360 + int(idx * segment + segment / 2)
 
     ui = BUCKET_UI.get(reward.bucket, {"label": reward.bucket, "badge": "secondary"})
     return render(request, "rewards/spin.html", {
         "reward": reward,
-        "ui": ui,
+        "ui": ui,                   # -> success/info/warning/danger
         "target_angle": target_angle,
+    })
+    
+    
+    # rewards/views.py
+from django.db.models import Q
+from django.core.paginator import Paginator
+from django.contrib.auth.decorators import login_required
+
+STATE_UI = {
+    "PENDING":  {"label": "En attente",   "badge": "warning"},
+    "SENT":     {"label": "Envoyée",      "badge": "success"},
+    "DISABLED": {"label": "Désactivée",   "badge": "secondary"},
+    "ARCHIVED": {"label": "Archivée",     "badge": "dark"},
+}
+
+@login_required
+def rewards_history_company(request):
+    """
+    Historique de TOUTES les récompenses d'une entreprise (tous les clients).
+    Filtres: bucket, état, recherche. Pagination.
+    """
+    company = _current_company(request)
+    if not company:
+        messages.error(request, "Aucune entreprise sélectionnée.")
+        return redirect("dashboard:root")
+
+    qs = (Reward.objects
+          .select_related("client")
+          .filter(company=company)
+          .order_by("-created_at", "-id"))
+
+    # filtres GET
+    bucket = (request.GET.get("bucket") or "").strip().upper()
+    state  = (request.GET.get("state") or "").strip().upper()
+    q      = (request.GET.get("q") or "").strip()
+
+    if bucket in BUCKET_UI.keys():
+        qs = qs.filter(bucket=bucket)
+    if state in STATE_UI.keys():
+        qs = qs.filter(state=state)
+    if q:
+        qs = qs.filter(
+            Q(client__first_name__icontains=q) |
+            Q(client__last_name__icontains=q)  |
+            Q(client__email__icontains=q)      |
+            Q(label__icontains=q)
+        )
+
+    page = Paginator(qs, 20).get_page(request.GET.get("p"))
+
+    return render(request, "rewards/history.html", {
+        "company": company,
+        "page": page,
+        "bucket": bucket,
+        "state": state,
+        "q": q,
+        "BUCKET_UI": BUCKET_UI,
+        "STATE_UI": STATE_UI,
+        "buckets": [(k, v["label"]) for k, v in BUCKET_UI.items()],
+        "states": [(k, v["label"]) for k, v in STATE_UI.items()],
     })

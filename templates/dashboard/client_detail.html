@@ -38,6 +38,14 @@
           <div><span class="text-secondary">Email :</span> {{ client.email|default:"—" }}</div>
           <div><span class="text-secondary">Entreprise :</span> {{ company.name }}</div>
         </div>
+        <div class="d-flex justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+              <a href="{% url 'rewards:history_company' %}"
+                class="btn btn-sm btn-outline-primary">
+                Historique des récompenses (entreprise)
+              </a>
+            </div>
+          </div>
 
         <hr class="my-2">
 
@@ -47,82 +55,84 @@
         </div>
 
         <div class="tall-card">
-  <div class="card-body p-0">
-    {% if history_page and history_page.object_list %}
-      <div class="list-group list-group-flush">
-        {% for r in history_page.object_list %}
-          <div class="list-group-item">
-            <div class="d-flex justify-content-between align-items-center">
-              <div class="me-2">
-                {% if r.referrer_id == client.id %}
-                  <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
-                  <small class="text-secondary d-block">
-                    Parrainé par {{ client.first_name }} {{ client.last_name }}
-                  </small>
-                {% else %}
-                  <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
-                  <small class="text-secondary d-block">Parrain de ce client</small>
-                {% endif %}
-                <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
-              </div>
-
-              <div class="d-flex flex-column gap-1">
-                {% for ref in history_page.object_list %}
-                    <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2">
-                      <div>
-                        <div class="fw-semibold">{{ ref.referrer }} → {{ ref.referee }}</div>
-                        <div class="text-secondary small">Le {{ ref.created_at|date:"d/m/Y H:i" }}</div>
+          <div class="card-body p-0">
+            {% if history_page and history_page.object_list %}
+              <div class="list-group list-group-flush">
+                {% for r in history_page.object_list %}
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div class="me-2">
+                        {% if r.referrer_id == client.id %}
+                          <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
+                          <small class="text-secondary d-block">
+                            Parrainé par {{ client.first_name }} {{ client.last_name }}
+                          </small>
+                        {% else %}
+                          <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
+                          <small class="text-secondary d-block">Parrain de ce client</small>
+                        {% endif %}
+                        <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
                       </div>
 
-                      <form method="post"
-                            action="{% url 'dashboard:validate_referral_and_award_referrer' referral_id=ref.id %}">
-                        {% csrf_token %}
-                        <button class="btn btn-sm btn-primary">
-                          Attribuer au parrain (tirage + animation)
-                        </button>
-                      </form>
+                      <div class="d-flex flex-column gap-1 align-items-end">
+                        {# Action PARRAIN : une récompense par filleul (referral) #}
+                        {% if r.referrer_id == client.id %}
+                          {% if r.existing_reward_id %}
+                            <a class="btn btn-sm btn-outline-secondary"
+                               href="{% url 'rewards:spin' reward_id=r.existing_reward_id %}">
+                               Distribués
+                            </a>
+                            {% else %}
+                            <form method="post"
+                            action="{% url 'dashboard:validate_referral_and_award_referrer' referral_id=r.id %}">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-primary">
+                              Attribuer  
+                            </button>
+                          </form>
+                          {% endif %}
+                          {% endif %}
+                          {# Suppression du parrainage #}
+                          <form method="post"
+                          action="{% url 'dashboard:referral_delete' r.id %}"
+                          onsubmit="return confirm('Supprimer ce parrainage ?');">
+                          {% csrf_token %}
+          
+                          <input type="hidden" name="back_client" value="{{ client.id }}">
+                          <button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button>
+                        </form>
+                      </div>
                     </div>
-                  {% empty %}
-                    <div class="text-secondary">Aucun parrainage.</div>
-                  {% endfor %}
-
-
-                <form method="post"
-                      action="{% url 'dashboard:referral_delete' r.id %}"
-                      onsubmit="return confirm('Supprimer ce parrainage ?');">
-                  {% csrf_token %}
-                  <input type="hidden" name="back_client" value="{{ client.id }}">
-                  <button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button>
-                </form>
+                  </div>
+                {% empty %}
+                  <div class="list-group-item text-secondary">Aucun parrainage.</div>
+                {% endfor %}
               </div>
-            </div>
+
+              {% if history_page.paginator.num_pages > 1 %}
+                <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+                  {% if history_page.has_previous %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+                      Préc.
+                    </a>
+                  {% endif %}
+                  <span class="small align-self-center">
+                    Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}
+                  </span>
+                  {% if history_page.has_next %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+                      Suiv.
+                    </a>
+                  {% endif %}
+                </div>
+              {% endif %}
+            {% else %}
+              <div class="p-3 text-secondary">Aucun parrainage.</div>
+            {% endif %}
           </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="p-3 text-secondary">Aucun parrainage pour l’instant.</div>
-    {% endif %}
-  </div>
-
-  {% if history_page and history_page.paginator.num_pages > 1 %}
-    <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
-      {% if history_page.has_previous %}
-        <a class="btn btn-sm btn-outline-secondary"
-           href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
-          Préc.
-        </a>
-      {% endif %}
-      <span class="small align-self-center">Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}</span>
-      {% if history_page.has_next %}
-        <a class="btn btn-sm btn-outline-secondary"
-           href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
-          Suiv.
-        </a>
-      {% endif %}
-    </div>
-  {% endif %}
-</div>
-
+        </div>
       </div>
     </div>
   </div>

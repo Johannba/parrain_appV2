@@ -15,7 +15,7 @@ def get_item(d, key):
 # rewards/models.py
 from django.db import models
 from accounts.models import Company
-from dashboard.models import Client
+from dashboard.models import Client, Referral
 
 
 class ProbabilityWheel(models.Model):
@@ -82,16 +82,12 @@ class RewardTemplate(models.Model):
 
 
 class Reward(models.Model):
-    """
-    Récompense INSTANTIÉE pour un client (clonée depuis un template).
-    """
     BUCKETS = (
         ("SOUVENT", "Souvent"),
         ("MOYEN", "Moyen"),
         ("RARE", "Rare"),
         ("TRES_RARE", "Très rare"),
     )
-
     STATE_CHOICES = (
         ("PENDING", "En attente"),
         ("SENT", "Envoyée"),
@@ -99,29 +95,33 @@ class Reward(models.Model):
         ("ARCHIVED", "Archivée"),
     )
 
-    company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="rewards"
-    )
-    client = models.ForeignKey(
-        Client, on_delete=models.CASCADE, related_name="rewards"
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="rewards")
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="rewards")
+
+    # NEW: relie la récompense à un parrainage précis (permet d'appliquer la règle « 1 par filleul »)
+    referral = models.ForeignKey(
+        Referral, on_delete=models.CASCADE, related_name="rewards",
+        null=True, blank=True
     )
 
-    # recopie du template au moment de l’attribution
     label = models.CharField(max_length=255)
     bucket = models.CharField(max_length=20, choices=BUCKETS)
     cooldown_days = models.PositiveIntegerField(default=0)
-
     state = models.CharField(max_length=20, choices=STATE_CHOICES, default="PENDING")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         indexes = [models.Index(fields=["company", "client", "state"])]
+        # Empêche 2 rewards pour le même parrain ET le même referral (donc même filleul)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "client", "referral"],
+                name="uniq_reward_by_referrer_and_referral",
+            )
+        ]
 
     def __str__(self):
-        return f"{self.label} ({self.get_bucket_display()})"
-
-
-===== ./rewards/probabilities.py =====
+        return f"{self.label} ({self.get_bucket_display()})"===== ./rewards/probabilities.py =====
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
@@ -359,7 +359,7 @@ def get_item(d, key):
 ===== ./rewards/urls.py =====
 # rewards/urls.py
 from django.urls import path
-from .views import reward_list, reward_update, referral_delete, reward_spin  # + reward_spin
+from .views import reward_list, reward_update, referral_delete, reward_spin, rewards_history_company
 
 app_name = "rewards"
 
@@ -369,6 +369,7 @@ urlpatterns = [
     path("referrals/<int:pk>/delete/", referral_delete, name="referral_delete"),
     # NEW: page d’animation de la roue pour une Reward donnée
     path("spin/<int:reward_id>/", reward_spin, name="spin"),
+    path("history/", rewards_history_company, name="history_company"),
 ]
 ===== ./rewards/services/probabilities.py =====
 # rewards/services/probabilities.py
@@ -664,28 +665,93 @@ from .models import Reward  # pour charger la récompense réelle
 @login_required
 def reward_spin(request, reward_id: int):
     """
-    Page avec une roue animée qui s'arrête sur la récompense réellement créée.
+    Page avec une roue animée et des couleurs qui correspondent au type de récompense.
+    - Segments fixes (SOUVENT/MOYEN/RARE/TRES_RARE) en vert/bleu/orange/rouge.
+    - Aiguille, bordure et lueur teintent selon la "badge" (success/info/warning/danger).
     """
     reward = get_object_or_404(
         Reward.objects.select_related("company", "client"),
         pk=reward_id
     )
 
-    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]  # 4 segments
+    # Ordre des 4 segments (90° par segment) :
+    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
     segment = 360 / len(wheel_order)  # 90°
     try:
         idx = wheel_order.index(reward.bucket)
     except ValueError:
         idx = 0
 
-    target_angle = 4 * 360 + int(idx * segment + segment / 2)  # 4 tours + milieu du segment
+    # 4 tours complets + position au centre du segment cible
+    target_angle = 4 * 360 + int(idx * segment + segment / 2)
 
     ui = BUCKET_UI.get(reward.bucket, {"label": reward.bucket, "badge": "secondary"})
     return render(request, "rewards/spin.html", {
         "reward": reward,
-        "ui": ui,
+        "ui": ui,                   # -> success/info/warning/danger
         "target_angle": target_angle,
-    })===== ./templates/rewards/form.html =====
+    })
+    
+    
+    # rewards/views.py
+from django.db.models import Q
+from django.core.paginator import Paginator
+from django.contrib.auth.decorators import login_required
+
+STATE_UI = {
+    "PENDING":  {"label": "En attente",   "badge": "warning"},
+    "SENT":     {"label": "Envoyée",      "badge": "success"},
+    "DISABLED": {"label": "Désactivée",   "badge": "secondary"},
+    "ARCHIVED": {"label": "Archivée",     "badge": "dark"},
+}
+
+@login_required
+def rewards_history_company(request):
+    """
+    Historique de TOUTES les récompenses d'une entreprise (tous les clients).
+    Filtres: bucket, état, recherche. Pagination.
+    """
+    company = _current_company(request)
+    if not company:
+        messages.error(request, "Aucune entreprise sélectionnée.")
+        return redirect("dashboard:root")
+
+    qs = (Reward.objects
+          .select_related("client")
+          .filter(company=company)
+          .order_by("-created_at", "-id"))
+
+    # filtres GET
+    bucket = (request.GET.get("bucket") or "").strip().upper()
+    state  = (request.GET.get("state") or "").strip().upper()
+    q      = (request.GET.get("q") or "").strip()
+
+    if bucket in BUCKET_UI.keys():
+        qs = qs.filter(bucket=bucket)
+    if state in STATE_UI.keys():
+        qs = qs.filter(state=state)
+    if q:
+        qs = qs.filter(
+            Q(client__first_name__icontains=q) |
+            Q(client__last_name__icontains=q)  |
+            Q(client__email__icontains=q)      |
+            Q(label__icontains=q)
+        )
+
+    page = Paginator(qs, 20).get_page(request.GET.get("p"))
+
+    return render(request, "rewards/history.html", {
+        "company": company,
+        "page": page,
+        "bucket": bucket,
+        "state": state,
+        "q": q,
+        "BUCKET_UI": BUCKET_UI,
+        "STATE_UI": STATE_UI,
+        "buckets": [(k, v["label"]) for k, v in BUCKET_UI.items()],
+        "states": [(k, v["label"]) for k, v in STATE_UI.items()],
+    })
+===== ./templates/rewards/form.html =====
 {# templates/rewards/form.html #}
 {% extends "base_dashboard.html" %}
 {% block title %}Modifier une récompense • ParrainApp{% endblock %}
@@ -805,51 +871,95 @@ def reward_spin(request, reward_id: int):
 {% block body_data_page %}recompenses{% endblock %}
 
 {% block content %}
-<header class="mb-4">
-  <h1 class="h4 section-title mb-1">Récompense attribuée</h1>
-  <div class="text-secondary">Visualisation animée (résultat réel).</div>
+<style>
+/* --------- Variables de teinte ---------- */
+.wheel {
+  --accent: #6c757d; /* fallback */
+  width: 300px; height: 300px;
+  border-radius: 50%;
+  border: 8px solid var(--accent);
+  position: relative;
+  margin: 0 auto;
+  box-shadow:
+    0 0 0 4px rgba(0,0,0,.03),
+    0 0 30px rgba(0,0,0,.06) inset;
+  transition: box-shadow .3s ease, border-color .3s ease;
+}
+.wheel.is-spinning { box-shadow: 0 0 0 4px rgba(0,0,0,.03), 0 0 46px var(--accent); }
+
+/* Aiguille (triangle en haut) */
+.wheel::after{
+  content:"";
+  position:absolute; top:-20px; left:50%; transform:translateX(-50%);
+  width:0; height:0;
+  border-left: 12px solid transparent;
+  border-right:12px solid transparent;
+  border-bottom:22px solid var(--accent);
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.15));
+}
+
+/* Disque interne : conic-gradient 4 segments dans l’ordre SOUVENT/MOYEN/RARE/TRES_RARE */
+.wheel__disk{
+  position:absolute; inset: 16px;
+  border-radius:50%;
+  background:
+    conic-gradient(
+      rgba(25,135,84,.90) 0deg,   rgba(25,135,84,.90) 90deg,   /* success  -> SOUVENT */
+      rgba(13,202,240,.90) 90deg, rgba(13,202,240,.90) 180deg, /* info     -> MOYEN   */
+      rgba(253,126,20,.92) 180deg,rgba(253,126,20,.92) 270deg, /* orange   -> RARE    */
+      rgba(220,53,69,.92) 270deg, rgba(220,53,69,.92) 360deg   /* danger   -> TRES_RARE */
+    );
+  transform-origin:50% 50%;
+}
+
+/* Animation de rotation */
+.spin-anim { transition: transform 2.2s cubic-bezier(.17,.67,.13,1.02); }
+
+/* Map badge -> couleur d’accent */
+.wheel--success { --accent:#198754; } /* vert   */
+.wheel--info    { --accent:#0dcaf0; } /* bleu   */
+.wheel--warning { --accent:#fd7e14; } /* orange */
+.wheel--danger  { --accent:#dc3545; } /* rouge  */
+
+/* Carte résultat */
+.result-card { border-left: 4px solid var(--accent); }
+</style>
+
+<header class="mb-4 d-flex justify-content-between align-items-center">
+  <div>
+    <h1 class="h5 mb-1">Animation de la roue</h1>
+    <div class="text-secondary">
+      Récompense attribuée à <strong>{{ reward.client.last_name }} {{ reward.client.first_name }}</strong>
+    </div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'dashboard:client_detail' pk=reward.client_id %}">Retour fiche client</a>
 </header>
 
-<div class="row g-4">
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm">
-      <div class="card-body d-flex flex-column align-items-center">
-        <div class="position-relative" style="width:280px;height:280px;">
-          <div class="position-absolute top-0 start-50 translate-middle-x"
-               style="width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:26px solid var(--bs-primary);z-index:3;">
-          </div>
-          <div id="wheel" class="rounded-circle"
-               style="width:100%;height:100%;border:6px solid #fff;box-shadow:0 10px 30px rgba(0,0,0,.08);
-                      background:
-                        conic-gradient(
-                          rgba(25,135,84,.85) 0deg,   rgba(25,135,84,.85) 90deg,
-                          rgba(13,202,240,.85) 90deg, rgba(13,202,240,.85) 180deg,
-                          rgba(255,193,7,.90) 180deg, rgba(255,193,7,.90) 270deg,
-                          rgba(220,53,69,.90) 270deg, rgba(220,53,69,.90) 360deg
-                        );
-                      position:relative; z-index:1; transform:rotate(0deg);">
-          </div>
-        </div>
+<div class="card shadow-sm">
+  <div class="card-body d-flex flex-column align-items-center">
+    {# La classe wheel--{{ ui.badge }} pose la bonne couleur (success/info/warning/danger) #}
+    <div class="wheel wheel--{{ ui.badge }} is-spinning">
+      <div id="disk" class="wheel__disk spin-anim"></div>
+    </div>
 
-        <div class="mt-4 text-center">
-          <div class="badge text-bg-{{ ui.badge }} px-3 py-2">Résultat : {{ ui.label }}</div>
-          <div class="mt-2 fw-semibold">{{ reward.label }}</div>
-          <div class="text-secondary small">Client #{{ reward.client_id }} • Reward #{{ reward.id }}</div>
-        </div>
-        <div class="mt-4">
-          <a href="{% url 'dashboard:client_detail' pk=reward.client_id %}" class="btn btn-outline-secondary">Retour fiche client</a>
-        </div>
-      </div>
+    <div class="mt-4 text-center result-card px-3 py-2 rounded">
+      <span class="badge text-bg-{{ ui.badge }} me-2">{{ ui.label }}</span>
+      <strong id="rewardLabel">{{ reward.label }}</strong>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  const wheel = document.getElementById('wheel');
+  const disk = document.getElementById('disk');
   const target = {{ target_angle|default:1440 }};
-  wheel.style.transition = 'transform 2.2s cubic-bezier(.17,.67,.13,1.02)';
-  setTimeout(()=>{ wheel.style.transform = `rotate(${target}deg)`; }, 60);
+  // Lance la rotation après un mini délai pour laisser le layout se peindre
+  setTimeout(()=>{ disk.style.transform = `rotate(${target}deg)`; }, 60);
+  // Retire l'état “is-spinning” une fois l’animation finie (effet de lueur)
+  disk.addEventListener('transitionend', () => {
+    const wheel = disk.closest('.wheel');
+    wheel && wheel.classList.remove('is-spinning');
+  }, { once: true });
 })();
 </script>
 {% endblock %}
@@ -890,6 +1000,127 @@ def reward_spin(request, reward_id: int):
         </div>
       </div>
     {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}
+===== ./templates/rewards/history.html =====
+{% extends "base_dashboard.html" %}
+{% block title %}Historique des récompenses • {{ company.name }}{% endblock %}
+{% block body_data_page %}recompenses{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-2">Historique des récompenses — {{ company.name }}</h1>
+  <div class="text-secondary">Toutes les récompenses de l’entreprise, tous clients confondus.</div>
+</header>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-lg-3">
+        <label class="form-label mb-1">Type</label>
+        <select name="bucket" class="form-select">
+          <option value="">— Tous —</option>
+          {% for k, lbl in buckets %}
+            <option value="{{ k }}" {% if k == bucket %}selected{% endif %}>
+              {{ BUCKET_UI.k.label|default:lbl }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-lg-3">
+        <label class="form-label mb-1">État</label>
+        <select name="state" class="form-select">
+          <option value="">— Tous —</option>
+          {% for k, lbl in states %}
+            <option value="{{ k }}" {% if k == state %}selected{% endif %}>
+              {{ STATE_UI.k.label|default:lbl }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-lg-4">
+        <label class="form-label mb-1">Recherche</label>
+        <input type="text" name="q" value="{{ q }}" class="form-control"
+               placeholder="Client (nom/prénom/email) ou libellé de récompense…">
+      </div>
+
+      <div class="col-lg-2 d-flex gap-2">
+        <button class="btn btn-primary w-100" type="submit">Filtrer</button>
+        <a class="btn btn-outline-secondary" href="{% url 'rewards:history_company' %}">Réinitialiser</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if page and page.object_list %}
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 140px;">Date</th>
+            <th>Client</th>
+            <th>Récompense</th>
+            <th style="width: 130px;">Type</th>
+            <th style="width: 130px;">État</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in page.object_list %}
+            <tr>
+              <td>
+                <div class="small">{{ r.created_at|date:"d/m/Y" }}</div>
+                <div class="text-secondary small">{{ r.created_at|date:"H:i" }}</div>
+              </td>
+              <td>
+                <div class="fw-semibold">
+                  <a href="{% url 'dashboard:client_detail' pk=r.client_id %}" class="text-decoration-none">
+                    {{ r.client.last_name }} {{ r.client.first_name }}
+                  </a>
+                </div>
+                <div class="text-secondary small">{{ r.client.email|default:"—" }}</div>
+              </td>
+              <td><div class="fw-semibold">{{ r.label }}</div></td>
+              <td>
+                {% with ui=BUCKET_UI.r.bucket %}
+                  <span class="badge text-bg-{{ ui.badge|default:'secondary' }}">{{ ui.label|default:r.bucket }}</span>
+                {% endwith %}
+              </td>
+              <td>
+                {% with st=STATE_UI.r.state %}
+                  <span class="badge text-bg-{{ st.badge|default:'secondary' }}">{{ st.label|default:r.state }}</span>
+                {% endwith %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.paginator.num_pages > 1 %}
+      <div class="card-footer bg-transparent d-flex justify-content-end align-items-center gap-2">
+        {% if page.has_previous %}
+          <a class="btn btn-sm btn-outline-secondary"
+             href="?p={{ page.previous_page_number }}&bucket={{ bucket }}&state={{ state }}&q={{ q|urlencode }}">
+            Préc.
+          </a>
+        {% endif %}
+        <span class="small">Page {{ page.number }}/{{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a class="btn btn-sm btn-outline-secondary"
+             href="?p={{ page.next_page_number }}&bucket={{ bucket }}&state={{ state }}&q={{ q|urlencode }}">
+            Suiv.
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="card shadow-sm">
+    <div class="card-body text-secondary">Aucune récompense trouvée pour ces critères.</div>
   </div>
 {% endif %}
 {% endblock %}

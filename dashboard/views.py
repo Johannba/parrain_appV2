@@ -139,7 +139,10 @@ def client_detail(request, pk: int):
     if _is_superadmin(u):
         client = get_object_or_404(Client.objects.select_related("company"), pk=pk)
     else:
-        client = get_object_or_404(Client.objects.select_related("company"), pk=pk, company=u.company)
+        client = get_object_or_404(
+            Client.objects.select_related("company"),
+            pk=pk, company=u.company
+        )
 
     # Historique des parrainages (où le client est impliqué)
     history_qs = (
@@ -151,7 +154,22 @@ def client_detail(request, pk: int):
     )
     history_page = Paginator(history_qs, 8).get_page(request.GET.get("h"))
 
-    # Récompenses par statut
+    # ---- Ajout : préparer le mapping referral_id -> reward_id (existante pour CE parrainage) ----
+    ref_ids = [r.id for r in history_page.object_list]
+    # NB: ceci suppose que Reward.referral existe (FK nullable). Si tu ne l'as pas, dis-le et je te donne la variante "soft".
+    rewards_for_rows = (
+        Reward.objects
+        .filter(company=client.company, client=client, referral_id__in=ref_ids)
+        .exclude(state="DISABLED")
+        .values_list("referral_id", "id")
+    )
+    ref_rewards = {ref_id: reward_id for ref_id, reward_id in rewards_for_rows}
+
+    # On annote chaque objet de la page pour éviter tout filtre/templatetag
+    for r in history_page.object_list:
+        r.existing_reward_id = ref_rewards.get(r.id)  # None si pas de reward encore
+
+    # Récompenses par statut (pour les 3 colonnes)
     rewards_ok      = Reward.objects.filter(company=client.company, client=client, state="SENT").order_by("-id")
     rewards_pending = Reward.objects.filter(company=client.company, client=client, state="PENDING").order_by("-id")
     rewards_unused  = Reward.objects.filter(company=client.company, client=client, state="DISABLED").order_by("-id")
@@ -177,7 +195,6 @@ def client_detail(request, pk: int):
         "kpi_attente": kpi_attente,
         "kpi_nonutils": kpi_nonutils,
     })
-
 
 @login_required
 def client_update(request, pk):
@@ -385,6 +402,7 @@ def validate_referral_and_award(request, referral_id: int):
     reward = Reward.objects.create(
         company=referral.company,
         client=client,
+        referral=referral,          # ← on trace le lien (clé de la règle métier)
         label=tpl.label,
         bucket=token,
         cooldown_days=tpl.cooldown_days,
@@ -405,38 +423,39 @@ def validate_referral_and_award(request, referral_id: int):
 @transaction.atomic
 def validate_referral_and_award_referrer(request, referral_id: int):
     """
-    Valide un parrainage et attribue la récompense au PARRAIN (referrer),
-    puis redirige vers l'animation.
+    Attribue une récompense au PARRAIN (referrer) pour CE parrainage.
+    - Autorise plusieurs rewards au même parrain SI ce sont des filleuls différents.
+    - Interdit 2 rewards pour le même (parrain, filleul) => vérifié via referral.
     """
-    _require_company_staff(request.user)
-
     referral = get_object_or_404(
         Referral.objects.select_related("referee", "referrer", "company"),
         pk=referral_id
     )
+    company = referral.company
+    referrer = referral.referrer  # bénéficiaire de la reward
 
-    user_company = _company_for(request.user)
-    if user_company and referral.company_id != user_company.id and not _is_superadmin(request.user):
-        messages.error(request, "Ce parrainage n’appartient pas à votre entreprise.")
-        return redirect("dashboard:clients_list")
+    # 1) Anti-doublon : existe déjà une reward pour CE (parrain, referral) ?
+    existing = Reward.objects.filter(company=company, client=referrer, referral=referral)\
+                             .exclude(state="DISABLED")\
+                             .order_by("-id")\
+                             .first()
+    if existing:
+        messages.info(request, "Une récompense existe déjà pour ce parrain et ce filleul.")
+        return redirect("rewards:spin", reward_id=existing.id)
 
-    # Bénéficiaire = PARRAIN
-    client = referral.referrer
-
-    token = tirer_recompense(referral.company)
-    tpl = get_object_or_404(RewardTemplate, company=referral.company, bucket=token)
+    # 2) Tirage EXACT (roues) puis clonage du template correspondant
+    token = tirer_recompense(company)
+    tpl = get_object_or_404(RewardTemplate, company=company, bucket=token)
 
     reward = Reward.objects.create(
-        company=referral.company,
-        client=client,
+        company=company,
+        client=referrer,
+        referral=referral,          # ← on trace le lien (clé de la règle métier)
         label=tpl.label,
         bucket=token,
         cooldown_days=tpl.cooldown_days,
         state="PENDING",
     )
 
-    messages.success(
-        request,
-        f"Parrainage validé. Récompense pour le parrain « {client} » : {tpl.label}."
-    )
+    messages.success(request, f"Récompense attribuée au parrain « {referrer} » pour le filleul « {referral.referee} » : {tpl.label}.")
     return redirect("rewards:spin", reward_id=reward.id)

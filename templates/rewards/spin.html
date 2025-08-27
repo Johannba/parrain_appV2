@@ -3,51 +3,95 @@
 {% block body_data_page %}recompenses{% endblock %}
 
 {% block content %}
-<header class="mb-4">
-  <h1 class="h4 section-title mb-1">Récompense attribuée</h1>
-  <div class="text-secondary">Visualisation animée (résultat réel).</div>
+<style>
+/* --------- Variables de teinte ---------- */
+.wheel {
+  --accent: #6c757d; /* fallback */
+  width: 300px; height: 300px;
+  border-radius: 50%;
+  border: 8px solid var(--accent);
+  position: relative;
+  margin: 0 auto;
+  box-shadow:
+    0 0 0 4px rgba(0,0,0,.03),
+    0 0 30px rgba(0,0,0,.06) inset;
+  transition: box-shadow .3s ease, border-color .3s ease;
+}
+.wheel.is-spinning { box-shadow: 0 0 0 4px rgba(0,0,0,.03), 0 0 46px var(--accent); }
+
+/* Aiguille (triangle en haut) */
+.wheel::after{
+  content:"";
+  position:absolute; top:-20px; left:50%; transform:translateX(-50%);
+  width:0; height:0;
+  border-left: 12px solid transparent;
+  border-right:12px solid transparent;
+  border-bottom:22px solid var(--accent);
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.15));
+}
+
+/* Disque interne : conic-gradient 4 segments dans l’ordre SOUVENT/MOYEN/RARE/TRES_RARE */
+.wheel__disk{
+  position:absolute; inset: 16px;
+  border-radius:50%;
+  background:
+    conic-gradient(
+      rgba(25,135,84,.90) 0deg,   rgba(25,135,84,.90) 90deg,   /* success  -> SOUVENT */
+      rgba(13,202,240,.90) 90deg, rgba(13,202,240,.90) 180deg, /* info     -> MOYEN   */
+      rgba(253,126,20,.92) 180deg,rgba(253,126,20,.92) 270deg, /* orange   -> RARE    */
+      rgba(220,53,69,.92) 270deg, rgba(220,53,69,.92) 360deg   /* danger   -> TRES_RARE */
+    );
+  transform-origin:50% 50%;
+}
+
+/* Animation de rotation */
+.spin-anim { transition: transform 2.2s cubic-bezier(.17,.67,.13,1.02); }
+
+/* Map badge -> couleur d’accent */
+.wheel--success { --accent:#198754; } /* vert   */
+.wheel--info    { --accent:#0dcaf0; } /* bleu   */
+.wheel--warning { --accent:#fd7e14; } /* orange */
+.wheel--danger  { --accent:#dc3545; } /* rouge  */
+
+/* Carte résultat */
+.result-card { border-left: 4px solid var(--accent); }
+</style>
+
+<header class="mb-4 d-flex justify-content-between align-items-center">
+  <div>
+    <h1 class="h5 mb-1">Animation de la roue</h1>
+    <div class="text-secondary">
+      Récompense attribuée à <strong>{{ reward.client.last_name }} {{ reward.client.first_name }}</strong>
+    </div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'dashboard:client_detail' pk=reward.client_id %}">Retour fiche client</a>
 </header>
 
-<div class="row g-4">
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm">
-      <div class="card-body d-flex flex-column align-items-center">
-        <div class="position-relative" style="width:280px;height:280px;">
-          <div class="position-absolute top-0 start-50 translate-middle-x"
-               style="width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:26px solid var(--bs-primary);z-index:3;">
-          </div>
-          <div id="wheel" class="rounded-circle"
-               style="width:100%;height:100%;border:6px solid #fff;box-shadow:0 10px 30px rgba(0,0,0,.08);
-                      background:
-                        conic-gradient(
-                          rgba(25,135,84,.85) 0deg,   rgba(25,135,84,.85) 90deg,
-                          rgba(13,202,240,.85) 90deg, rgba(13,202,240,.85) 180deg,
-                          rgba(255,193,7,.90) 180deg, rgba(255,193,7,.90) 270deg,
-                          rgba(220,53,69,.90) 270deg, rgba(220,53,69,.90) 360deg
-                        );
-                      position:relative; z-index:1; transform:rotate(0deg);">
-          </div>
-        </div>
+<div class="card shadow-sm">
+  <div class="card-body d-flex flex-column align-items-center">
+    {# La classe wheel--{{ ui.badge }} pose la bonne couleur (success/info/warning/danger) #}
+    <div class="wheel wheel--{{ ui.badge }} is-spinning">
+      <div id="disk" class="wheel__disk spin-anim"></div>
+    </div>
 
-        <div class="mt-4 text-center">
-          <div class="badge text-bg-{{ ui.badge }} px-3 py-2">Résultat : {{ ui.label }}</div>
-          <div class="mt-2 fw-semibold">{{ reward.label }}</div>
-          <div class="text-secondary small">Client #{{ reward.client_id }} • Reward #{{ reward.id }}</div>
-        </div>
-        <div class="mt-4">
-          <a href="{% url 'dashboard:client_detail' pk=reward.client_id %}" class="btn btn-outline-secondary">Retour fiche client</a>
-        </div>
-      </div>
+    <div class="mt-4 text-center result-card px-3 py-2 rounded">
+      <span class="badge text-bg-{{ ui.badge }} me-2">{{ ui.label }}</span>
+      <strong id="rewardLabel">{{ reward.label }}</strong>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  const wheel = document.getElementById('wheel');
+  const disk = document.getElementById('disk');
   const target = {{ target_angle|default:1440 }};
-  wheel.style.transition = 'transform 2.2s cubic-bezier(.17,.67,.13,1.02)';
-  setTimeout(()=>{ wheel.style.transform = `rotate(${target}deg)`; }, 60);
+  // Lance la rotation après un mini délai pour laisser le layout se peindre
+  setTimeout(()=>{ disk.style.transform = `rotate(${target}deg)`; }, 60);
+  // Retire l'état “is-spinning” une fois l’animation finie (effet de lueur)
+  disk.addEventListener('transitionend', () => {
+    const wheel = disk.closest('.wheel');
+    wheel && wheel.classList.remove('is-spinning');
+  }, { once: true });
 })();
 </script>
 {% endblock %}

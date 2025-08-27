@@ -1,7 +1,7 @@
 # rewards/models.py
 from django.db import models
 from accounts.models import Company
-from dashboard.models import Client
+from dashboard.models import Client, Referral
 
 
 class ProbabilityWheel(models.Model):
@@ -68,16 +68,12 @@ class RewardTemplate(models.Model):
 
 
 class Reward(models.Model):
-    """
-    Récompense INSTANTIÉE pour un client (clonée depuis un template).
-    """
     BUCKETS = (
         ("SOUVENT", "Souvent"),
         ("MOYEN", "Moyen"),
         ("RARE", "Rare"),
         ("TRES_RARE", "Très rare"),
     )
-
     STATE_CHOICES = (
         ("PENDING", "En attente"),
         ("SENT", "Envoyée"),
@@ -85,25 +81,30 @@ class Reward(models.Model):
         ("ARCHIVED", "Archivée"),
     )
 
-    company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="rewards"
-    )
-    client = models.ForeignKey(
-        Client, on_delete=models.CASCADE, related_name="rewards"
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="rewards")
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="rewards")
+
+    # NEW: relie la récompense à un parrainage précis (permet d'appliquer la règle « 1 par filleul »)
+    referral = models.ForeignKey(
+        Referral, on_delete=models.CASCADE, related_name="rewards",
+        null=True, blank=True
     )
 
-    # recopie du template au moment de l’attribution
     label = models.CharField(max_length=255)
     bucket = models.CharField(max_length=20, choices=BUCKETS)
     cooldown_days = models.PositiveIntegerField(default=0)
-
     state = models.CharField(max_length=20, choices=STATE_CHOICES, default="PENDING")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         indexes = [models.Index(fields=["company", "client", "state"])]
+        # Empêche 2 rewards pour le même parrain ET le même referral (donc même filleul)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "client", "referral"],
+                name="uniq_reward_by_referrer_and_referral",
+            )
+        ]
 
     def __str__(self):
         return f"{self.label} ({self.get_bucket_display()})"
-
-
