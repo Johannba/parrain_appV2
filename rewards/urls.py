@@ -1,6 +1,6 @@
 # rewards/urls.py
 from django.urls import path
-from .views import reward_list, reward_update, referral_delete, reward_spin, rewards_history_company
+from .views import reward_list, reward_update, referral_delete, reward_spin, rewards_history_company, use_reward
 
 app_name = "rewards"
 
@@ -11,4 +11,5 @@ urlpatterns = [
     # NEW: page d’animation de la roue pour une Reward donnée
     path("spin/<int:reward_id>/", reward_spin, name="spin"),
     path("history/", rewards_history_company, name="history_company"),
+    path("use/<str:token>/", use_reward, name="use_reward")
 ]

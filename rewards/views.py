@@ -198,3 +198,17 @@ def rewards_history_company(request):
         "buckets": [(k, v["label"]) for k, v in BUCKET_UI.items()],
         "states": [(k, v["label"]) for k, v in STATE_UI.items()],
     })
+
+from django.utils import timezone
+from django.shortcuts import render, get_object_or_404
+from .models import Reward
+
+def use_reward(request, token):
+    reward = get_object_or_404(Reward, token=token, state="PENDING")
+
+    reward.state = "SENT"
+    reward.redeemed_at = timezone.now()
+    reward.save(update_fields=["state", "redeemed_at"])
+
+    messages.success(request, f"Vous venez d’utiliser votre récompense : {reward.label}")
+    return render(request, "rewards/use_reward_done.html", {"reward": reward})

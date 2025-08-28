@@ -131,20 +131,29 @@ def clients_list(request):
     })
 
 
-@login_required
+
+
+# On suppose que ces helpers existent déjà dans ce module
+# def _require_company_staff(user): ...
+# def _is_superadmin(user): ...
+login_required
 def client_detail(request, pk: int):
     _require_company_staff(request.user)
 
     u = request.user
     if _is_superadmin(u):
-        client = get_object_or_404(Client.objects.select_related("company"), pk=pk)
+        client = get_object_or_404(
+            Client.objects.select_related("company"),
+            pk=pk
+        )
     else:
         client = get_object_or_404(
             Client.objects.select_related("company"),
-            pk=pk, company=u.company
+            pk=pk,
+            company=u.company
         )
 
-    # Historique des parrainages (où le client est impliqué)
+    # ---------- Historique des parrainages impliquant ce client ----------
     history_qs = (
         Referral.objects
         .select_related("referrer", "referee")
@@ -154,9 +163,8 @@ def client_detail(request, pk: int):
     )
     history_page = Paginator(history_qs, 8).get_page(request.GET.get("h"))
 
-    # ---- Ajout : préparer le mapping referral_id -> reward_id (existante pour CE parrainage) ----
+    # Map referral_id -> reward_id (reward déjà attribuée au PARRAIN pour ce parrainage)
     ref_ids = [r.id for r in history_page.object_list]
-    # NB: ceci suppose que Reward.referral existe (FK nullable). Si tu ne l'as pas, dis-le et je te donne la variante "soft".
     rewards_for_rows = (
         Reward.objects
         .filter(company=client.company, client=client, referral_id__in=ref_ids)
@@ -165,14 +173,26 @@ def client_detail(request, pk: int):
     )
     ref_rewards = {ref_id: reward_id for ref_id, reward_id in rewards_for_rows}
 
-    # On annote chaque objet de la page pour éviter tout filtre/templatetag
+    # Annote chaque ligne de l’historique (utilisé par le template)
     for r in history_page.object_list:
-        r.existing_reward_id = ref_rewards.get(r.id)  # None si pas de reward encore
+        r.existing_reward_id = ref_rewards.get(r.id)
 
-    # Récompenses par statut (pour les 3 colonnes)
-    rewards_ok      = Reward.objects.filter(company=client.company, client=client, state="SENT").order_by("-id")
-    rewards_pending = Reward.objects.filter(company=client.company, client=client, state="PENDING").order_by("-id")
-    rewards_unused  = Reward.objects.filter(company=client.company, client=client, state="DISABLED").order_by("-id")
+    # ---------- Récompenses par statut (3 colonnes) ----------
+    rewards_ok = (
+        Reward.objects
+        .filter(company=client.company, client=client, state="SENT")
+        .order_by("-id")
+    )
+    rewards_pending = (
+        Reward.objects
+        .filter(company=client.company, client=client, state="PENDING")
+        .order_by("-id")
+    )
+    rewards_unused = (
+        Reward.objects
+        .filter(company=client.company, client=client, state="DISABLED")
+        .order_by("-id")
+    )
 
     # KPIs
     kpi_obtenus  = rewards_ok.count()
@@ -180,21 +200,29 @@ def client_detail(request, pk: int):
     kpi_nonutils = rewards_unused.count()
 
     # Pagination des 3 blocs
-    p_ok      = Paginator(rewards_ok, 5)
-    p_pending = Paginator(rewards_pending, 5)
-    p_unused  = Paginator(rewards_unused, 5)
+    page_ok      = Paginator(rewards_ok, 5).get_page(request.GET.get("ok"))
+    page_pending = Paginator(rewards_pending, 5).get_page(request.GET.get("pending"))
+    page_unused  = Paginator(rewards_unused, 5).get_page(request.GET.get("unused"))
+
+    # ❌ NE PAS écrire rw.claim_url (propriété sans setter) — on utilisera claim_path au template.
+    # (Si tu tiens à pré-calculer l’URL absolue côté vue, fais-le dans une structure à part)
+    # Exemple si besoin :
+    # base = f"{request.scheme}://{request.get_host()}"
+    # for rw in page_pending.object_list:
+    #     rw._claim_abs = f"{base}{reverse('rewards:use_reward', kwargs={'token': rw.token})}" if rw.token else ""
 
     return render(request, "dashboard/client_detail.html", {
         "company": client.company,
         "client": client,
         "history_page": history_page,
-        "page_ok": p_ok.get_page(request.GET.get("ok")),
-        "page_pending": p_pending.get_page(request.GET.get("pending")),
-        "page_unused": p_unused.get_page(request.GET.get("unused")),
+        "page_ok": page_ok,
+        "page_pending": page_pending,
+        "page_unused": page_unused,
         "kpi_obtenus": kpi_obtenus,
         "kpi_attente": kpi_attente,
         "kpi_nonutils": kpi_nonutils,
     })
+
 
 @login_required
 def client_update(request, pk):

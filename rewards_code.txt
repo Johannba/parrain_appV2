@@ -10,13 +10,23 @@ def get_item(d, key):
         return d.get(key)
     except Exception:
         return None===== ./rewards/signals.py =====
+# rewards/signals.py
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+from .models import Reward
+
+@receiver(pre_save, sender=Reward)
+def reward_token_autogen(sender, instance: Reward, **kwargs):
+    if not instance.token:
+        instance.ensure_token()
 ===== ./rewards/views_wheels.py =====
 ===== ./rewards/models.py =====
 # rewards/models.py
 from django.db import models
 from accounts.models import Company
 from dashboard.models import Client, Referral
-
+import uuid
+from django.urls import reverse
 
 class ProbabilityWheel(models.Model):
     """
@@ -80,6 +90,11 @@ class RewardTemplate(models.Model):
     def __str__(self):
         return f"{self.company} • {self.get_bucket_display()} • {self.label}"
 
+import secrets
+from django.db import models
+from django.utils import timezone
+from django.urls import reverse
+
 
 class Reward(models.Model):
     BUCKETS = (
@@ -109,6 +124,18 @@ class Reward(models.Model):
     cooldown_days = models.PositiveIntegerField(default=0)
     state = models.CharField(max_length=20, choices=STATE_CHOICES, default="PENDING")
     created_at = models.DateTimeField(auto_now_add=True)
+    token = models.CharField(max_length=64, unique=True, db_index=True, null=True, blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    redeemed_at = models.DateTimeField(null=True, blank=True)
+    redeemed_channel = models.CharField(max_length=20, blank=True)
+
+    # ---- Helpers ----
+   
+    def ensure_token(self, force: bool = False):
+        if force or not self.token:
+            self.token = secrets.token_urlsafe(24)                # <-- plus de token_urlsafe
+        if not self.token_expires_at:
+            self.token_expires_at = timezone.now() + timezone.timedelta(days=180)
 
     class Meta:
         indexes = [models.Index(fields=["company", "client", "state"])]
@@ -119,6 +146,10 @@ class Reward(models.Model):
                 name="uniq_reward_by_referrer_and_referral",
             )
         ]
+        
+    @property
+    def claim_path(self) -> str:
+        return reverse("rewards:use_reward", kwargs={"token": self.token}) if self.token else ""
 
     def __str__(self):
         return f"{self.label} ({self.get_bucket_display()})"===== ./rewards/probabilities.py =====
@@ -337,15 +368,143 @@ class RewardTemplateForm(forms.ModelForm):
         }
 
 ===== ./rewards/admin.py =====
-from django.contrib import admin
-from rewards.models import ProbabilityWheel
+# rewards/admin.py
+from django.contrib import admin, messages
+from django.db import IntegrityError, transaction
+from django.utils.translation import gettext_lazy as _
+
+from .models import ProbabilityWheel, RewardTemplate, Reward
+# Services pour piloter les roues depuis l’admin
+from .services.probabilities import (
+    BASE_KEY, VERY_RARE_KEY,
+    ensure_wheels, rebuild_wheel, reset_wheel
+)
+
+
+# ============ Actions utilitaires ============
+
+@admin.action(description="Marquer sélection comme Envoyée")
+def mark_sent(modeladmin, request, queryset):
+    updated = queryset.update(state="SENT")
+    messages.success(request, _(f"{updated} récompense(s) marquée(s) comme envoyée(s)."))
+
+@admin.action(description="Marquer sélection comme En attente")
+def mark_pending(modeladmin, request, queryset):
+    updated = queryset.update(state="PENDING")
+    messages.success(request, _(f"{updated} récompense(s) marquée(s) comme en attente."))
+
+@admin.action(description="Marquer sélection comme Désactivée")
+def mark_disabled(modeladmin, request, queryset):
+    updated = queryset.update(state="DISABLED")
+    messages.success(request, _(f"{updated} récompense(s) désactivée(s)."))
+
+@admin.action(description="Archiver la sélection")
+def mark_archived(modeladmin, request, queryset):
+    updated = queryset.update(state="ARCHIVED")
+    messages.success(request, _(f"{updated} récompense(s) archivée(s)."))
+
+
+# ============ Reward ============
+
+@admin.register(Reward)
+class RewardAdmin(admin.ModelAdmin):
+    """
+    Gestion des récompenses instanciées (par client).
+    - Recherche par client / email / libellé
+    - Filtres par entreprise / type / état / date
+    - Actions de changement d’état
+    """
+    list_display = (
+        "company", "client", "referral",
+        "label", "bucket", "state", "created_at",
+    )
+    list_filter = (
+        "company", "bucket", "state", ("created_at", admin.DateFieldListFilter),
+    )
+    search_fields = (
+        "label",
+        "client__last_name", "client__first_name",
+        "client__email", "client__phone",
+    )
+    list_select_related = ("company", "client", "referral")
+    autocomplete_fields = ("client", "referral")
+    raw_id_fields = ()
+    date_hierarchy = "created_at"
+    ordering = ("-created_at", "-id")
+    actions = [mark_sent, mark_pending, mark_disabled, mark_archived]
+
+    # Optionnel: protéger la contrainte unique (company, client, referral) côté admin
+    def save_model(self, request, obj, form, change):
+        try:
+            with transaction.atomic():
+                super().save_model(request, obj, form, change)
+        except IntegrityError:
+            self.message_user(
+                request,
+                _("Une récompense existe déjà pour ce parrainage et ce parrain (règle: 1 par filleul)."),
+                level=messages.ERROR,
+            )
+
+
+# ============ RewardTemplate ============
+
+@admin.register(RewardTemplate)
+class RewardTemplateAdmin(admin.ModelAdmin):
+    """
+    Les 4 templates fixes par entreprise.
+    - Seuls label + cooldown_months sont modifiables.
+    - Affiche cooldown_days et probability_display en lecture seule.
+    """
+    list_display = (
+        "company", "bucket", "label",
+        "cooldown_months", "cooldown_days", "probability_display",
+    )
+    list_filter = ("company", "bucket")
+    search_fields = ("label", "company__name")
+    ordering = ("company", "bucket")
+    readonly_fields = ("cooldown_days", "probability_display")
+
+
+# ============ ProbabilityWheel ============
+
+@admin.action(description="(Re)créer les deux roues pour l’entreprise (ensure_wheels)")
+def action_ensure_wheels(modeladmin, request, queryset):
+    """
+    Pour chaque roue sélectionnée, on régénère (idempotent) les DEUX roues
+    de l’entreprise afin d’assurer les tailles exactes (base et very_rare).
+    """
+    companies = {w.company for w in queryset}
+    for c in companies:
+        ensure_wheels(c)
+    messages.success(request, _(f"Roues vérifiées/régénérées pour {len(companies)} entreprise(s)."))
+
+@admin.action(description="Régénérer la roue sélectionnée (repart à idx=0)")
+def action_rebuild_selected(modeladmin, request, queryset):
+    for w in queryset:
+        key = w.key
+        try:
+            rebuild_wheel(w.company, key)
+        except ValueError:
+            messages.error(request, _(f"Clé inconnue pour {w}: {key}"))
+    messages.success(request, _("Roue(s) régénérée(s)."))
+
+@admin.action(description="Remettre le curseur (idx) à 0")
+def action_reset_idx(modeladmin, request, queryset):
+    for w in queryset:
+        reset_wheel(w.company, w.key)
+    messages.success(request, _("Curseur réinitialisé à 0 pour la sélection."))
+
 
 @admin.register(ProbabilityWheel)
 class ProbabilityWheelAdmin(admin.ModelAdmin):
+    """
+    Visualisation et maintenance des roues.
+    """
     list_display = ("company", "key", "size", "idx")
     list_filter = ("company", "key")
     search_fields = ("company__name", "key")
     readonly_fields = ("size", "idx")
+    actions = [action_ensure_wheels, action_rebuild_selected, action_reset_idx]
 ===== ./rewards/utils.py =====
 from django import template
 register = template.Library()
@@ -359,7 +518,7 @@ def get_item(d, key):
 ===== ./rewards/urls.py =====
 # rewards/urls.py
 from django.urls import path
-from .views import reward_list, reward_update, referral_delete, reward_spin, rewards_history_company
+from .views import reward_list, reward_update, referral_delete, reward_spin, rewards_history_company, use_reward
 
 app_name = "rewards"
 
@@ -370,6 +529,7 @@ urlpatterns = [
     # NEW: page d’animation de la roue pour une Reward donnée
     path("spin/<int:reward_id>/", reward_spin, name="spin"),
     path("history/", rewards_history_company, name="history_company"),
+    path("use/<str:token>/", use_reward, name="use_reward")
 ]
 ===== ./rewards/services/probabilities.py =====
 # rewards/services/probabilities.py
@@ -751,6 +911,20 @@ def rewards_history_company(request):
         "buckets": [(k, v["label"]) for k, v in BUCKET_UI.items()],
         "states": [(k, v["label"]) for k, v in STATE_UI.items()],
     })
+
+from django.utils import timezone
+from django.shortcuts import render, get_object_or_404
+from .models import Reward
+
+def use_reward(request, token):
+    reward = get_object_or_404(Reward, token=token, state="PENDING")
+
+    reward.state = "SENT"
+    reward.redeemed_at = timezone.now()
+    reward.save(update_fields=["state", "redeemed_at"])
+
+    messages.success(request, f"Vous venez d’utiliser votre récompense : {reward.label}")
+    return render(request, "rewards/use_reward_done.html", {"reward": reward})
 ===== ./templates/rewards/form.html =====
 {# templates/rewards/form.html #}
 {% extends "base_dashboard.html" %}
@@ -1145,3 +1319,18 @@ def rewards_history_company(request):
   </div>
 </div>
 {% endblock %}
+===== ./templates/rewards/use_reward_done.html =====
+{% extends "base_dashboard.html" %}
+{% block title %}Récompense utilisée{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body text-center">
+    <h2 class="h4 mb-3">🎉 Bravo !</h2>
+    <p>Vous venez d’utiliser la récompense :</p>
+    <h3 class="h5">{{ reward.label }}</h3>
+    <p class="text-secondary">Statut : <span class="badge bg-success">Utilisée</span></p>
+  </div>
+</div>
+{% endblock %}
+

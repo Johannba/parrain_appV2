@@ -2,7 +2,8 @@
 from django.db import models
 from accounts.models import Company
 from dashboard.models import Client, Referral
-
+import uuid
+from django.urls import reverse
 
 class ProbabilityWheel(models.Model):
     """
@@ -66,6 +67,11 @@ class RewardTemplate(models.Model):
     def __str__(self):
         return f"{self.company} • {self.get_bucket_display()} • {self.label}"
 
+import secrets
+from django.db import models
+from django.utils import timezone
+from django.urls import reverse
+
 
 class Reward(models.Model):
     BUCKETS = (
@@ -95,6 +101,18 @@ class Reward(models.Model):
     cooldown_days = models.PositiveIntegerField(default=0)
     state = models.CharField(max_length=20, choices=STATE_CHOICES, default="PENDING")
     created_at = models.DateTimeField(auto_now_add=True)
+    token = models.CharField(max_length=64, unique=True, db_index=True, null=True, blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    redeemed_at = models.DateTimeField(null=True, blank=True)
+    redeemed_channel = models.CharField(max_length=20, blank=True)
+
+    # ---- Helpers ----
+   
+    def ensure_token(self, force: bool = False):
+        if force or not self.token:
+            self.token = secrets.token_urlsafe(24)                # <-- plus de token_urlsafe
+        if not self.token_expires_at:
+            self.token_expires_at = timezone.now() + timezone.timedelta(days=180)
 
     class Meta:
         indexes = [models.Index(fields=["company", "client", "state"])]
@@ -105,6 +123,18 @@ class Reward(models.Model):
                 name="uniq_reward_by_referrer_and_referral",
             )
         ]
+        
+    @property
+    def claim_path(self) -> str:
+        return reverse("rewards:use_reward", kwargs={"token": self.token}) if self.token else ""
+
+    @property
+    def claim_url(self) -> str:
+        """
+        Alias utilisé par les templates historiques.
+        Retourne le chemin utilisable tel quel dans un <a href>.
+        """
+        return self.claim_path
 
     def __str__(self):
         return f"{self.label} ({self.get_bucket_display()})"

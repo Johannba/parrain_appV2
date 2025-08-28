@@ -1,0 +1,14 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Récompense utilisée{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body text-center">
+    <h2 class="h4 mb-3">🎉 Bravo !</h2>
+    <p>Vous venez d’utiliser la récompense :</p>
+    <h3 class="h5">{{ reward.label }}</h3>
+    <p class="text-secondary">Statut : <span class="badge bg-success">Utilisée</span></p>
+  </div>
+</div>
+{% endblock %}
+
