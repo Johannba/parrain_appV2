@@ -1,73 +1,186 @@
 {% extends "base_dashboard.html" %}
+{% load widget_tweaks %}
+
 {% block title %}Créer un parrainage{% endblock %}
-{% block body_data_page %}referrals{% endblock %}
-{% block nav_referrals_active %}active{% endblock %}
+{% block body_data_page %}referral-create{% endblock %}
 
 {% block content %}
-<header class="d-flex align-items-center justify-content-between mb-4">
-  <div>
-    <h1 class="h4 section-title mb-1">Créer un parrainage</h1>
-    <div class="text-secondary">Sélectionnez un <strong>Parrain</strong> et un <strong>Filleul</strong> de la même entreprise.</div>
-  </div>
-  <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">← Retour</a>
-</header>
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-10 col-xl-8">
 
-<div class="row g-3">
-  <div class="col-xl-8">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h1 class="h4 section-title mb-1">Créer un parrainage</h1>
+        <div class="text-secondary">
+          1) Recherchez le <strong>parrain</strong> • 2) Saisissez la <strong>fiche du filleul</strong> • 3) Enregistrez.
+        </div>
+      </div>
+      <div>
+        <a href="{% url 'dashboard:clients_list' %}" class="btn btn-outline-secondary btn-sm">← Retour</a>
+      </div>
+    </div>
+
     <div class="card shadow-sm">
-      <div class="card-header">Sélection</div>
-      <div class="card-body">
-        {% if form.non_field_errors %}
-          <div class="alert alert-danger">
-            {% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}
-          </div>
-        {% endif %}
+      <div class="card-header bg-white py-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-info">Parrainage</span>
+          <strong>Parrain + Filleul</strong>
+        </div>
+      </div>
 
+      <div class="card-body">
         <form method="post" novalidate>
           {% csrf_token %}
 
-          <div class="mb-3">
-            <label class="form-label" for="{{ form.referrer.id_for_label }}">Parrain *</label>
-            {{ form.referrer }}
-            <div class="form-text">Uniquement les clients marqués “Parrain”.</div>
-            {% for e in form.referrer.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="{{ form.referee.id_for_label }}">Filleul *</label>
-            {{ form.referee }}
-            <div class="form-text">Uniquement les clients “non parrain”.</div>
-            {% for e in form.referee.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
-          </div>
-
-          {% if form.status %}
-          <div class="mb-4">
-            <label class="form-label" for="{{ form.status.id_for_label }}">Statut</label>
-            {{ form.status }}
-          </div>
+          {% if referrer_error %}
+            <div class="alert alert-danger" role="alert">{{ referrer_error }}</div>
+          {% endif %}
+          {% if ref_form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">{{ ref_form.non_field_errors|striptags }}</div>
           {% endif %}
 
+          <div class="row g-3">
+
+            <!-- 🔎 Barre de recherche PARRAIN -->
+            <div class="col-12">
+              <label class="form-label">Parrain (recherche)</label>
+
+              <div class="position-relative" id="referrer-search-wrap">
+                <input
+                  type="text"
+                  id="referrer-search"
+                  class="form-control"
+                  placeholder="Tapez un nom, prénom ou email…"
+                  autocomplete="off"
+                  aria-describedby="referrerHelp"
+                />
+                <div id="referrer-results" class="list-group mt-1" style="position:absolute; z-index: 10; width:100%; display:none;"></div>
+              </div>
+              <div id="referrerHelp" class="form-text">Sélectionnez un parrain dans la liste.</div>
+
+              <!-- Champ caché réel (ID du parrain) -->
+              <input type="hidden" name="referrer" id="id_referrer" value=""/>
+
+              <noscript>
+                <div class="alert alert-warning mt-2">Activez JavaScript pour rechercher un parrain.</div>
+              </noscript>
+            </div>
+
+            <!-- 🧒 FICHE FILLEUL -->
+            <div class="col-12">
+              <div class="border rounded p-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <strong>Filleul — Informations</strong>
+                  <span class="text-secondary small">Il sera créé dans la même entreprise que le parrain.</span>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Nom</label>
+                    {% render_field ref_form.last_name class+="form-control" placeholder="Nom" %}
+                    {% if ref_form.last_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.last_name.errors|striptags }}</div>{% endif %}
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Prénom</label>
+                    {% render_field ref_form.first_name class+="form-control" placeholder="Prénom" %}
+                    {% if ref_form.first_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.first_name.errors|striptags }}</div>{% endif %}
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Email</label>
+                    {% render_field ref_form.email class+="form-control" placeholder="email@exemple.com" %}
+                    {% if ref_form.email.errors %}<div class="invalid-feedback d-block">{{ ref_form.email.errors|striptags }}</div>{% endif %}
+                    <div class="form-text">S’il existe déjà un client avec cet email dans l’entreprise, il sera réutilisé.</div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Téléphone</label>
+                    {% render_field ref_form.phone class+="form-control" placeholder="06 00 00 00 00" %}
+                    {% if ref_form.phone.errors %}<div class="invalid-feedback d-block">{{ ref_form.phone.errors|striptags }}</div>{% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <hr class="my-4">
+
           <div class="d-flex gap-2">
-            <button class="btn btn-primary" type="submit">Créer</button>
+            <button class="btn btn-primary" type="submit">Créer le parrainage</button>
             <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
           </div>
         </form>
-
       </div>
     </div>
-  </div>
 
-  <div class="col-xl-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-header">Règles</div>
-      <div class="card-body small text-secondary">
-        <ul class="mb-0">
-          <li>Parrain et Filleul doivent appartenir à la <strong>même entreprise</strong>.</li>
-          <li>Le Parrain doit être <strong>is_referrer=True</strong>.</li>
-          <li>Le Filleul doit être <strong>is_referrer=False</strong>.</li>
-        </ul>
-      </div>
-    </div>
+    {% if company %}
+      <div class="text-muted small mt-3">Entreprise ciblée : <strong>{{ company }}</strong></div>
+    {% endif %}
   </div>
 </div>
+
+<!-- JS d'autocomplétion (même logique que précédemment) -->
+<script>
+(function() {
+  const input = document.getElementById('referrer-search');
+  const hidden = document.getElementById('id_referrer');
+  const results = document.getElementById('referrer-results');
+  const wrap = document.getElementById('referrer-search-wrap');
+  const endpoint = "{% url 'dashboard:referrer_lookup' %}";
+  const companyId = "{{ company.id|default_if_none:'' }}";
+  let lastController = null;
+  let lastQuery = "";
+  let debounceTimer = null;
+
+  function clearResults() {
+    results.innerHTML = "";
+    results.style.display = "none";
+  }
+
+  function showResults(items) {
+    results.innerHTML = "";
+    items.forEach(item => {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.className = 'list-group-item list-group-item-action';
+      a.textContent = item.label;
+      a.dataset.id = item.id;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        hidden.value = item.id;
+        input.value = item.label;
+        clearResults();
+      });
+      results.appendChild(a);
+    });
+    results.style.display = items.length ? "block" : "none";
+  }
+
+  function searchNow(q) {
+    if (lastController) lastController.abort();
+    lastController = new AbortController();
+
+    const url = new URL(endpoint, window.location.origin);
+    if (q) url.searchParams.set('q', q);
+    if (companyId) url.searchParams.set('company_id', companyId);
+
+    fetch(url, {signal: lastController.signal})
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(j => { if (j && j.ok) showResults(j.results || []); })
+      .catch(()=>{});
+  }
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (q.length < 2) { clearResults(); return; }
+      searchNow(q);
+    }, 250);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) clearResults();
+  });
+})();
+</script>
 {% endblock %}

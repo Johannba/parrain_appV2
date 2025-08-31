@@ -30,10 +30,6 @@ class ProbabilityWheel(models.Model):
 
 
 class RewardTemplate(models.Model):
-    """
-    Les 4 récompenses FIXES par entreprise : seules les infos 'métier' (nom, délai)
-    sont éditables ; les probabilités restent gérées ailleurs (roue/poids).
-    """
     BUCKETS = (
         ("SOUVENT", "Souvent"),
         ("MOYEN", "Moyen"),
@@ -45,14 +41,21 @@ class RewardTemplate(models.Model):
         Company, on_delete=models.CASCADE, related_name="reward_templates"
     )
     bucket = models.CharField(max_length=10, choices=BUCKETS)
-    # nom affiché (modifiable par l’admin – ex “-10%”, “iPhone 16”, etc.)
+
+    # nom affiché (modifiable par l’admin)
     label = models.CharField(max_length=120, default="-10 % de remise")
 
     # délai choisi par l’admin en mois (1..6) + miroir en jours pour calculs
     cooldown_months = models.PositiveSmallIntegerField(default=1)
     cooldown_days = models.PositiveIntegerField(default=30)
 
-    # uniquement pour affichage (ex “80/100”), calculé côté vue/service si tu préfères
+    # NOUVEAU : nombre minimum de parrainages requis
+    min_referrals_required = models.PositiveIntegerField(
+        default=0,
+        help_text="Nombre minimum de parrainages requis pour débloquer cette récompense."
+    )
+
+    # uniquement pour affichage (ex “80/100”), calculé ailleurs
     probability_display = models.CharField(max_length=20, default="", editable=False)
 
     class Meta:
@@ -66,6 +69,7 @@ class RewardTemplate(models.Model):
 
     def __str__(self):
         return f"{self.company} • {self.get_bucket_display()} • {self.label}"
+
 
 import secrets
 from django.db import models

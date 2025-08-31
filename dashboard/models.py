@@ -2,8 +2,9 @@
 from django.db import models
 from django.utils import timezone
 from accounts.models import Company
-from django.core.exceptions import ValidationError
-from django.db.models import Q, F
+from django.db.models import Q, UniqueConstraint
+from django.db.models.functions import Lower
+
 
 class Client(models.Model):
     company     = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="clients")
@@ -12,6 +13,19 @@ class Client(models.Model):
     email       = models.EmailField(blank=True, null=True)
     phone       = models.CharField(max_length=32, blank=True)
     is_referrer = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            # Unicité (insensible à la casse) du couple (nom, prénom, entreprise) pour les PARRAINS,
+            # et seulement si "last_name" non vide pour éviter de bloquer les créations incomplètes.
+            UniqueConstraint(
+                Lower("last_name"),
+                Lower("first_name"),
+                "company",
+                name="uniq_referrer_name_per_company_ci",
+                condition=Q(is_referrer=True) & ~Q(last_name=""),
+            ),
+        ]
 
     def __str__(self):
         return f"{self.last_name} {self.first_name}".strip() or self.email or f"Client #{self.pk}"

@@ -12,14 +12,24 @@
 <div class="card shadow-sm">
   <form method="post" class="card-body vstack gap-3">
     {% csrf_token %}
+
     <div class="row g-3">
       <div class="col-md-6">
         <label for="{{ form.label.id_for_label }}" class="form-label">Nom de la récompense</label>
         {{ form.label }}
       </div>
-      <div class="col-md-6">
+
+      <div class="col-md-3">
         <label for="{{ form.cooldown_months.id_for_label }}" class="form-label">Délai</label>
-        {{ form.cooldown_months }}  {# renders with class="form-select" #}
+        {{ form.cooldown_months }}
+      </div>
+
+      <div class="col-md-3">
+        <label for="{{ form.min_referrals_required.id_for_label }}" class="form-label">
+          Minimum de parrainages requis
+        </label>
+        {{ form.min_referrals_required }}
+        <div class="form-text">0 = aucun minimum.</div>
       </div>
     </div>
 
@@ -29,5 +39,4 @@
     </div>
   </form>
 </div>
-
 {% endblock %}

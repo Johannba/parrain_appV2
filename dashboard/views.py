@@ -10,9 +10,12 @@ from django.urls import reverse
 
 from accounts.models import Company
 from dashboard.models import Client, Referral
-from .forms import ClientForm, ReferralForm
+from .forms import ReferrerClientForm, RefereeClientForm, ReferralForm, RefereeInlineForm
 from rewards.models import Reward, RewardTemplate
 from rewards.forms import RewardTemplateForm
+
+from rewards.notifications.services import send_sms
+from rewards.models import RewardTemplate, Reward
 
 # Tirage de récompense
 from rewards.services.probabilities import tirer_recompense, SOUVENT, MOYEN, RARE, TRES_RARE
@@ -74,46 +77,203 @@ def company_home(request):
     return render(request, "dashboard/company_home.html", {"company": company})
 
 
-# -------------------------------------------------------------
-# Clients : création / liste / fiche / édition / suppression
-# -------------------------------------------------------------
+from .forms import ReferrerClientForm, RefereeClientForm, ReferralForm, RefereeInlineForm
+from django.http import JsonResponse
+
+from django.db import transaction
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect, get_object_or_404
+from django.db import IntegrityError
+from django.db.models import Q
+
+
+
 @login_required
-def client_create(request):
+@transaction.atomic
+def client_update(request, pk: int):
+    """
+    Éditer un client (parrain OU filleul).
+    - Sélectionne automatiquement le bon form et le bon template.
+    - Verrouille company côté non-superadmin.
+    - Anti-doublon parrain via IntegrityError (contrainte BD + clean du form).
+    """
     _require_company_staff(request.user)
 
-    if request.method == "POST":
-        form = ClientForm(request.POST, request=request)
-        if form.is_valid():
-            obj = form.save(commit=False)
-            if not _is_superadmin(request.user):
-                # sécurité multi-entreprise
-                obj.company = request.user.company
-            obj.save()
-            messages.success(request, "Client créé.")
+    qs = Client.objects.select_related("company")
+    obj = (
+        get_object_or_404(qs, pk=pk)
+        if _is_superadmin(request.user)
+        else get_object_or_404(qs, pk=pk, company=request.user.company)
+    )
+
+    is_ref = bool(obj.is_referrer)
+    FormCls = ReferrerClientForm if is_ref else RefereeClientForm
+    template = "dashboard/referrer_form.html" if is_ref else "dashboard/referee_form.html"
+
+    form = FormCls(request.POST or None, instance=obj, request=request)
+
+    # UX : champ company désactivé pour non-superadmin (cohérent avec le verrou au save)
+    if not _is_superadmin(request.user) and "company" in form.fields:
+        form.fields["company"].disabled = True
+
+    if request.method == "POST" and form.is_valid():
+        c = form.save(commit=False)
+        # on fige le type de client
+        c.is_referrer = True if is_ref else False
+        # côté non-superadmin, on fige l’entreprise
+        if not _is_superadmin(request.user):
+            c.company = request.user.company
+        try:
+            c.save()
+        except IntegrityError:
+            if is_ref:
+                form.add_error("last_name", "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.")
+            else:
+                form.add_error(None, "Conflit d’unicité détecté pour ce client.")
+        else:
+            messages.success(request, "Client mis à jour.")
             return redirect("dashboard:clients_list")
+
+    return render(request, template, {
+        "form": form,
+        "referrer": obj if is_ref else None,
+        "is_update": True,
+    })
+    
+    
+# dashboard/views.py
+
+
+@login_required
+@transaction.atomic
+def referral_create(request, company_id=None):
+    """
+    Choisir un parrain (autocomplete) + créer le FILLEUL inline,
+    puis créer le parrainage. Le filleul est toujours dans l’entreprise du parrain.
+    """
+    _require_company_staff(request.user)
+
+    company_ctx = Company.objects.filter(pk=company_id).first() if (_is_superadmin(request.user) and company_id) \
+                 else getattr(request.user, "company", None)
+
+    ref_form = RefereeInlineForm(request.POST or None)
+    referrer_error = None
+
+    if request.method == "POST":
+        raw_referrer_id = (request.POST.get("referrer") or "").strip()
+
+        qs = Client.objects.filter(is_referrer=True).select_related("company")
+        if not _is_superadmin(request.user):
+            qs = qs.filter(company=request.user.company)
+
+        referrer = None
+        if raw_referrer_id:
+            try:
+                ref_id = int(raw_referrer_id)
+            except (TypeError, ValueError):
+                referrer = None
+            else:
+                referrer = qs.filter(pk=ref_id).first()
+
+        if not referrer:
+            referrer_error = "Sélectionnez un parrain valide dans la liste."
+        elif ref_form.is_valid():
+            company = referrer.company
+            email = (ref_form.cleaned_data.get("email") or "").strip().lower()
+
+            # Réutilise un client existant par email, sinon crée le filleul
+            referee = Client.objects.filter(company=company, email__iexact=email).first() if email else None
+            if referee is None:
+                referee = ref_form.save_with_company(company)
+
+            rf = ReferralForm(
+                data={"referrer": referrer.pk, "referee": referee.pk},
+                request=request,
+                company=company
+            )
+            if rf.is_valid():
+                referral = rf.save(commit=False)
+                referral.company = company
+                try:
+                    referral.save()
+                except IntegrityError:
+                    ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
+                else:
+                    messages.success(request, f"Parrainage créé : {referrer} → {referee}.")
+                    # Redirection vers la fiche du PARRAIN pour voir l’historique mis à jour
+                    return redirect("dashboard:client_detail", pk=referrer.pk)
+            else:
+                err = rf.errors.get("referee")
+                if err:
+                    ref_form.add_error(None, err.as_text().replace("* ", ""))
+                else:
+                    messages.error(request, "Le parrainage n'a pas pu être créé. Corrigez les erreurs.")
+
+    return render(
+        request,
+        "dashboard/referral_form.html",
+        {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
+    )
+    
+    
+@login_required
+def referrer_update(request, pk: int):
+    """
+    Modifier un PARRAIN (client is_referrer=True).
+    - Non-superadmin : restriction à sa company et verrouillage de company au save.
+    - Déduplique nom/prénom par entreprise (géré par le form + IntegrityError filet).
+    """
+    _require_company_staff(request.user)
+
+    # Récupération sécurisée du parrain
+    base_qs = Client.objects.select_related("company").filter(is_referrer=True)
+    if _is_superadmin(request.user):
+        obj = get_object_or_404(base_qs, pk=pk)
     else:
-        form = ClientForm(request=request)
+        obj = get_object_or_404(base_qs, pk=pk, company=request.user.company)
 
-    return render(request, "dashboard/client_form.html", {"form": form})
+    form = ReferrerClientForm(request.POST or None, instance=obj, request=request)
+
+    if request.method == "POST" and form.is_valid():
+        try:
+            ref = form.save(commit=False)
+            # Empêche de “dé-parrainiser” et de changer d’entreprise côté non-superadmin
+            ref.is_referrer = True
+            if not _is_superadmin(request.user):
+                ref.company = request.user.company
+            ref.save()
+        except IntegrityError:
+            # Contrainte d’unicité BD (nom/prénom/entreprise) déclenchée
+            form.add_error("last_name", "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.")
+        else:
+            messages.success(request, "Parrain modifié avec succès.")
+            return redirect("dashboard:clients_list")
+
+    return render(
+        request,
+        "dashboard/referrer_form.html",
+        {
+            "form": form,
+            "referrer": obj,
+            "is_update": True,  # pour adapter le libellé dans le template
+        },
+    )
 
 
+# dashboard/views.py
 @login_required
 def clients_list(request):
     _require_company_staff(request.user)
 
     u = request.user
-    base_qs = Client.objects.all() if _is_superadmin(u) else Client.objects.filter(company=u.company)
 
-    # Filtre par type
-    t = (request.GET.get("type") or "tous").lower()
-    if t == "parrains":
-        qs = base_qs.filter(is_referrer=True)
-    elif t == "filleuls":
-        qs = base_qs.filter(is_referrer=False)
-    else:
-        qs = base_qs
+    # ✅ UNIQUEMENT les parrains
+    qs = Client.objects.filter(is_referrer=True)
+    if not _is_superadmin(u):
+        qs = qs.filter(company=u.company)
 
-    # Recherche plein-texte
+    # Recherche plein-texte (sur les parrains uniquement)
     q = (request.GET.get("q") or "").strip()
     if q:
         qs = qs.filter(
@@ -126,7 +286,7 @@ def clients_list(request):
 
     return render(request, "dashboard/clients_list.html", {
         "clients": qs,
-        "filter_type": t,
+        "filter_type": "parrains",  # pour compat avec le template existant
         "current_q": q,
     })
 
@@ -228,12 +388,17 @@ def client_detail(request, pk: int):
 def client_update(request, pk):
     _require_company_staff(request.user)
 
-    obj = get_object_or_404(Client, pk=pk)
+    obj = get_object_or_404(Client.objects.select_related("company"), pk=pk)
     if not _is_superadmin(request.user) and obj.company_id != request.user.company_id:
         raise PermissionDenied("Accès refusé.")
 
+    # Choix du formulaire et du template selon le type (parrain/filleul)
+    is_ref = bool(obj.is_referrer)
+    FormCls = ReferrerClientForm if is_ref else RefereeClientForm
+    tpl = "dashboard/referrer_form.html" if is_ref else "dashboard/referee_form.html"
+
     if request.method == "POST":
-        form = ClientForm(request.POST, instance=obj, request=request)
+        form = FormCls(request.POST, instance=obj, request=request)
         if form.is_valid():
             c = form.save(commit=False)
             if not _is_superadmin(request.user):
@@ -242,9 +407,9 @@ def client_update(request, pk):
             messages.success(request, "Client mis à jour.")
             return redirect("dashboard:clients_list")
     else:
-        form = ClientForm(instance=obj, request=request)
+        form = FormCls(instance=obj, request=request)
 
-    return render(request, "dashboard/client_form.html", {"form": form})
+    return render(request, tpl, {"form": form})
 
 
 @login_required
@@ -266,43 +431,6 @@ def client_delete(request, pk):
         "back_url": "dashboard:clients_list",
     })
 
-
-# -------------------------------------------------------------
-# Parrainages : création / édition / suppression
-# -------------------------------------------------------------
-@login_required
-def referral_create(request):
-    _require_company_staff(request.user)
-
-    u = request.user
-    is_super = _is_superadmin(u)
-
-    # Entreprise courante pour le formulaire
-    current_company = None
-    if not is_super:
-        current_company = _company_for(u)
-    else:
-        cid = request.GET.get("company")
-        if cid:
-            current_company = get_object_or_404(Company, pk=cid)
-
-    if request.method == "POST":
-        form = ReferralForm(request.POST, request=request, company=current_company)
-        if form.is_valid():
-            referral = form.save(commit=False)
-            referral.company = current_company or getattr(referral.referrer, "company", None)
-
-            try:
-                referral.save()
-            except IntegrityError:
-                form.add_error("referee", "Ce filleul a déjà un parrainage dans cette entreprise.")
-            else:
-                messages.success(request, "Parrainage créé.")
-                return redirect("dashboard:clients_list")
-    else:
-        form = ReferralForm(request=request, company=current_company)
-
-    return render(request, "dashboard/referral_form.html", {"form": form})
 
 
 @login_required
@@ -487,3 +615,82 @@ def validate_referral_and_award_referrer(request, referral_id: int):
 
     messages.success(request, f"Récompense attribuée au parrain « {referrer} » pour le filleul « {referral.referee} » : {tpl.label}.")
     return redirect("rewards:spin", reward_id=reward.id)
+
+
+# dashboard/views.py (ajoute ceci, près de tes autres vues)
+from django.http import JsonResponse
+
+@login_required
+def referrer_lookup(request):
+    """
+    Retourne des parrains (JSON) selon une recherche 'q' (nom/prénom/email).
+    - Non-superadmin : restreint à user.company
+    - Superadmin : si company_id fourni => restreint, sinon global
+    - Si 'id' fourni => renvoie 1 seul objet {id, label}
+    """
+    _require_company_staff(request.user)
+
+    q = (request.GET.get("q") or "").strip()
+    id_param = request.GET.get("id")
+    company_id = request.GET.get("company_id")
+
+    # Base QS (parrains uniquement)
+    qs = Client.objects.filter(is_referrer=True).select_related("company")
+
+    # Scope entreprise
+    if _is_superadmin(request.user):
+        if company_id:
+            qs = qs.filter(company_id=company_id)
+    else:
+        qs = qs.filter(company=request.user.company)
+
+    # Cherche par id direct (pour ré-afficher un libellé si déjà sélectionné)
+    if id_param:
+        obj = qs.filter(pk=id_param).first()
+        if not obj:
+            return JsonResponse({"ok": False, "error": "not_found"}, status=404)
+        label = f"{obj.last_name} {obj.first_name}".strip() or (obj.email or "—")
+        label += f" — {obj.email or '—'} ({obj.company.name if obj.company else '—'})"
+        return JsonResponse({"ok": True, "result": {"id": obj.id, "label": label}})
+
+    # Recherche textuelle
+    if q:
+        qs = qs.filter(
+            Q(last_name__icontains=q) | Q(first_name__icontains=q) | Q(email__icontains=q)
+        )
+
+    qs = qs.order_by("last_name", "first_name")[:20]
+
+    def to_item(o):
+        label = f"{o.last_name} {o.first_name}".strip() or (o.email or "—")
+        label += f" — {o.email or '—'} ({o.company.name if o.company else '—'})"
+        return {"id": o.id, "label": label}
+
+    return JsonResponse({"ok": True, "results": [to_item(o) for o in qs]})
+
+@login_required
+def referrer_create(request):
+    """
+    Créer un PARRAIN (client avec is_referrer=True).
+    Superadmin choisit l'entreprise, sinon elle est forcée à user.company.
+    """
+    _require_company_staff(request.user)
+
+    form = ReferrerClientForm(request.POST or None, request=request)
+
+    if request.method == "POST" and form.is_valid():
+        try:
+            ref = form.save(commit=False)             # le form met déjà is_referrer=True
+            if not _is_superadmin(request.user):      # verrou entreprise côté non-superadmin
+                ref.company = request.user.company
+            ref.save()
+        except IntegrityError:
+            form.add_error(
+                "last_name",
+                "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise."
+            )
+        else:
+            messages.success(request, "Parrain créé avec succès.")
+            return redirect("dashboard:clients_list")
+
+    return render(request, "dashboard/referrer_form.html", {"form": form})

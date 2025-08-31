@@ -10,6 +10,7 @@ django = "==5.0"
 psycopg2-binary = "*"
 django-widget-tweaks = "*"
 pytest-django = "*"
+twilio = "*"
 
 [dev-packages]
 

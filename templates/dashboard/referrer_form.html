@@ -1,0 +1,101 @@
+{% extends "base_dashboard.html" %}
+{% load widget_tweaks %}
+
+{% block title %}Créer un filleul{% endblock %}
+{% block body_data_page %}referee-form{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-10 col-xl-8">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h1 class="h4 section-title mb-1">Inscrire un parrain</h1>
+        <div class="text-secondary">Ajouter un client non parrain.</div>
+      </div>
+      <div>
+        <a href="{% url 'dashboard:clients_list' %}" class="btn btn-outline-secondary btn-sm">← Retour</a>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-white py-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-secondary">Filleul</span>
+          <strong>Informations du client</strong>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {{ form.non_field_errors|striptags }}
+            </div>
+          {% endif %}
+
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Entreprise</label>
+              {% render_field form.company class+="form-select" %}
+              {% if form.company.errors %}
+                <div class="invalid-feedback d-block">{{ form.company.errors|striptags }}</div>
+              {% else %}
+                <div class="form-text">Visible uniquement si vous êtes Superadmin.</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Email</label>
+              <div class="input-group">
+                <span class="input-group-text">@</span>
+                {% render_field form.email class+="form-control" placeholder="email@exemple.com" %}
+              </div>
+              {% if form.email.errors %}
+                <div class="invalid-feedback d-block">{{ form.email.errors|striptags }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Nom</label>
+              {% render_field form.last_name class+="form-control" placeholder="Dupont" %}
+              {% if form.last_name.errors %}
+                <div class="invalid-feedback d-block">{{ form.last_name.errors|striptags }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Prénom</label>
+              {% render_field form.first_name class+="form-control" placeholder="Marie" %}
+              {% if form.first_name.errors %}
+                <div class="invalid-feedback d-block">{{ form.first_name.errors|striptags }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Téléphone</label>
+              <div class="input-group">
+                <span class="input-group-text">📞</span>
+                {% render_field form.phone class+="form-control" placeholder="06 00 00 00 00" %}
+              </div>
+              {% if form.phone.errors %}
+                <div class="invalid-feedback d-block">{{ form.phone.errors|striptags }}</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -24,9 +24,14 @@
           </div>
           <div class="card-body d-flex flex-column">
             <h3 class="h6">{{ r.label }}</h3>
-            <div class="text-secondary small mb-3">
+
+            <div class="text-secondary small">
               Délai : {{ r.cooldown_months }} mois
             </div>
+            <div class="text-secondary small mb-3">
+              Minimum requis : {{ r.min_referrals_required }} parrainage{{ r.min_referrals_required|pluralize }}
+            </div>
+
             <div class="mt-auto d-flex gap-2">
               <a class="btn btn-sm btn-outline-primary" href="{% url 'rewards:update' r.pk %}">Modifier</a>
             </div>

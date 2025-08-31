@@ -8,9 +8,30 @@
   <div class="text-secondary">Toutes les récompenses de l’entreprise, tous clients confondus.</div>
 </header>
 
+
+
 <div class="card shadow-sm mb-3">
   <div class="card-body">
+
+     
     <form method="get" class="row g-2 align-items-end">
+       <div class="col-lg-4">
+        <label class="form-label mb-1">Recherche</label>
+        <input type="text" name="q" value="{{ q }}" class="form-control"
+               placeholder="Client (nom/prénom/email) ou libellé de récompense…">
+      </div>
+
+       <div class="col-lg-3">
+        <label class="form-label mb-1">État</label>
+        <select name="state" class="form-select">
+          <option value="">— Tous —</option>
+          {% for k, lbl in states %}
+            <option value="{{ k }}" {% if k == state %}selected{% endif %}>
+              {{ STATE_UI.k.label|default:lbl }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="col-lg-3">
         <label class="form-label mb-1">Type</label>
         <select name="bucket" class="form-select">
@@ -22,25 +43,6 @@
           {% endfor %}
         </select>
       </div>
-
-      <div class="col-lg-3">
-        <label class="form-label mb-1">État</label>
-        <select name="state" class="form-select">
-          <option value="">— Tous —</option>
-          {% for k, lbl in states %}
-            <option value="{{ k }}" {% if k == state %}selected{% endif %}>
-              {{ STATE_UI.k.label|default:lbl }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="col-lg-4">
-        <label class="form-label mb-1">Recherche</label>
-        <input type="text" name="q" value="{{ q }}" class="form-control"
-               placeholder="Client (nom/prénom/email) ou libellé de récompense…">
-      </div>
-
       <div class="col-lg-2 d-flex gap-2">
         <button class="btn btn-primary w-100" type="submit">Filtrer</button>
         <a class="btn btn-outline-secondary" href="{% url 'rewards:history_company' %}">Réinitialiser</a>

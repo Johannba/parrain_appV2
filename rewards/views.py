@@ -25,6 +25,7 @@ def _current_company(request):
         company = get_object_or_404(Company, pk=cid)
     return company
 
+# rewards/views.py (extrait : fonction ensure_reward_templates)
 def ensure_reward_templates(company):
     """Crée les 4 lignes si manquantes, avec proba figées."""
     for key, ui in BUCKET_UI.items():
@@ -32,13 +33,14 @@ def ensure_reward_templates(company):
             company=company, bucket=key,
             defaults={
                 "label": "- 10 % de remise" if key in ("SOUVENT", "MOYEN") else (
-                    "iPhone 16 Pro Max" if key=="RARE" else "Voyage à Miami"
+                    "iPhone 16 Pro Max" if key == "RARE" else "Voyage à Miami"
                 ),
-                "cooldown_months": 1 if key in ("SOUVENT", "MOYEN") else (3 if key=="RARE" else 6),
+                "cooldown_months": 1 if key in ("SOUVENT", "MOYEN") else (3 if key == "RARE" else 6),
                 "probability_display": ui["prob"],
+                # NOUVEAU : par défaut, aucun minimum requis
+                "min_referrals_required": 0,
             }
         )
-        # si la ligne existe mais le texte affiché est vide (ancienne data), on le remet
         if not obj.probability_display:
             obj.probability_display = ui["prob"]
             obj.save(update_fields=["probability_display"])
