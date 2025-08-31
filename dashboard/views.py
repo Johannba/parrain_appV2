@@ -18,7 +18,7 @@ from rewards.notifications.services import send_sms
 from rewards.models import RewardTemplate, Reward
 
 # Tirage de récompense
-from rewards.services.probabilities import tirer_recompense, SOUVENT, MOYEN, RARE, TRES_RARE
+
 from django.db import transaction
 
 import os
@@ -164,18 +164,20 @@ from accounts.models import Company
 from dashboard.models import Client, Referral
 from .forms import RefereeInlineForm, ReferralForm
 from rewards.models import RewardTemplate, Reward
-from rewards.services.probabilities import tirer_recompense
+from django.db import transaction, IntegrityError  # ✅ nécessaires
+from rewards.services import award_both_parties    # ✅ on crée les 2 récompenses d’un coup
 
 
+# dashboard/views.py (fonction complète)
 @login_required
 @transaction.atomic
 def referral_create(request, company_id=None):
     """
     Choisir un parrain (autocomplete) + créer le FILLEUL inline,
-    puis créer le parrainage. Le filleul est toujours dans l’entreprise du parrain.
+    puis créer le parrainage (toujours dans l’entreprise du parrain).
 
-    Après création, on crée une Reward PENDING pour le PARRAIN, on génère
-    un lien (token) et on l’envoie automatiquement par SMS (Twilio).
+    Après création, on crée deux Rewards PENDING (parrain & filleul),
+    on génère les liens (token) et on envoie automatiquement un SMS au parrain.
     """
     import os
 
@@ -208,7 +210,6 @@ def referral_create(request, company_id=None):
         # 2) Heuristique de repli
         digits = "".join(ch for ch in cleaned if ch.isdigit())
         if cleaned.startswith("+"):
-            # +XXXXXXXXX
             return f"+{digits}" if 8 <= len(digits) <= 15 else None
 
         # suppose déjà indicatif (ex: 201507205488) => +201507205488
@@ -286,6 +287,7 @@ def referral_create(request, company_id=None):
 
             referee = Client.objects.filter(company=company, email__iexact=email).first() if email else None
             if referee is None:
+                # La méthode save_with_company(company) doit exister sur ton form inline
                 referee = ref_form.save_with_company(company)
 
             # 3) Créer le PARRAINAGE (avec validations du ReferralForm)
@@ -302,35 +304,27 @@ def referral_create(request, company_id=None):
                 except IntegrityError:
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
-                    # 4) Reward PENDING pour le PARRAIN + lien + SMS auto
+                    # 4) Récompenses PENDING pour le PARRAIN ET le FILLEUL
                     try:
+                        # s’assure que les 4 templates existent
                         from rewards.views import ensure_reward_templates
                         ensure_reward_templates(company)
                     except Exception:
                         pass
 
-                    bucket_token = tirer_recompense(company)
-                    tpl = get_object_or_404(RewardTemplate, company=company, bucket=bucket_token)
+                    # crée les 2 rewards en transaction, sans doublons (idempotent sur (company, client, referral))
+                    reward_parrain, reward_filleul = award_both_parties(referral=referral)
 
-                    reward, _created = Reward.objects.get_or_create(
-                        company=company,
-                        client=referrer,       # bénéficiaire = PARRAIN
-                        referral=referral,     # rattachement au parrainage
-                        defaults={
-                            "label": tpl.label,
-                            "bucket": tpl.bucket,
-                            "cooldown_days": tpl.cooldown_days,
-                            "state": "PENDING",
-                        },
+                    # lien public (par défaut on envoie au parrain)
+                    claim_abs = request.build_absolute_uri(reward_parrain.claim_path) if reward_parrain.claim_path else ""
+
+                    messages.success(
+                        request,
+                        f"Parrainage créé : {referrer} → {referee}. "
+                        f"Récompenses : Parrain « {reward_parrain.label} » et Filleul « {reward_filleul.label} »."
                     )
-                    reward.ensure_token(force=False)
-                    reward.save(update_fields=["token", "token_expires_at"])
 
-                    claim_abs = request.build_absolute_uri(reward.claim_path) if reward.claim_path else ""
-
-                    messages.success(request, f"Parrainage créé : {referrer} → {referee}.")
-
-                    # Envoi SMS après commit BDD
+                    # Envoi SMS après commit BDD (au parrain, et optionnellement au filleul)
                     if referrer.phone and claim_abs:
                         to_e164 = _normalize_to_e164(referrer.phone)
                         sms_text = (
@@ -352,7 +346,17 @@ def referral_create(request, company_id=None):
                     else:
                         messages.info(request, "Parrainage OK. SMS non envoyé (numéro du parrain ou lien manquant).")
 
-                    # Redirection : fiche du PARRAIN
+                    # (Optionnel) SMS au filleul aussi :
+                    # if referee.phone and reward_filleul.claim_path:
+                    #     to_e164_referee = _normalize_to_e164(referee.phone)
+                    #     link_referee = request.build_absolute_uri(reward_filleul.claim_path)
+                    #     def _after_commit_referee():
+                    #         if to_e164_referee:
+                    #             _send_sms(to_e164_referee, f"{referee.first_name or referee.last_name}, "
+                    #                                        f"voici votre lien cadeau : {link_referee}")
+                    #     transaction.on_commit(_after_commit_referee)
+
+                    # Redirection : liste clients (ou fiche parrain si tu préfères)
                     return redirect("dashboard:clients_list")
             else:
                 err = rf.errors.get("referee")
@@ -367,7 +371,6 @@ def referral_create(request, company_id=None):
         "dashboard/referral_form.html",
         {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
     )
-
 
     
     
@@ -729,47 +732,50 @@ def validate_referral_and_award(request, referral_id: int):
 # ---------------------------
 # ATTRIBUER AU PARRAIN (referrer)
 # ---------------------------
+# dashboard/views.py (extrait)
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect
+
+from accounts.models import Company
+from .models import Referral
+from rewards.models import RewardTemplate
+from rewards.services import create_reward_from_template
+
+
+from rewards.services import award_both_parties  # ✅ NOUVEAU
+
+
 @login_required
-@transaction.atomic
 def validate_referral_and_award_referrer(request, referral_id: int):
     """
-    Attribue une récompense au PARRAIN (referrer) pour CE parrainage.
-    - Autorise plusieurs rewards au même parrain SI ce sont des filleuls différents.
-    - Interdit 2 rewards pour le même (parrain, filleul) => vérifié via referral.
+    Valide un parrainage et attribue une récompense au parrain ET au filleul.
+    Par défaut bucket='SOUVENT' pour les deux (configurable dans award_both_parties).
     """
     referral = get_object_or_404(
-        Referral.objects.select_related("referee", "referrer", "company"),
+        Referral.objects.select_related("company", "referrer", "referee"),
         pk=referral_id
     )
-    company = referral.company
-    referrer = referral.referrer  # bénéficiaire de la reward
 
-    # 1) Anti-doublon : existe déjà une reward pour CE (parrain, referral) ?
-    existing = Reward.objects.filter(company=company, client=referrer, referral=referral)\
-                             .exclude(state="DISABLED")\
-                             .order_by("-id")\
-                             .first()
-    if existing:
-        messages.info(request, "Une récompense existe déjà pour ce parrain et ce filleul.")
-        return redirect("rewards:spin", reward_id=existing.id)
+    company: Company = referral.company
+    user = request.user
 
-    # 2) Tirage EXACT (roues) puis clonage du template correspondant
-    token = tirer_recompense(company)
-    tpl = get_object_or_404(RewardTemplate, company=company, bucket=token)
+    # Contrôle de périmètre (superadmin ou admin de l'entreprise)
+    if not (getattr(user, "is_superadmin", lambda: False)() or getattr(user, "company_id", None) == company.id):
+        messages.error(request, "Accès refusé.")
+        return redirect("dashboard:client_detail", pk=referral.referrer_id)
 
-    reward = Reward.objects.create(
-        company=company,
-        client=referrer,
-        referral=referral,          # ← on trace le lien (clé de la règle métier)
-        label=tpl.label,
-        bucket=token,
-        cooldown_days=tpl.cooldown_days,
-        state="PENDING",
+    # ✅ crée les 2 récompenses en une transaction, sans doublons
+    reward_parrain, reward_filleul = award_both_parties(referral=referral)
+
+    messages.success(
+        request,
+        f"Parrainage validé. Récompenses créées : "
+        f"Parrain « {reward_parrain.label} » et Filleul « {reward_filleul.label} »."
     )
 
-    messages.success(request, f"Récompense attribuée au parrain « {referrer} » pour le filleul « {referral.referee} » : {tpl.label}.")
-    return redirect("rewards:spin", reward_id=reward.id)
-
+    # Redirige sur la fiche du parrain (ou celle du filleul si tu préfères)
+    return redirect("dashboard:client_detail", pk=referral.referrer_id)
 
 # dashboard/views.py (ajoute ceci, près de tes autres vues)
 from django.http import JsonResponse

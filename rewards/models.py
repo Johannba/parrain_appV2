@@ -1,9 +1,14 @@
 # rewards/models.py
+from datetime import timedelta
+import secrets
+
 from django.db import models
+from django.utils import timezone
+from django.urls import reverse
+
 from accounts.models import Company
 from dashboard.models import Client, Referral
-import uuid
-from django.urls import reverse
+
 
 class ProbabilityWheel(models.Model):
     """
@@ -49,13 +54,13 @@ class RewardTemplate(models.Model):
     cooldown_months = models.PositiveSmallIntegerField(default=1)
     cooldown_days = models.PositiveIntegerField(default=30)
 
-    # NOUVEAU : nombre minimum de parrainages requis
+    # nombre minimum de parrainages requis
     min_referrals_required = models.PositiveIntegerField(
         default=0,
         help_text="Nombre minimum de parrainages requis pour débloquer cette récompense."
     )
 
-    # uniquement pour affichage (ex “80/100”), calculé ailleurs
+    # uniquement pour affichage (ex “980/1000”)
     probability_display = models.CharField(max_length=20, default="", editable=False)
 
     class Meta:
@@ -63,18 +68,12 @@ class RewardTemplate(models.Model):
         ordering = ("company", "bucket")
 
     def save(self, *args, **kwargs):
-        # tient cooldown_days en phase avec cooldown_months
+        # tient cooldown_days en phase avec cooldown_months (simple approx 30j/mois)
         self.cooldown_days = int(self.cooldown_months) * 30
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.company} • {self.get_bucket_display()} • {self.label}"
-
-
-import secrets
-from django.db import models
-from django.utils import timezone
-from django.urls import reverse
 
 
 class Reward(models.Model):
@@ -94,7 +93,7 @@ class Reward(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="rewards")
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="rewards")
 
-    # NEW: relie la récompense à un parrainage précis (permet d'appliquer la règle « 1 par filleul »)
+    # lie la récompense à un parrainage précis (règle « 1 par filleul »)
     referral = models.ForeignKey(
         Referral, on_delete=models.CASCADE, related_name="rewards",
         null=True, blank=True
@@ -105,29 +104,71 @@ class Reward(models.Model):
     cooldown_days = models.PositiveIntegerField(default=0)
     state = models.CharField(max_length=20, choices=STATE_CHOICES, default="PENDING")
     created_at = models.DateTimeField(auto_now_add=True)
+
     token = models.CharField(max_length=64, unique=True, db_index=True, null=True, blank=True)
     token_expires_at = models.DateTimeField(null=True, blank=True)
+
     redeemed_at = models.DateTimeField(null=True, blank=True)
     redeemed_channel = models.CharField(max_length=20, blank=True)
 
-    # ---- Helpers ----
-   
-    def ensure_token(self, force: bool = False):
-        if force or not self.token:
-            self.token = secrets.token_urlsafe(24)                # <-- plus de token_urlsafe
-        if not self.token_expires_at:
-            self.token_expires_at = timezone.now() + timezone.timedelta(days=180)
-
     class Meta:
         indexes = [models.Index(fields=["company", "client", "state"])]
-        # Empêche 2 rewards pour le même parrain ET le même referral (donc même filleul)
         constraints = [
             models.UniqueConstraint(
                 fields=["company", "client", "referral"],
                 name="uniq_reward_by_referrer_and_referral",
             )
         ]
-        
+
+    # ----------------- Helpers & propriétés d’affichage -----------------
+
+    def ensure_token(self, force: bool = False):
+        """
+        Génère un token si nécessaire. Aligne éventuellement l'expiration du lien
+        sur le délai d’utilisation.
+        """
+        if force or not self.token:
+            self.token = secrets.token_urlsafe(24)
+        if not self.token_expires_at:
+            # Par défaut : 180 jours, mais si un cooldown est défini,
+            # on privilégie une cohérence lien/délai.
+            days = int(self.cooldown_days or 180)
+            self.token_expires_at = timezone.now() + timedelta(days=days)
+
+    @property
+    def valid_until(self):
+        """
+        Date limite d'utilisation = created_at + cooldown_days (si > 0).
+        Retourne None si illimité (cooldown_days == 0) ou si created_at absent.
+        """
+        if self.cooldown_days and self.created_at:
+            return self.created_at + timedelta(days=int(self.cooldown_days))
+        return None
+
+    @property
+    def cooldown_label(self) -> str:
+        """
+        Libellé humain du délai (ex. '1 mois', '3 mois', '6 mois', ou '15 jours').
+        30j = 1 mois, 60j = 2 mois, etc. 0 = illimité.
+        """
+        d = int(self.cooldown_days or 0)
+        if d == 0:
+            return "illimité"
+        if d % 30 == 0:
+            m = d // 30
+            return f"{m} mois" if m > 1 else "1 mois"
+        return f"{d} jours"
+
+    def validity_sentence(self) -> str:
+        """
+        Phrase prête à afficher, ex:
+        - 'Validité : 1 mois (jusqu’au 12/11/2025)'
+        - 'Validité : illimité'
+        """
+        if self.valid_until:
+            return f"Validité : {self.cooldown_label} (jusqu’au {timezone.localtime(self.valid_until).strftime('%d/%m/%Y')})"
+        return "Validité : illimité"
+
     @property
     def claim_path(self) -> str:
         return reverse("rewards:use_reward", kwargs={"token": self.token}) if self.token else ""
@@ -135,8 +176,8 @@ class Reward(models.Model):
     @property
     def claim_url(self) -> str:
         """
-        Alias utilisé par les templates historiques.
-        Retourne le chemin utilisable tel quel dans un <a href>.
+        Alias utilisé par des templates historiques.
+        Retourne le chemin utilisable dans un <a href>.
         """
         return self.claim_path
 

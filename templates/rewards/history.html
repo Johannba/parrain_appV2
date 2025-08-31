@@ -8,20 +8,16 @@
   <div class="text-secondary">Toutes les récompenses de l’entreprise, tous clients confondus.</div>
 </header>
 
-
-
 <div class="card shadow-sm mb-3">
   <div class="card-body">
-
-     
     <form method="get" class="row g-2 align-items-end">
-       <div class="col-lg-4">
+      <div class="col-lg-4">
         <label class="form-label mb-1">Recherche</label>
         <input type="text" name="q" value="{{ q }}" class="form-control"
                placeholder="Client (nom/prénom/email) ou libellé de récompense…">
       </div>
 
-       <div class="col-lg-3">
+      <div class="col-lg-3">
         <label class="form-label mb-1">État</label>
         <select name="state" class="form-select">
           <option value="">— Tous —</option>
@@ -32,6 +28,7 @@
           {% endfor %}
         </select>
       </div>
+
       <div class="col-lg-3">
         <label class="form-label mb-1">Type</label>
         <select name="bucket" class="form-select">
@@ -43,6 +40,7 @@
           {% endfor %}
         </select>
       </div>
+
       <div class="col-lg-2 d-flex gap-2">
         <button class="btn btn-primary w-100" type="submit">Filtrer</button>
         <a class="btn btn-outline-secondary" href="{% url 'rewards:history_company' %}">Réinitialiser</a>
@@ -59,6 +57,7 @@
           <tr>
             <th style="width: 140px;">Date</th>
             <th>Client</th>
+            <th style="width: 110px;">Rôle</th>  {# ✅ nouvelle colonne #}
             <th>Récompense</th>
             <th style="width: 130px;">Type</th>
             <th style="width: 130px;">État</th>
@@ -71,6 +70,7 @@
                 <div class="small">{{ r.created_at|date:"d/m/Y" }}</div>
                 <div class="text-secondary small">{{ r.created_at|date:"H:i" }}</div>
               </td>
+
               <td>
                 <div class="fw-semibold">
                   <a href="{% url 'dashboard:client_detail' pk=r.client_id %}" class="text-decoration-none">
@@ -79,12 +79,30 @@
                 </div>
                 <div class="text-secondary small">{{ r.client.email|default:"—" }}</div>
               </td>
+
+              {# ✅ rôle par rapport au parrainage #}
+              <td>
+                {% if r.referral_id %}
+                  {% if r.client_id == r.referral.referrer_id %}
+                    <span class="badge text-bg-info">Parrain</span>
+                  {% elif r.client_id == r.referral.referee_id %}
+                    <span class="badge text-bg-secondary">Filleul</span>
+                  {% else %}
+                    <span class="badge text-bg-light text-dark">Autre</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-secondary small">—</span>
+                {% endif %}
+              </td>
+
               <td><div class="fw-semibold">{{ r.label }}</div></td>
+
               <td>
                 {% with ui=BUCKET_UI.r.bucket %}
                   <span class="badge text-bg-{{ ui.badge|default:'secondary' }}">{{ ui.label|default:r.bucket }}</span>
                 {% endwith %}
               </td>
+
               <td>
                 {% with st=STATE_UI.r.state %}
                   <span class="badge text-bg-{{ st.badge|default:'secondary' }}">{{ st.label|default:r.state }}</span>

@@ -1,0 +1,33 @@
+{# templates/rewards/use_reward.html #}
+{% extends "base_public.html" %}
+{% block title %}Utiliser votre récompense{% endblock %}
+
+{% block content %}
+  <div class="container py-4">
+    <h1 class="h4 mb-3">Votre récompense</h1>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="mb-2">
+          <strong>{{ reward.label }}</strong>
+        </div>
+
+        {% if reward.cooldown_days %}
+          <p class="text-secondary small mb-2">{{ reward.validity_sentence }}</p>
+        {% else %}
+          <p class="text-secondary small mb-2">Validité : illimité</p>
+        {% endif %}
+
+        {% if reward.state == "PENDING" %}
+          <p class="mb-0">
+            Présentez ce lien en caisse. Un membre de l’équipe validera la récompense.
+          </p>
+        {% else %}
+          <div class="alert alert-info mb-0">
+            Cette récompense n’est plus en attente (déjà distribuée ou inactive).
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

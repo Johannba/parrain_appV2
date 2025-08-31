@@ -5,10 +5,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .models import ProbabilityWheel, RewardTemplate, Reward
 # Services pour piloter les roues depuis l’admin
-from .services.probabilities import (
-    BASE_KEY, VERY_RARE_KEY,
-    ensure_wheels, rebuild_wheel, reset_wheel
-)
+
 
 
 # ============ Actions utilitaires ============

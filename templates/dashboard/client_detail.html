@@ -1,3 +1,4 @@
+{# templates/dashboard/client_detail.html #}
 {% extends "base_dashboard.html" %}
 {% block title %}Fiche client — {{ client.last_name }} {{ client.first_name }}{% endblock %}
 {% block body_data_page %}clients{% endblock %}
@@ -127,7 +128,6 @@
     <div class="card shadow-sm tall-card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>Cadeaux distribués <span class="badge rounded-pill text-bg-success">{{ kpi_obtenus }}</span></span>
-        <a class="btn btn-sm btn-primary" href="{% url 'dashboard:reward_create' client.id %}">Créer une récompense</a>
       </div>
       <div class="card-body">
         {% if page_ok and page_ok.object_list %}
@@ -168,8 +168,7 @@
     {# 2) Cadeaux en attente (PENDING) #}
     <div class="card shadow-sm tall-card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Cadeaux en attente <span class="badge rounded-pill text-bg-warning">{{ kpi_attente }}</span></span>
-        <a class="btn btn-sm btn-primary" href="#">Envoyer par mail</a>
+        <span>Cadeaux en attente <span class="badge rounded-pill text-bg-warning">{{ kpi_attente }}</span>
       </div>
 
       <div class="card-body">
@@ -186,6 +185,10 @@
                     <div class="small mt-1 text-break">
                       Lien : <a href="{{ claim_abs }}">{{ claim_abs }}</a>
                     </div>
+                    {# >>> AJOUT : délai d'utilisation juste sous le lien <<< #}
+                    <div class="small text-secondary mt-1">
+                      {{ rw.validity_sentence }}
+                    </div>
                   {% else %}
                     <div class="small mt-1 text-warning">
                       Aucun lien encore généré pour cette récompense.
@@ -194,26 +197,29 @@
                 </div>
 
                 <div class="d-flex flex-column gap-1">
+                  <form method="post" action="{% url 'rewards:distribute' rw.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="back_client" value="{{ client.id }}">
+                    <button class="btn btn-sm btn-success" type="submit">Distribuer</button>
+                  </form>
+
+                  {% if client.email and claim_abs %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="mailto:{{ client.email }}?subject={{ 'Votre récompense'|urlencode }}&body={{ claim_abs|urlencode }}">
+                      Envoyer par e-mail
+                    </a>
+                  {% endif %}
+                  {% if client.phone and claim_abs %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="sms:{{ client.phone }}?&body={{ claim_abs|urlencode }}">
+                      Envoyer par SMS
+                    </a>
+                  {% endif %}
                   {% if claim_abs %}
-                    <a class="btn btn-sm btn-outline-primary" href="{{ claim_abs }}">Utiliser la récompense</a>
-                    {% if client.email %}
-                      <a class="btn btn-sm btn-outline-secondary"
-                         href="mailto:{{ client.email }}?subject={{ 'Votre récompense'|urlencode }}&body={{ claim_abs|urlencode }}">
-                        Envoyer par e-mail
-                      </a>
-                    {% endif %}
-                    {% if client.phone %}
-                      <a class="btn btn-sm btn-outline-secondary"
-                         href="sms:{{ client.phone }}?&body={{ claim_abs|urlencode }}">
-                        Envoyer par SMS
-                      </a>
-                    {% endif %}
                     <button class="btn btn-sm btn-outline-dark" type="button"
                             onclick="navigator.clipboard.writeText('{{ claim_abs|escapejs }}')">
                       Copier le lien
                     </button>
-                  {% else %}
-                    <button class="btn btn-sm btn-outline-secondary" disabled>Utiliser la récompense</button>
                   {% endif %}
                 </div>
               </div>

@@ -1,13 +1,16 @@
 # rewards/views.py
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import render, redirect, get_object_or_404
+from django.views.decorators.http import require_POST
 
 from accounts.models import Company
-from .models import RewardTemplate,Reward
-from .forms import RewardTemplateForm
 from dashboard.models import Referral
-from django.views.decorators.http import require_POST
+from .models import RewardTemplate, Reward
+from django.utils import timezone 
+
 
 BUCKET_UI = {
     "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "980/1000"},
@@ -16,8 +19,18 @@ BUCKET_UI = {
     "TRES_RARE": {"label": "Très rare", "badge": "danger",  "prob": "1/100000"},
 }
 
+STATE_UI = {
+    "PENDING":  {"label": "En attente",   "badge": "warning"},
+    "SENT":     {"label": "Envoyée",      "badge": "success"},
+    "DISABLED": {"label": "Désactivée",   "badge": "secondary"},
+    "ARCHIVED": {"label": "Archivée",     "badge": "dark"},
+}
+
+
 def _current_company(request):
-    # super simple : admin entreprise = user.company ; superadmin -> ?company=<id>
+    """
+    super simple : admin entreprise = user.company ; superadmin -> ?company=<id>
+    """
     user = request.user
     company = getattr(user, "company", None)
     cid = (request.GET.get("company") or "").strip()
@@ -25,9 +38,17 @@ def _current_company(request):
         company = get_object_or_404(Company, pk=cid)
     return company
 
-# rewards/views.py (extrait : fonction ensure_reward_templates)
+
+def _can_manage_company(user, company) -> bool:
+    return (hasattr(user, "is_superadmin") and user.is_superadmin()) or (
+        hasattr(user, "company") and user.company_id == company.id
+    )
+
+
 def ensure_reward_templates(company):
-    """Crée les 4 lignes si manquantes, avec proba figées."""
+    """
+    Crée les 4 lignes si manquantes, avec probabilités affichées figées.
+    """
     for key, ui in BUCKET_UI.items():
         obj, created = RewardTemplate.objects.get_or_create(
             company=company, bucket=key,
@@ -37,13 +58,15 @@ def ensure_reward_templates(company):
                 ),
                 "cooldown_months": 1 if key in ("SOUVENT", "MOYEN") else (3 if key == "RARE" else 6),
                 "probability_display": ui["prob"],
-                # NOUVEAU : par défaut, aucun minimum requis
                 "min_referrals_required": 0,
             }
         )
         if not obj.probability_display:
             obj.probability_display = ui["prob"]
             obj.save(update_fields=["probability_display"])
+
+
+# ----------------------------- VUES CRUD TEMPLATES -----------------------------
 
 @login_required
 def reward_list(request):
@@ -60,11 +83,11 @@ def reward_list(request):
     items = sorted(items, key=lambda r: order.get(r.bucket, 99))
 
     # pour l’affichage couleur/badge
-    items = [
-        (r, BUCKET_UI[r.bucket])
-        for r in items
-    ]
+    items = [(r, BUCKET_UI[r.bucket]) for r in items]
     return render(request, "rewards/list.html", {"items": items})
+
+
+from .forms import RewardTemplateForm  # si tu as un formulaire d’édition
 
 @login_required
 def reward_update(request, pk):
@@ -81,78 +104,15 @@ def reward_update(request, pk):
     return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket]})
 
 
-def _can_manage_company(user, company) -> bool:
-    return (hasattr(user, "is_superadmin") and user.is_superadmin()) or (
-        hasattr(user, "company") and user.company_id == company.id
-    )
+# ------------------------------ HISTORIQUE (ENTREPRISE) ------------------------------
 
-@login_required
-@require_POST
-def referral_delete(request, pk: int):
-    referral = get_object_or_404(Referral.objects.select_related("company", "referrer", "referee"), pk=pk)
-
-    # sécurité : périmètre entreprise
-    if not _can_manage_company(request.user, referral.company):
-        messages.error(request, "Accès refusé.")
-        # on tente de revenir sur la fiche passée en paramètre, sinon liste
-        back_id = request.POST.get("back_client")
-        return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
-
-    # pour le redirect, on récupère la fiche d’où on a cliqué
-    back_client_id = request.POST.get("back_client") or referral.referee_id or referral.referrer_id
-
-    referral.delete()
-    messages.success(request, "Parrainage supprimé.")
-    return redirect("dashboard:client_detail", pk=back_client_id)
-
-
-# rewards/views.py (ajoute en haut)
-from .models import Reward  # pour charger la récompense réelle
-
-# ...
-
-@login_required
-def reward_spin(request, reward_id: int):
-    """
-    Page avec une roue animée et des couleurs qui correspondent au type de récompense.
-    - Segments fixes (SOUVENT/MOYEN/RARE/TRES_RARE) en vert/bleu/orange/rouge.
-    - Aiguille, bordure et lueur teintent selon la "badge" (success/info/warning/danger).
-    """
-    reward = get_object_or_404(
-        Reward.objects.select_related("company", "client"),
-        pk=reward_id
-    )
-
-    # Ordre des 4 segments (90° par segment) :
-    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
-    segment = 360 / len(wheel_order)  # 90°
-    try:
-        idx = wheel_order.index(reward.bucket)
-    except ValueError:
-        idx = 0
-
-    # 4 tours complets + position au centre du segment cible
-    target_angle = 4 * 360 + int(idx * segment + segment / 2)
-
-    ui = BUCKET_UI.get(reward.bucket, {"label": reward.bucket, "badge": "secondary"})
-    return render(request, "rewards/spin.html", {
-        "reward": reward,
-        "ui": ui,                   # -> success/info/warning/danger
-        "target_angle": target_angle,
-    })
-    
-    
-    # rewards/views.py
-from django.db.models import Q
-from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import render, redirect
 
-STATE_UI = {
-    "PENDING":  {"label": "En attente",   "badge": "warning"},
-    "SENT":     {"label": "Envoyée",      "badge": "success"},
-    "DISABLED": {"label": "Désactivée",   "badge": "secondary"},
-    "ARCHIVED": {"label": "Archivée",     "badge": "dark"},
-}
+# suppose que _current_company, BUCKET_UI, STATE_UI, Reward sont déjà importés/définis plus haut
 
 @login_required
 def rewards_history_company(request):
@@ -165,12 +125,19 @@ def rewards_history_company(request):
         messages.error(request, "Aucune entreprise sélectionnée.")
         return redirect("dashboard:root")
 
-    qs = (Reward.objects
-          .select_related("client")
-          .filter(company=company)
-          .order_by("-created_at", "-id"))
+    # ✅ Précharge client, referral, parrain et filleul pour éviter les N+1
+    qs = (
+        Reward.objects
+        .select_related(
+            "client",
+            "referral",
+            "referral__referrer",
+            "referral__referee",
+        )
+        .filter(company=company)
+        .order_by("-created_at", "-id")
+    )
 
-    # filtres GET
     bucket = (request.GET.get("bucket") or "").strip().upper()
     state  = (request.GET.get("state") or "").strip().upper()
     q      = (request.GET.get("q") or "").strip()
@@ -201,16 +168,98 @@ def rewards_history_company(request):
         "states": [(k, v["label"]) for k, v in STATE_UI.items()],
     })
 
-from django.utils import timezone
-from django.shortcuts import render, get_object_or_404
-from .models import Reward
+# ------------------------------ ROUE / SPIN ------------------------------
+
+@login_required
+def reward_spin(request, reward_id: int):
+    """
+    Page avec une roue animée et des couleurs qui correspondent au type de récompense.
+    - Segments fixes (SOUVENT/MOYEN/RARE/TRES_RARE).
+    """
+    reward = get_object_or_404(
+        Reward.objects.select_related("company", "client"),
+        pk=reward_id
+    )
+
+    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
+    segment = 360 / len(wheel_order)  # 90°
+    try:
+        idx = wheel_order.index(reward.bucket)
+    except ValueError:
+        idx = 0
+    target_angle = 4 * 360 + int(idx * segment + segment / 2)
+
+    ui = BUCKET_UI.get(reward.bucket, {"label": reward.bucket, "badge": "secondary"})
+    return render(request, "rewards/spin.html", {
+        "reward": reward,
+        "ui": ui,
+        "target_angle": target_angle,
+    })
+
+
+# ------------------------------ PAGE PUBLIQUE (token) ------------------------------
 
 def use_reward(request, token):
-    reward = get_object_or_404(Reward, token=token, state="PENDING")
+    """
+    Page publique : N’ALTÈRE PAS L’ÉTAT.
+    Affiche la récompense et explique que l’équipe validera en caisse.
+    """
+    reward = get_object_or_404(Reward, token=token)
 
-    reward.state = "SENT"
-    reward.redeemed_at = timezone.now()
-    reward.save(update_fields=["state", "redeemed_at"])
+    context = {"reward": reward}
+    if reward.state != "PENDING":
+        messages.info(request, "Cette récompense n’est plus en attente (déjà distribuée ou inactive).")
+    return render(request, "rewards/use_reward.html", context)
 
-    messages.success(request, f"Vous venez d’utiliser votre récompense : {reward.label}")
-    return render(request, "rewards/use_reward_done.html", {"reward": reward})
+
+# ------------------------------ ACTIONS ------------------------------
+
+@login_required
+@require_POST
+def distribute_reward(request, pk: int):
+    """
+    Action opérateur/admin : passe la récompense en SENT.
+    """
+    reward = get_object_or_404(
+        Reward.objects.select_related("company", "client"),
+        pk=pk
+    )
+
+    if not _can_manage_company(request.user, reward.company):
+        messages.error(request, "Accès refusé.")
+        back_id = request.POST.get("back_client")
+        return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
+
+    if reward.state != "PENDING":
+        messages.info(request, "La récompense n’est pas en attente (déjà traitée ?).")
+    else:
+        reward.state = "SENT"
+        reward.redeemed_at = timezone.now()
+        reward.save(update_fields=["state", "redeemed_at"])
+        messages.success(request, f"Récompense « {reward.label} » distribuée.")
+
+    back_id = request.POST.get("back_client")
+    return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("rewards:history_company")
+
+
+@login_required
+@require_POST
+def referral_delete(request, pk: int):
+    """
+    Suppression d’un parrainage (avec contrôle périmètre).
+    """
+    referral = get_object_or_404(
+        Referral.objects.select_related("company", "referrer", "referee"),
+        pk=pk
+    )
+
+    if not _can_manage_company(request.user, referral.company):
+        messages.error(request, "Accès refusé.")
+        back_id = request.POST.get("back_client")
+        return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
+
+    back_client_id = request.POST.get("back_client") or referral.referee_id or referral.referrer_id
+
+    referral.delete()
+    messages.success(request, "Parrainage supprimé.")
+    return redirect("dashboard:client_detail", pk=back_client_id)
