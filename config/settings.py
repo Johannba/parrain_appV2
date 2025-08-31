@@ -132,3 +132,25 @@ AUTH_USER_MODEL = "accounts.User"
 LOGIN_URL = 'accounts:login'
 LOGIN_REDIRECT_URL = 'accounts:user_list'     # temporaire pour tester
 LOGOUT_REDIRECT_URL = 'accounts:login'
+
+
+# settings.py
+import os
+
+# Activez ceci si vous utilisez un fichier .env (pip install python-dotenv)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+def _must(name: str) -> str:
+    v = os.getenv(name)
+    if not v:
+        raise RuntimeError(f"Variable d’environnement manquante : {name}")
+    return v
+
+TWILIO_ACCOUNT_SID = _must("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN  = _must("TWILIO_AUTH_TOKEN")
+TWILIO_SMS_FROM    = _must("TWILIO_SMS_FROM")
+DEFAULT_PHONE_REGION = os.getenv("DEFAULT_PHONE_REGION", "FR")

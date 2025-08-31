@@ -59,14 +59,14 @@
               <div id="referrerHelp" class="form-text">Sélectionnez un parrain dans la liste.</div>
 
               <!-- Champ caché réel (ID du parrain) -->
-              <input type="hidden" name="referrer" id="id_referrer" value=""/>
+              <input type="hidden" name="referrer" id="id_referrer" value="{{ request.POST.referrer|default:'' }}"/>
 
               <noscript>
                 <div class="alert alert-warning mt-2">Activez JavaScript pour rechercher un parrain.</div>
               </noscript>
             </div>
 
-            <!-- 🧒 FICHE FILLEUL -->
+            <!-- 🧒 FICHE FILLEUL (désactivée tant que pas de parrain) -->
             <div class="col-12">
               <div class="border rounded p-3">
                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -74,29 +74,32 @@
                   <span class="text-secondary small">Il sera créé dans la même entreprise que le parrain.</span>
                 </div>
 
-                <div class="row g-3">
-                  <div class="col-12 col-md-6">
-                    <label class="form-label">Nom</label>
-                    {% render_field ref_form.last_name class+="form-control" placeholder="Nom" %}
-                    {% if ref_form.last_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.last_name.errors|striptags }}</div>{% endif %}
+                <!-- ✅ fieldset désactivé par défaut ; on l’active en JS quand un parrain est choisi -->
+                <fieldset id="referee-fieldset" disabled>
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Nom</label>
+                      {% render_field ref_form.last_name class+="form-control" placeholder="Nom" %}
+                      {% if ref_form.last_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.last_name.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Prénom</label>
+                      {% render_field ref_form.first_name class+="form-control" placeholder="Prénom" %}
+                      {% if ref_form.first_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.first_name.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Email</label>
+                      {% render_field ref_form.email class+="form-control" placeholder="email@exemple.com" %}
+                      {% if ref_form.email.errors %}<div class="invalid-feedback d-block">{{ ref_form.email.errors|striptags }}</div>{% endif %}
+                      <div class="form-text">S’il existe déjà un client avec cet email dans l’entreprise, il sera réutilisé.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Téléphone</label>
+                      {% render_field ref_form.phone class+="form-control" placeholder="06 00 00 00 00" %}
+                      {% if ref_form.phone.errors %}<div class="invalid-feedback d-block">{{ ref_form.phone.errors|striptags }}</div>{% endif %}
+                    </div>
                   </div>
-                  <div class="col-12 col-md-6">
-                    <label class="form-label">Prénom</label>
-                    {% render_field ref_form.first_name class+="form-control" placeholder="Prénom" %}
-                    {% if ref_form.first_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.first_name.errors|striptags }}</div>{% endif %}
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <label class="form-label">Email</label>
-                    {% render_field ref_form.email class+="form-control" placeholder="email@exemple.com" %}
-                    {% if ref_form.email.errors %}<div class="invalid-feedback d-block">{{ ref_form.email.errors|striptags }}</div>{% endif %}
-                    <div class="form-text">S’il existe déjà un client avec cet email dans l’entreprise, il sera réutilisé.</div>
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <label class="form-label">Téléphone</label>
-                    {% render_field ref_form.phone class+="form-control" placeholder="06 00 00 00 00" %}
-                    {% if ref_form.phone.errors %}<div class="invalid-feedback d-block">{{ ref_form.phone.errors|striptags }}</div>{% endif %}
-                  </div>
-                </div>
+                </fieldset>
               </div>
             </div>
 
@@ -105,7 +108,7 @@
           <hr class="my-4">
 
           <div class="d-flex gap-2">
-            <button class="btn btn-primary" type="submit">Créer le parrainage</button>
+            <button class="btn btn-primary" id="submit-referral" type="submit" disabled>Créer le parrainage</button>
             <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
           </div>
         </form>
@@ -118,7 +121,7 @@
   </div>
 </div>
 
-<!-- JS d'autocomplétion (même logique que précédemment) -->
+<!-- JS d'autocomplétion + verrouillage du bloc FILLEUL -->
 <script>
 (function() {
   const input = document.getElementById('referrer-search');
@@ -127,13 +130,26 @@
   const wrap = document.getElementById('referrer-search-wrap');
   const endpoint = "{% url 'dashboard:referrer_lookup' %}";
   const companyId = "{{ company.id|default_if_none:'' }}";
+  const fieldset = document.getElementById('referee-fieldset');
+  const submitBtn = document.getElementById('submit-referral');
+
   let lastController = null;
-  let lastQuery = "";
   let debounceTimer = null;
 
   function clearResults() {
     results.innerHTML = "";
     results.style.display = "none";
+  }
+
+  function setRefereeEnabled(on) {
+    // Toggle fieldset + bouton submit
+    if (on) {
+      fieldset.removeAttribute('disabled');
+      submitBtn.removeAttribute('disabled');
+    } else {
+      fieldset.setAttribute('disabled', '');
+      submitBtn.setAttribute('disabled', '');
+    }
   }
 
   function showResults(items) {
@@ -146,8 +162,9 @@
       a.dataset.id = item.id;
       a.addEventListener('click', (e) => {
         e.preventDefault();
-        hidden.value = item.id;
+        hidden.value = item.id;          // ✅ parrain fixé
         input.value = item.label;
+        setRefereeEnabled(true);         // ✅ déverrouille le bloc Filleul
         clearResults();
       });
       results.appendChild(a);
@@ -169,7 +186,10 @@
       .catch(()=>{});
   }
 
+  // Quand on retape dans la barre → on “perd” le parrain choisi
   input.addEventListener('input', () => {
+    hidden.value = "";                // ❌ plus de parrain sélectionné
+    setRefereeEnabled(false);         // 🔒 rebloque le formulaire filleul
     const q = input.value.trim();
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
@@ -181,6 +201,9 @@
   document.addEventListener('click', (e) => {
     if (!wrap.contains(e.target)) clearResults();
   });
+
+  // ⏪ Rechargement après erreurs serveur : si un parrain était déjà choisi, on réactive
+  setRefereeEnabled(Boolean(hidden.value));
 })();
 </script>
 {% endblock %}

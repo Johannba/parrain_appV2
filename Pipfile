@@ -11,6 +11,8 @@ psycopg2-binary = "*"
 django-widget-tweaks = "*"
 pytest-django = "*"
 twilio = "*"
+phonenumbers = "*"
+dotenv = "*"
 
 [dev-packages]
 

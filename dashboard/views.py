@@ -21,6 +21,10 @@ from rewards.models import RewardTemplate, Reward
 from rewards.services.probabilities import tirer_recompense, SOUVENT, MOYEN, RARE, TRES_RARE
 from django.db import transaction
 
+import os
+from twilio.rest import Client as TwilioClient
+
+
 # -------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------
@@ -144,6 +148,24 @@ def client_update(request, pk: int):
     
 # dashboard/views.py
 
+try:
+    import phonenumbers
+    from phonenumbers import PhoneNumberFormat
+    _HAS_PHONENUMBERS = True
+except Exception:
+    _HAS_PHONENUMBERS = False
+
+from django.contrib.auth.decorators import login_required
+from django.db import transaction, IntegrityError
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+
+from accounts.models import Company
+from dashboard.models import Client, Referral
+from .forms import RefereeInlineForm, ReferralForm
+from rewards.models import RewardTemplate, Reward
+from rewards.services.probabilities import tirer_recompense
+
 
 @login_required
 @transaction.atomic
@@ -151,42 +173,122 @@ def referral_create(request, company_id=None):
     """
     Choisir un parrain (autocomplete) + créer le FILLEUL inline,
     puis créer le parrainage. Le filleul est toujours dans l’entreprise du parrain.
-    """
-    _require_company_staff(request.user)
 
-    company_ctx = Company.objects.filter(pk=company_id).first() if (_is_superadmin(request.user) and company_id) \
-                 else getattr(request.user, "company", None)
+    Après création, on crée une Reward PENDING pour le PARRAIN, on génère
+    un lien (token) et on l’envoie automatiquement par SMS (Twilio).
+    """
+    import os
+
+    # ---------- Helpers SMS ----------
+    def _normalize_to_e164(phone: str) -> str | None:
+        """
+        Retourne un numéro au format +E164 pour SMS Twilio si possible, sinon None.
+        Accepte pratiquement tous les formats (espaces, parenthèses, 0 initial, etc.).
+        Utilise libphonenumbers si disponible, sinon heuristique sûre.
+        """
+        if not phone:
+            return None
+        raw = str(phone).strip()
+        cleaned = "".join(ch for ch in raw if ch.isdigit() or ch == "+")
+        if not cleaned:
+            return None
+
+        default_region = (os.getenv("DEFAULT_PHONE_REGION") or "FR").upper()
+
+        # 1) libphonenumbers si dispo (précis)
+        try:
+            import phonenumbers
+            from phonenumbers import PhoneNumberFormat
+            parsed = phonenumbers.parse(cleaned, None if cleaned.startswith("+") else default_region)
+            if phonenumbers.is_possible_number(parsed) and phonenumbers.is_valid_number(parsed):
+                return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+        except Exception:
+            pass
+
+        # 2) Heuristique de repli
+        digits = "".join(ch for ch in cleaned if ch.isdigit())
+        if cleaned.startswith("+"):
+            # +XXXXXXXXX
+            return f"+{digits}" if 8 <= len(digits) <= 15 else None
+
+        # suppose déjà indicatif (ex: 201507205488) => +201507205488
+        if len(digits) >= 11 and not digits.startswith("0"):
+            return f"+{digits}"
+
+        # 0XXXXXXXXX => remplace 0 par indicatif régional
+        if digits.startswith("0"):
+            CC = {
+                "FR": "+33", "US": "+1",  "GB": "+44", "DE": "+49", "ES": "+34", "IT": "+39",
+                "BE": "+32", "NL": "+31", "CH": "+41", "CA": "+1",  "MA": "+212","DZ": "+213",
+                "TN": "+216","SN": "+221","CI": "+225","CM": "+237","BF": "+226","BJ": "+229",
+                "TG": "+228","ML": "+223","NE": "+227","PT": "+351","RO": "+40","EG": "+20"
+            }
+            cc = CC.get(default_region, "")
+            return f"{cc}{digits[1:]}" if cc else None
+
+        # Dernier recours
+        return f"+{digits}" if digits else None
+
+    def _send_sms(to_e164: str, body: str) -> tuple[bool, str | None]:
+        """
+        Envoi SMS via Twilio. Variables d'env requises :
+          - TWILIO_ACCOUNT_SID
+          - TWILIO_AUTH_TOKEN
+          - TWILIO_SMS_FROM (ex: '+14155550123')
+        """
+        sid = os.getenv("TWILIO_ACCOUNT_SID")
+        token = os.getenv("TWILIO_AUTH_TOKEN")
+        sender = os.getenv("TWILIO_SMS_FROM")
+        if not (sid and token and sender):
+            return False, "Configuration Twilio manquante (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_SMS_FROM)."
+        try:
+            from twilio.rest import Client as TwilioClient
+        except Exception as e:
+            return False, f"Lib Twilio introuvable ou invalide : {e}"
+        try:
+            cli = TwilioClient(sid, token)
+            cli.messages.create(to=to_e164, from_=sender, body=body)
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    # ---------- Contexte entreprise pour l'autocomplete ----------
+    if hasattr(request.user, "is_superadmin") and request.user.is_superadmin() and company_id:
+        company_ctx = Company.objects.filter(pk=company_id).first()
+    else:
+        company_ctx = getattr(request.user, "company", None)
 
     ref_form = RefereeInlineForm(request.POST or None)
     referrer_error = None
 
     if request.method == "POST":
+        # 1) PARRAIN choisi via l'autocomplete
         raw_referrer_id = (request.POST.get("referrer") or "").strip()
 
-        qs = Client.objects.filter(is_referrer=True).select_related("company")
-        if not _is_superadmin(request.user):
-            qs = qs.filter(company=request.user.company)
+        referrer_qs = Client.objects.filter(is_referrer=True).select_related("company")
+        if not (hasattr(request.user, "is_superadmin") and request.user.is_superadmin()):
+            referrer_qs = referrer_qs.filter(company=request.user.company)
 
         referrer = None
         if raw_referrer_id:
             try:
                 ref_id = int(raw_referrer_id)
+                referrer = referrer_qs.filter(pk=ref_id).first()
             except (TypeError, ValueError):
                 referrer = None
-            else:
-                referrer = qs.filter(pk=ref_id).first()
 
         if not referrer:
             referrer_error = "Sélectionnez un parrain valide dans la liste."
         elif ref_form.is_valid():
+            # 2) Créer / réutiliser le FILLEUL dans l’entreprise du parrain
             company = referrer.company
             email = (ref_form.cleaned_data.get("email") or "").strip().lower()
 
-            # Réutilise un client existant par email, sinon crée le filleul
             referee = Client.objects.filter(company=company, email__iexact=email).first() if email else None
             if referee is None:
                 referee = ref_form.save_with_company(company)
 
+            # 3) Créer le PARRAINAGE (avec validations du ReferralForm)
             rf = ReferralForm(
                 data={"referrer": referrer.pk, "referee": referee.pk},
                 request=request,
@@ -200,9 +302,58 @@ def referral_create(request, company_id=None):
                 except IntegrityError:
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
+                    # 4) Reward PENDING pour le PARRAIN + lien + SMS auto
+                    try:
+                        from rewards.views import ensure_reward_templates
+                        ensure_reward_templates(company)
+                    except Exception:
+                        pass
+
+                    bucket_token = tirer_recompense(company)
+                    tpl = get_object_or_404(RewardTemplate, company=company, bucket=bucket_token)
+
+                    reward, _created = Reward.objects.get_or_create(
+                        company=company,
+                        client=referrer,       # bénéficiaire = PARRAIN
+                        referral=referral,     # rattachement au parrainage
+                        defaults={
+                            "label": tpl.label,
+                            "bucket": tpl.bucket,
+                            "cooldown_days": tpl.cooldown_days,
+                            "state": "PENDING",
+                        },
+                    )
+                    reward.ensure_token(force=False)
+                    reward.save(update_fields=["token", "token_expires_at"])
+
+                    claim_abs = request.build_absolute_uri(reward.claim_path) if reward.claim_path else ""
+
                     messages.success(request, f"Parrainage créé : {referrer} → {referee}.")
-                    # Redirection vers la fiche du PARRAIN pour voir l’historique mis à jour
-                    return redirect("dashboard:client_detail", pk=referrer.pk)
+
+                    # Envoi SMS après commit BDD
+                    if referrer.phone and claim_abs:
+                        to_e164 = _normalize_to_e164(referrer.phone)
+                        sms_text = (
+                            f"{referrer.first_name or referrer.last_name}, "
+                            f"voici votre lien cadeau : {claim_abs}"
+                        )
+
+                        def _after_commit():
+                            if to_e164:
+                                ok, err = _send_sms(to_e164, sms_text)
+                                if ok:
+                                    messages.success(request, "Lien de récompense envoyé au parrain par SMS.")
+                                else:
+                                    messages.warning(request, f"Parrainage OK, SMS non envoyé : {err}")
+                            else:
+                                messages.info(request, "Parrainage OK. SMS non envoyé (numéro invalide).")
+
+                        transaction.on_commit(_after_commit)
+                    else:
+                        messages.info(request, "Parrainage OK. SMS non envoyé (numéro du parrain ou lien manquant).")
+
+                    # Redirection : fiche du PARRAIN
+                    return redirect("dashboard:clients_list")
             else:
                 err = rf.errors.get("referee")
                 if err:
@@ -210,11 +361,14 @@ def referral_create(request, company_id=None):
                 else:
                     messages.error(request, "Le parrainage n'a pas pu être créé. Corrigez les erreurs.")
 
+    # GET ou erreurs : réaffiche le formulaire
     return render(
         request,
         "dashboard/referral_form.html",
         {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
     )
+
+
     
     
 @login_required
