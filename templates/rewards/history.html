@@ -1,4 +1,7 @@
+{# templates/rewards/history.html #}
 {% extends "base_dashboard.html" %}
+{% load dict_extras %}
+
 {% block title %}Historique des récompenses • {{ company.name }}{% endblock %}
 {% block body_data_page %}recompenses{% endblock %}
 
@@ -11,6 +14,11 @@
 <div class="card shadow-sm mb-3">
   <div class="card-body">
     <form method="get" class="row g-2 align-items-end">
+      {# ✅ très important pour le Superadmin : conserver l’entreprise ciblée #}
+      {% if company and company.id %}
+        <input type="hidden" name="company" value="{{ company.id }}">
+      {% endif %}
+
       <div class="col-lg-4">
         <label class="form-label mb-1">Recherche</label>
         <input type="text" name="q" value="{{ q }}" class="form-control"
@@ -22,9 +30,7 @@
         <select name="state" class="form-select">
           <option value="">— Tous —</option>
           {% for k, lbl in states %}
-            <option value="{{ k }}" {% if k == state %}selected{% endif %}>
-              {{ STATE_UI.k.label|default:lbl }}
-            </option>
+            <option value="{{ k }}" {% if k == state %}selected{% endif %}>{{ lbl }}</option>
           {% endfor %}
         </select>
       </div>
@@ -34,16 +40,18 @@
         <select name="bucket" class="form-select">
           <option value="">— Tous —</option>
           {% for k, lbl in buckets %}
-            <option value="{{ k }}" {% if k == bucket %}selected{% endif %}>
-              {{ BUCKET_UI.k.label|default:lbl }}
-            </option>
+            <option value="{{ k }}" {% if k == bucket %}selected{% endif %}>{{ lbl }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="col-lg-2 d-flex gap-2">
         <button class="btn btn-primary w-100" type="submit">Filtrer</button>
-        <a class="btn btn-outline-secondary" href="{% url 'rewards:history_company' %}">Réinitialiser</a>
+        {# ✅ réinitialiser tout en gardant le contexte company pour superadmin #}
+        <a class="btn btn-outline-secondary"
+           href="{% url 'rewards:history_company' %}{% if company and company.id %}?company={{ company.id }}{% endif %}">
+          Réinitialiser
+        </a>
       </div>
     </form>
   </div>
@@ -57,7 +65,7 @@
           <tr>
             <th style="width: 140px;">Date</th>
             <th>Client</th>
-            <th style="width: 110px;">Rôle</th>  {# ✅ nouvelle colonne #}
+            <th style="width: 110px;">Rôle</th>
             <th>Récompense</th>
             <th style="width: 130px;">Type</th>
             <th style="width: 130px;">État</th>
@@ -80,7 +88,6 @@
                 <div class="text-secondary small">{{ r.client.email|default:"—" }}</div>
               </td>
 
-              {# ✅ rôle par rapport au parrainage #}
               <td>
                 {% if r.referral_id %}
                   {% if r.client_id == r.referral.referrer_id %}
@@ -98,13 +105,15 @@
               <td><div class="fw-semibold">{{ r.label }}</div></td>
 
               <td>
-                {% with ui=BUCKET_UI.r.bucket %}
+                {# ✅ lire BUCKET_UI[r.bucket] en utilisant le filtre get_item #}
+                {% with ui=BUCKET_UI|get_item:r.bucket %}
                   <span class="badge text-bg-{{ ui.badge|default:'secondary' }}">{{ ui.label|default:r.bucket }}</span>
                 {% endwith %}
               </td>
 
               <td>
-                {% with st=STATE_UI.r.state %}
+                {# ✅ lire STATE_UI[r.state] en utilisant le filtre get_item #}
+                {% with st=STATE_UI|get_item:r.state %}
                   <span class="badge text-bg-{{ st.badge|default:'secondary' }}">{{ st.label|default:r.state }}</span>
                 {% endwith %}
               </td>
@@ -118,14 +127,14 @@
       <div class="card-footer bg-transparent d-flex justify-content-end align-items-center gap-2">
         {% if page.has_previous %}
           <a class="btn btn-sm btn-outline-secondary"
-             href="?p={{ page.previous_page_number }}&bucket={{ bucket }}&state={{ state }}&q={{ q|urlencode }}">
+             href="?p={{ page.previous_page_number }}&bucket={{ bucket }}&state={{ state }}&q={{ q|urlencode }}{% if company and company.id %}&company={{ company.id }}{% endif %}">
             Préc.
           </a>
         {% endif %}
         <span class="small">Page {{ page.number }}/{{ page.paginator.num_pages }}</span>
         {% if page.has_next %}
           <a class="btn btn-sm btn-outline-secondary"
-             href="?p={{ page.next_page_number }}&bucket={{ bucket }}&state={{ state }}&q={{ q|urlencode }}">
+             href="?p={{ page.next_page_number }}&bucket={{ bucket }}&state={{ state }}&q={{ q|urlencode }}{% if company and company.id %}&company={{ company.id }}{% endif %}">
             Suiv.
           </a>
         {% endif %}

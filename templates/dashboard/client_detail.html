@@ -1,9 +1,10 @@
 {# templates/dashboard/client_detail.html #}
 {% extends "base_dashboard.html" %}
+{% load url_extras dict_extras %}
 {% block title %}Fiche client — {{ client.last_name }} {{ client.first_name }}{% endblock %}
 {% block body_data_page %}clients{% endblock %}
 {% block nav_clients_active %}active{% endblock %}
-{% load url_extras %}
+{% load url_extras dict_extras %}
 
 {% block content %}
 <style>
@@ -81,7 +82,7 @@
                       {% endif %}
 
                       <form method="post"
-                            action="{% url 'rewards:referral_delete' r.id %}"
+                            action="{% url 'dashboard:referral_delete' r.id %}"
                             onsubmit="return confirm('Supprimer ce parrainage ?');">
                         {% csrf_token %}
                         <input type="hidden" name="back_client" value="{{ client.id }}">
@@ -168,7 +169,7 @@
     {# 2) Cadeaux en attente (PENDING) #}
     <div class="card shadow-sm tall-card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Cadeaux en attente <span class="badge rounded-pill text-bg-warning">{{ kpi_attente }}</span>
+        <span>Cadeaux en attente <span class="badge rounded-pill text-bg-warning">{{ kpi_attente }}</span></span>
       </div>
 
       <div class="card-body">
@@ -185,7 +186,6 @@
                     <div class="small mt-1 text-break">
                       Lien : <a href="{{ claim_abs }}">{{ claim_abs }}</a>
                     </div>
-                    {# >>> AJOUT : délai d'utilisation juste sous le lien <<< #}
                     <div class="small text-secondary mt-1">
                       {{ rw.validity_sentence }}
                     </div>
@@ -293,23 +293,18 @@
       {% endif %}
     </div>
 
-
-  </div>
-
-  {# dans un template fiche client (ex: dashboard/client_detail.html) #}
-{% load dict_extras %}
-
-{% with pct=get_normalized_percentages company client as P %}
-<div class="card mt-3">
-  <div class="card-header">Probabilités normalisées (éligibilité actuelle)</div>
-  <div class="card-body small text-secondary">
-    <div>SOUVENT : {{ P.SOUVENT }} %</div>
-    <div>MOYEN : {{ P.MOYEN }} %</div>
-    <div>RARE : {{ P.RARE }} %</div>
-    <div>TRES_RARE : {{ P.TRES_RARE }} %</div>
-  </div>
-</div>
-{% endwith %}
-
-</div>
+{# 4) Probabilités normalisées (éligibilité actuelle) #}
+{% with P=company|get_normalized_percentages:client %}
+  {% if P %}
+    <div class="card mt-3">
+      <div class="card-header">Probabilités normalisées (éligibilité actuelle)</div>
+      <div class="card-body small text-secondary">
+        <div>SOUVENT : {{ P.SOUVENT }} %</div>
+        <div>MOYEN : {{ P.MOYEN }} %</div>
+        <div>RARE : {{ P.RARE }} %</div>
+        <div>TRES_RARE : {{ P.TRES_RARE }} %</div>
+      </div>
+    </div>
+  {% endif %}
+  {% endwith %}
 {% endblock %}

@@ -8,11 +8,11 @@ asgiref = "==3.8.1"
 sqlparse = "==0.5.1"
 django = "==5.0"
 psycopg2-binary = "*"
-django-widget-tweaks = "*"
 pytest-django = "*"
 twilio = "*"
 phonenumbers = "*"
 dotenv = "*"
+django-widget-tweaks = "*"
 
 [dev-packages]
 

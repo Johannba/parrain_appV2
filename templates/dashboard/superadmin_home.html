@@ -1,3 +1,4 @@
+{# templates/dashboard/superadmin_home.html #}
 {% extends "base_dashboard.html" %}
 {% block title %}Tableau de bord (Superadmin) • ParrainApp{% endblock %}
 {% block body_data_page %}dashboard{% endblock %}
@@ -9,46 +10,52 @@
   <div class="text-secondary">Vue d’ensemble de la plateforme (toutes entreprises).</div>
 </header>
 
+{# ===== Cartes KPI globales ===== #}
 <div class="row g-3 mb-3">
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Parrainages (mois)</div>
-          <div class="stat-num">42</div>
+          <div class="stat-num">{{ kpi.referrals_month|default:0 }}</div>
         </div>
-        <span class="badge badge-soft">+12% vs. N-1</span>
+        <span class="badge badge-soft">
+          {% if kpi.referrals_delta_pct > 0 %}+{% endif %}{{ kpi.referrals_delta_pct|default:0 }}% vs. N-1
+        </span>
       </div>
     </div></div>
   </div>
+
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Cadeaux distribués</div>
-          <div class="stat-num">128</div>
+          <div class="stat-num">{{ kpi.rewards_sent|default:0 }}</div>
         </div>
         <span class="badge text-bg-success">OK</span>
       </div>
     </div></div>
   </div>
+
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Cadeaux en attente</div>
-          <div class="stat-num">6</div>
+          <div class="stat-num">{{ kpi.rewards_pending|default:0 }}</div>
         </div>
         <span class="badge text-bg-warning">Action</span>
       </div>
     </div></div>
   </div>
+
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Base clients</div>
-          <div class="stat-num">1 254</div>
+          <div class="stat-num">{{ kpi.clients|default:0 }}</div>
         </div>
         <span class="badge text-bg-secondary">Actifs</span>
       </div>
@@ -56,6 +63,7 @@
   </div>
 </div>
 
+{# ===== Raccourcis + Activité récente ===== #}
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="card shadow-sm h-100">
@@ -65,33 +73,94 @@
       </div>
       <div class="card-body">
         <div class="row g-2">
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Inscrire un parrain</a></div>
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Enregistrer un parrainé</a></div>
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Gérer les récompenses</a></div>
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Voir les statistiques</a></div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'dashboard:referrer_create' %}">Inscrire un parrain</a>
+          </div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'dashboard:referral_create' %}">Enregistrer un parrainé</a>
+          </div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'rewards:list' %}">Gérer les récompenses</a>
+          </div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'rewards:stats' %}">Voir les statistiques</a>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
   <div class="col-lg-6">
     <div class="card shadow-sm h-100">
       <div class="card-header">Activité récente</div>
       <div class="card-body">
         <ul class="list-group list-group-flush">
-          <li class="list-group-item d-flex justify-content-between align-items-start">
-            <div class="ms-2 me-auto"><div class="fw-semibold">Parrainage validé</div> Dubois Émilie → Cadeau « -15% »</div>
-            <span class="badge text-bg-success rounded-pill">OK</span>
-          </li>
-          <li class="list-group-item d-flex justify-content-between align-items-start">
-            <div class="ms-2 me-auto"><div class="fw-semibold">Cadeau en attente</div> Envoyer le lien au parrain</div>
-            <span class="badge text-bg-warning rounded-pill">6</span>
-          </li>
-          <li class="list-group-item d-flex justify-content-between align-items-start">
-            <div class="ms-2 me-auto"><div class="fw-semibold">Base clients</div> 3 nouveaux contacts importés</div>
-            <span class="badge text-bg-secondary rounded-pill">+3</span>
-          </li>
+          {% if events %}
+            {% for ev in events %}
+              <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                  <div class="fw-semibold">{{ ev.icon }} {{ ev.title|default:"" }}</div>
+                  {{ ev.text|default:"" }}
+                </div>
+                {% if ev.badge %}<span class="badge text-bg-secondary rounded-pill">{{ ev.badge }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          {% else %}
+            <li class="list-group-item text-secondary">Aucune activité récente.</li>
+          {% endif %}
         </ul>
       </div>
+    </div>
+  </div>
+</div>
+
+{# ===== Vue par entreprise (tableau) ===== #}
+<div class="card shadow-sm mt-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="fw-semibold">Vue par entreprise</div>
+    <small class="text-secondary">Parrainages du mois, cadeaux et base clients</small>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Entreprise</th>
+            <th class="text-end">Parrainages (mois)</th>
+            <th class="text-end">Cadeaux distribués</th>
+            <th class="text-end">Cadeaux en attente</th>
+            <th class="text-end">Base clients</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td class="fw-semibold">{{ r.company.name }}</td>
+              <td class="text-end">{{ r.referrals_month }}</td>
+              <td class="text-end"><span class="badge text-bg-success">{{ r.rewards_sent }}</span></td>
+              <td class="text-end"><span class="badge text-bg-warning">{{ r.rewards_pending }}</span></td>
+              <td class="text-end">{{ r.clients }}</td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-2">
+                  <a class="btn btn-sm btn-outline-primary"
+                     href="{% url 'dashboard:company_home' %}?company={{ r.company.id }}">
+                    Ouvrir le tableau
+                  </a>
+                  <a class="btn btn-sm btn-outline-secondary"
+                     href="{% url 'rewards:history_company' %}?company={{ r.company.id }}">
+                    Récompenses
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" class="text-secondary p-3">Aucune entreprise.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>

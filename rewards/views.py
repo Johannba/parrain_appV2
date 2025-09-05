@@ -1,11 +1,17 @@
 # rewards/views.py
+from __future__ import annotations
+
+from datetime import date
+import secrets
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q, Count
 from django.shortcuts import render, redirect, get_object_or_404
-from django.views.decorators.http import require_POST
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from django.db.models.functions import TruncMonth
 
 from accounts.models import Company
@@ -55,14 +61,17 @@ def ensure_reward_templates(company):
     """
     Crée les 4 templates si manquants, avec probas affichées figées.
     """
+    defaults_map = {
+        "SOUVENT":   {"label": "- 10 % de remise", "cooldown_months": 1},
+        "MOYEN":     {"label": "- 10 % de remise", "cooldown_months": 1},
+        "RARE":      {"label": "iPhone 16 Pro Max", "cooldown_months": 3},
+        "TRES_RARE": {"label": "Voyage à Miami", "cooldown_months": 6},
+    }
     for key, ui in BUCKET_UI.items():
         obj, _created = RewardTemplate.objects.get_or_create(
             company=company, bucket=key,
             defaults={
-                "label": "- 10 % de remise" if key in ("SOUVENT", "MOYEN") else (
-                    "iPhone 16 Pro Max" if key == "RARE" else "Voyage à Miami"
-                ),
-                "cooldown_months": 1 if key in ("SOUVENT", "MOYEN") else (3 if key == "RARE" else 6),
+                **defaults_map[key],
                 "probability_display": ui["prob"],
                 "min_referrals_required": 0,
             }
@@ -74,15 +83,12 @@ def ensure_reward_templates(company):
 
 def _last_12_month_starts(today):
     """
-    Retourne la liste des 12 premiers jours de mois (du plus ancien au plus récent)
-    en stdlib uniquement (sans dateutil).
+    Retourne la liste des 12 premiers jours de mois (du plus ancien au plus récent).
     """
-    from datetime import date
     y, m = today.year, today.month
     out = []
     for i in range(11, -1, -1):
-        yy = y
-        mm = m - i
+        yy, mm = y, m - i
         while mm <= 0:
             mm += 12
             yy -= 1
@@ -91,8 +97,7 @@ def _last_12_month_starts(today):
 
 
 # ----------------------------- Snapshot des roues (local) -----------------------------
-# On évite l'import "rewards.services.probabilities" (conflit module/paquet).
-# Clés/tokens alignés avec rewards/services/probabilities.py
+# Clés/tokens alignés avec rewards/probabilities.py
 _BASE_KEY = "base_100"
 _VERY_RARE_KEY = "very_rare_10000"
 
@@ -111,12 +116,10 @@ def _remaining_counts(pool, idx, tokens):
 
 def _wheels_snapshot(company):
     """
-    Renvoie un dict comme get_snapshot(company) l'aurait fait :
+    Renvoie un dict:
     {
-      "base": {
-        "size": int, "idx": int, "progress_pct": int,
-        "remaining_by_token": {token: n}, "total_by_token": {token: n}
-      },
+      "base":      {"size": int, "idx": int, "progress_pct": int,
+                    "remaining_by_token": {token: n}, "total_by_token": {token: n}},
       "very_rare": { ... }
     }
     Si une roue n'existe pas encore, on renvoie des zéros élégants.
@@ -209,6 +212,10 @@ def reward_update(request, pk):
 
 @login_required
 def rewards_history_company(request):
+    """
+    Historique de TOUTES les récompenses d'une entreprise.
+    Pour Superadmin, passez ?company=<id>; sinon, l’entreprise = user.company.
+    """
     company = _current_company(request)
     if not company:
         messages.error(request, "Aucune entreprise sélectionnée.")
@@ -225,9 +232,9 @@ def rewards_history_company(request):
     state  = (request.GET.get("state") or "").strip().upper()
     q      = (request.GET.get("q") or "").strip()
 
-    if bucket in BUCKET_UI.keys():
+    if bucket in BUCKET_UI:
         qs = qs.filter(bucket=bucket)
-    if state in STATE_UI.keys():
+    if state in STATE_UI:
         qs = qs.filter(state=state)
     if q:
         qs = qs.filter(
@@ -337,16 +344,12 @@ def referral_delete(request, pk: int):
 
 # ------------------------------ STATS (récompenses) ------------------------------
 
-# rewards/views.py (extrait) — remplace UNIQUEMENT la vue rewards_stats par celle-ci
-from django.db.models import Count
-from django.db.models.functions import TruncMonth
-
 @login_required
 def rewards_stats(request):
     """
     Page stats ultra-simple : 2 visuels
-    - Parrainages par mois (aperçu des 4 derniers mois) en barres de progression
-    - Cadeaux obtenus (Top) avec part en % (progress)
+    - Parrainages par mois (aperçu des 4 derniers mois)
+    - Cadeaux obtenus (Top) avec part en %
     """
     company = _current_company(request)
     if not company:
@@ -355,22 +358,20 @@ def rewards_stats(request):
 
     qs = Reward.objects.filter(company=company)
 
-    # ---- 4 derniers mois (mois de début) en stdlib only ----
+    # ---- 4 derniers mois (mois 1er) ----
     def _last_n_month_starts(today, n):
         y, m = today.year, today.month
         out = []
-        for i in range(n-1, -1, -1):
-            yy = y
-            mm = m - i
+        for i in range(n - 1, -1, -1):
+            yy, mm = y, m - i
             while mm <= 0:
                 mm += 12
                 yy -= 1
-            from datetime import date
             out.append(date(yy, mm, 1))
         return out
 
     today = timezone.now().date().replace(day=1)
-    months = _last_n_month_starts(today, 4)  # 4 mois comme sur la maquette
+    months = _last_n_month_starts(today, 4)
 
     monthly_raw = (
         qs.annotate(m=TruncMonth("created_at"))
@@ -384,21 +385,17 @@ def rewards_stats(request):
     for r in monthly_rows:
         r["pct"] = int((r["n"] / max_n) * 100) if max_n else 0
 
-    # ---- Top cadeaux (par libellé de Reward) ----
-    gifts_raw = list(
-        qs.values("label").annotate(n=Count("id")).order_by("-n")[:4]
-    )
+    # ---- Top cadeaux (par libellé) ----
+    gifts_raw = list(qs.values("label").annotate(n=Count("id")).order_by("-n")[:4])
     total_gifts = sum(g["n"] for g in gifts_raw) or 1
     top_gifts = [
-        {"label": g["label"] or "—", "n": g["n"], "pct": int((g["n"]/total_gifts)*100)}
+        {"label": g["label"] or "—", "n": g["n"], "pct": int((g["n"] / total_gifts) * 100)}
         for g in gifts_raw
     ]
 
     context = {
         "company": company,
-        "monthly_rows": monthly_rows,  # [{month: date(YYYY,MM,1), n: int, pct: int}]
-        "top_gifts": top_gifts,        # [{label,str,n,int,pct,int}]
+        "monthly_rows": monthly_rows,   # [{month: date(YYYY,MM,1), n: int, pct: int}]
+        "top_gifts": top_gifts,         # [{label,str,n,int,pct,int}]
     }
     return render(request, "rewards/stats.html", context)
-
-

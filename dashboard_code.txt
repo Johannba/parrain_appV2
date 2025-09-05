@@ -1,0 +1,2386 @@
+===== ./dashboard/signals.py =====
+===== ./dashboard/models.py =====
+# dashboard/models.py
+from django.db import models
+from django.utils import timezone
+from accounts.models import Company
+from django.db.models import Q, UniqueConstraint
+from django.db.models.functions import Lower
+
+
+class Client(models.Model):
+    company     = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="clients")
+    first_name  = models.CharField(max_length=100, blank=True)
+    last_name   = models.CharField(max_length=100, blank=True)
+    email       = models.EmailField(blank=True, null=True)
+    phone       = models.CharField(max_length=32, blank=True)
+    is_referrer = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            # Unicité (insensible à la casse) du couple (nom, prénom, entreprise) pour les PARRAINS,
+            # et seulement si "last_name" non vide pour éviter de bloquer les créations incomplètes.
+            UniqueConstraint(
+                Lower("last_name"),
+                Lower("first_name"),
+                "company",
+                name="uniq_referrer_name_per_company_ci",
+                condition=Q(is_referrer=True) & ~Q(last_name=""),
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.last_name} {self.first_name}".strip() or self.email or f"Client #{self.pk}"
+
+
+class Referral(models.Model):
+ 
+    company    = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="referrals")
+    referrer   = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="referrals_made")
+    referee    = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="referrals_received")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # si tu as déjà d'autres contraintes, garde-les
+            models.UniqueConstraint(
+                fields=["company", "referee"],
+                name="uniq_referee_per_company",   # <-- NOM EXACT attendu par la migration
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.referrer} → {self.referee} ({self.company})"
+
+===== ./dashboard/__init__.py =====
+===== ./dashboard/apps.py =====
+from django.apps import AppConfig
+
+
+class DashboardConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'dashboard'
+===== ./dashboard/forms.py =====
+from django import forms
+from django.forms import Select, TextInput, EmailInput
+from .models import Client, Company, Referral
+
+# --------------------------
+# Utilitaire commun
+# --------------------------
+def _init_company_field(form, user):
+    """Restreint le select 'company' selon le rôle."""
+    is_super = bool(getattr(user, "is_superadmin", None) and user.is_superadmin())
+
+    if is_super:
+        form.fields["company"].queryset = Company.objects.order_by("name")
+    else:
+        # Admin / Opérateur : company forcée
+        form.fields["company"].queryset = Company.objects.filter(
+            pk=getattr(getattr(user, "company", None), "pk", None)
+        )
+        form.fields["company"].empty_label = None
+
+from django import forms
+from django.forms import TextInput, EmailInput, Select
+from .models import Client, Company, Referral
+
+# dashboard/forms.py
+from django import forms
+from django.forms import TextInput, EmailInput, Select
+from .models import Client, Company, Referral
+
+
+class ReferrerClientForm(forms.ModelForm):
+    """
+    Formulaire dédié à la création/édition d’un PARRAIN.
+    - Ne montre pas is_referrer
+    - Force is_referrer=True au save()
+    - Superadmin voit toutes les entreprises, sinon company est forcée
+    """
+    class Meta:
+        model = Client
+        fields = ("company", "last_name", "first_name", "email", "phone")
+        widgets = {
+            "company": Select(attrs={"class": "form-select"}),
+            "last_name": TextInput(attrs={"class": "form-control", "placeholder": "Nom"}),
+            "first_name": TextInput(attrs={"class": "form-control", "placeholder": "Prénom"}),
+            "email": EmailInput(attrs={"class": "form-control", "placeholder": "email@exemple.com"}),
+            "phone": TextInput(attrs={"class": "form-control", "placeholder": "06 00 00 00 00"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+        user = getattr(request, "user", None)
+        is_super = bool(user and hasattr(user, "is_superadmin") and user.is_superadmin())
+
+        if is_super:
+            self.fields["company"].queryset = Company.objects.order_by("name")
+        else:
+            self.fields["company"].queryset = Company.objects.filter(
+                pk=getattr(getattr(user, "company", None), "pk", None)
+            )
+            self.fields["company"].empty_label = None
+
+    def clean(self):
+        cleaned = super().clean()
+        company = cleaned.get("company")
+        email = (cleaned.get("email") or "").strip().lower()
+        if company and email:
+            exists = Client.objects.filter(
+                company=company, email__iexact=email
+            ).exclude(pk=self.instance.pk or 0).exists()
+            if exists:
+                self.add_error("email", "Un client avec cet email existe déjà dans cette entreprise.")
+        return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.is_referrer = True
+        if commit:
+            obj.save()
+        return obj
+
+
+class RefereeClientForm(forms.ModelForm):
+    """
+    Formulaire dédié au FILLEUL (client non parrain).
+    - Force is_referrer=False au save()
+    - Même logique de restriction d’entreprise que ci-dessus
+    """
+    class Meta:
+        model = Client
+        fields = ("company", "last_name", "first_name", "email", "phone")
+        widgets = {
+            "company": Select(attrs={"class": "form-select"}),
+            "last_name": TextInput(attrs={"class": "form-control", "placeholder": "Nom"}),
+            "first_name": TextInput(attrs={"class": "form-control", "placeholder": "Prénom"}),
+            "email": EmailInput(attrs={"class": "form-control", "placeholder": "email@exemple.com"}),
+            "phone": TextInput(attrs={"class": "form-control", "placeholder": "06 00 00 00 00"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+        user = getattr(request, "user", None)
+        is_super = bool(user and hasattr(user, "is_superadmin") and user.is_superadmin())
+
+        if is_super:
+            self.fields["company"].queryset = Company.objects.order_by("name")
+        else:
+            self.fields["company"].queryset = Company.objects.filter(
+                pk=getattr(getattr(user, "company", None), "pk", None)
+            )
+            self.fields["company"].empty_label = None
+
+    def clean(self):
+        cleaned = super().clean()
+        company = cleaned.get("company")
+
+        # Normalisation nom/prénom (trim + casse)
+        ln = (cleaned.get("last_name") or "").strip()
+        fn = (cleaned.get("first_name") or "").strip()
+        email = (cleaned.get("email") or "").strip().lower()
+
+        # 1) Nom obligatoire pour un parrain
+        if not ln:
+            self.add_error("last_name", "Le nom est obligatoire pour créer un parrain.")
+
+        # 2) Unicité nom/prénom dans l’entreprise (insensible à la casse)
+        if company and ln:
+            exists_name = Client.objects.filter(
+                company=company,
+                is_referrer=True,
+                last_name__iexact=ln,
+                first_name__iexact=fn,
+            ).exclude(pk=self.instance.pk or 0).exists()
+            if exists_name:
+                self.add_error("last_name", "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.")
+
+        # 3) (Optionnel) Unicité email dans l’entreprise si fourni
+        if company and email:
+            exists_email = Client.objects.filter(
+                company=company, email__iexact=email
+            ).exclude(pk=self.instance.pk or 0).exists()
+            if exists_email:
+                self.add_error("email", "Un client avec cet email existe déjà dans cette entreprise.")
+
+        # Remet les valeurs normalisées
+        cleaned["last_name"] = ln
+        cleaned["first_name"] = fn
+        cleaned["email"] = email
+        return cleaned
+
+
+class ReferralForm(forms.ModelForm):
+    """
+    Formulaire d’association Parrain → Filleul.
+    ATTENTION : pas de champ 'status' car il n’existe pas dans le modèle (sinon FieldError).
+    """
+    class Meta:
+        model = Referral
+        fields = ("referrer", "referee")
+        widgets = {
+            "referrer": forms.Select(attrs={"class": "form-select"}),
+            "referee": forms.Select(attrs={"class": "form-select"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop("request", None)
+        self.company = kwargs.pop("company", None)
+        super().__init__(*args, **kwargs)
+
+        user = getattr(self.request, "user", None)
+        is_super = bool(user and hasattr(user, "is_superadmin") and user.is_superadmin())
+
+        if is_super and self.company is None:
+            self.fields["referrer"].queryset = (
+                Client.objects.filter(is_referrer=True)
+                .select_related("company")
+                .order_by("last_name", "first_name")
+            )
+            self.fields["referee"].queryset = (
+                Client.objects.filter(is_referrer=False)
+                .select_related("company")
+                .order_by("last_name", "first_name")
+            )
+        else:
+            comp = self.company or getattr(user, "company", None)
+            self.fields["referrer"].queryset = (
+                Client.objects.filter(company=comp, is_referrer=True)
+                .order_by("last_name", "first_name")
+            )
+            self.fields["referee"].queryset = (
+                Client.objects.filter(company=comp, is_referrer=False)
+                .order_by("last_name", "first_name")
+            )
+
+        def fmt(o):
+            comp_name = o.company.name if o.company else "—"
+            mail = o.email or "—"
+            return f"{o.last_name} {o.first_name} — {mail} ({comp_name})"
+
+        self.fields["referrer"].label_from_instance = fmt
+        self.fields["referee"].label_from_instance = fmt
+
+    def clean(self):
+        cleaned = super().clean()
+        referrer = cleaned.get("referrer")
+        referee = cleaned.get("referee")
+
+        if referrer and not referrer.is_referrer:
+            self.add_error("referrer", "Le parrain doit être un client marqué « parrain ».")
+        if referee and referee.is_referrer:
+            self.add_error("referee", "Le filleul doit être un client non parrain.")
+        if referrer and referee:
+            if referrer.company_id != referee.company_id:
+                self.add_error("referee", "Parrain et filleul doivent appartenir à la même entreprise.")
+            if referrer.id == referee.id:
+                self.add_error("referee", "Parrain et filleul doivent être différents.")
+
+        if referee:
+            company = (
+                self.company
+                or getattr(getattr(self.request, "user", None), "company", None)
+                or getattr(referee, "company", None)
+            )
+            if company and Referral.objects.filter(company=company, referee=referee).exists():
+                self.add_error("referee", "Ce filleul a déjà un parrainage dans cette entreprise.")
+        return cleaned
+
+
+# dashboard/forms.py (ajouter en bas du fichier)
+from django import forms
+from django.forms import TextInput, EmailInput
+from .models import Client
+
+class RefereeInlineForm(forms.ModelForm):
+    """
+    Form pour créer un FILLEUL (client non-parrain) sans champ 'company' (déduit du parrain).
+    - is_referrer = False forcé au save
+    - exige au moins un nom OU un email
+    - évite le doublon d'email dans l'entreprise
+    """
+    class Meta:
+        model = Client
+        fields = ("last_name", "first_name", "email", "phone")
+        widgets = {
+            "last_name":  TextInput(attrs={"class": "form-control", "placeholder": "Nom"}),
+            "first_name": TextInput(attrs={"class": "form-control", "placeholder": "Prénom"}),
+            "email":      EmailInput(attrs={"class": "form-control", "placeholder": "email@exemple.com"}),
+            "phone":      TextInput(attrs={"class": "form-control", "placeholder": "06 00 00 00 00"}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        ln = (cleaned.get("last_name") or "").strip()
+        fn = (cleaned.get("first_name") or "").strip()
+        email = (cleaned.get("email") or "").strip().lower()
+
+        if not ln and not email:
+            self.add_error(None, "Renseignez au moins un nom ou un email pour le filleul.")
+
+        cleaned["last_name"] = ln
+        cleaned["first_name"] = fn
+        cleaned["email"] = email
+        return cleaned
+
+    def save_with_company(self, company, commit=True):
+        """Crée le filleul dans l’entreprise donnée, is_referrer=False."""
+        obj = self.instance if self.instance and self.instance.pk else Client()
+        obj.company = company
+        obj.last_name = self.cleaned_data.get("last_name", "")
+        obj.first_name = self.cleaned_data.get("first_name", "")
+        obj.email = self.cleaned_data.get("email", None)
+        obj.phone = self.cleaned_data.get("phone", "")
+        obj.is_referrer = False
+        if commit:
+            obj.save()
+        return obj
+===== ./dashboard/admin.py =====
+from django.contrib import admin
+
+# Register your models here.
+# dashboard/admin.py
+from django.contrib import admin
+from .models import Client, Referral
+
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ("last_name", "first_name", "email", "company", "is_referrer")
+    search_fields = ("last_name", "first_name", "email", "phone")
+    list_filter = ("company", "is_referrer")
+
+@admin.register(Referral)
+class ReferralAdmin(admin.ModelAdmin):
+    list_display  = ("id", "company", "referrer", "referee", "created_at")
+    list_filter   = ("company",)                # ← plus de "status" ici
+    search_fields = ("referrer__last_name", "referrer__first_name",
+                     "referee__last_name", "referee__first_name")
+    autocomplete_fields = ("company", "referrer", "referee")
+    date_hierarchy = "created_at"
+
+===== ./dashboard/tests.py =====
+from django.test import TestCase
+
+# Create your tests here.
+===== ./dashboard/urls.py =====
+# dashboard/urls.py
+from django.urls import path
+from . import views
+
+app_name = "dashboard"
+
+urlpatterns = [
+    # Accueils
+    path("", views.dashboard_root, name="root"),
+    path("superadmin/", views.superadmin_home, name="superadmin_home"),
+    path("company/", views.company_home, name="company_home"),
+
+    # Clients – liste / détail
+    path("clients/", views.clients_list, name="clients_list"),
+    path("clients/<int:pk>/", views.client_detail, name="client_detail"),
+
+
+    # Clients – édition & suppression (le form est choisi automatiquement)
+    path("clients/<int:pk>/edit/", views.client_update, name="client_update"),
+    path("clients/<int:pk>/delete/", views.client_delete, name="client_delete"),
+    
+  # ✅ Création d'un PARRAIN (écran séparé)
+    path("clients/referrers/new/", views.referrer_create, name="referrer_create"),
+    
+    # Parrainage : création via recherche du parrain + formulaire du filleul
+    path("referrals/create/", views.referral_create, name="referral_create"),
+     path("clients/referrer/<int:pk>/edit/", views.referrer_update, name="referrer_update"),
+      # 🔎 API de recherche de parrains
+    path("api/referrers/", views.referrer_lookup, name="referrer_lookup"),
+
+    # Récompenses (manuel + validations)
+    path("clients/<int:pk>/rewards/new/", views.reward_create, name="reward_create"),
+    path("referrals/<int:referral_id>/validate/", views.validate_referral_and_award, name="validate_referral_and_award"),
+    path("referrals/<int:referral_id>/award-referrer/", views.validate_referral_and_award_referrer, name="validate_referral_and_award_referrer"),
+      # NEW: alias pour le lien "Tableau de bord" du layout
+    path("home/", views.dashboard_root, name="dashboard_home"),
+]
+===== ./dashboard/views.py =====
+# dashboard/views.py
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
+from django.db import IntegrityError, transaction
+from django.db.models import Q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+
+from django.utils import timezone
+
+from accounts.models import Company
+from dashboard.models import Client, Referral
+from .forms import (
+    ReferrerClientForm,
+    RefereeClientForm,
+    ReferralForm,
+    RefereeInlineForm,
+)
+from rewards.forms import RewardTemplateForm
+from rewards.models import Reward, RewardTemplate
+from rewards.services import award_both_parties
+
+# -------------------------------------------------------------
+# Helpers (rôles & périmètre)
+# -------------------------------------------------------------
+def _is_superadmin(u) -> bool:
+    return hasattr(u, "is_superadmin") and u.is_superadmin()
+
+def _is_company_admin(u) -> bool:
+    return hasattr(u, "is_admin_entreprise") and u.is_admin_entreprise()
+
+def _is_operator(u) -> bool:
+    return hasattr(u, "is_operateur") and u.is_operateur()
+
+def _require_company_staff(user):
+    if _is_superadmin(user) or _is_company_admin(user) or _is_operator(user):
+        return
+    raise PermissionDenied("Accès réservé au personnel.")
+
+def _company_for(user):
+    # Admin/Opérateur : l’entreprise de l’utilisateur
+    # Superadmin : à choisir via l’UI (ou None ici)
+    return getattr(user, "company", None)
+
+# -------------------------------------------------------------
+# KPI / activité pour tableaux de bord
+# -------------------------------------------------------------
+def _month_bounds(now=None):
+    now = now or timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_month_end = month_start
+    if month_start.month == 1:
+        prev_month_start = month_start.replace(year=month_start.year - 1, month=12)
+    else:
+        prev_month_start = month_start.replace(month=month_start.month - 1)
+    return month_start, prev_month_start, prev_month_end
+
+def _kpis_for_company(company: Company):
+    now = timezone.now()
+    month_start, prev_month_start, prev_month_end = _month_bounds(now)
+
+    referrals_this_month = Referral.objects.filter(
+        company=company, created_at__gte=month_start
+    ).count()
+
+    prev_referrals = Referral.objects.filter(
+        company=company, created_at__gte=prev_month_start, created_at__lt=prev_month_end
+    ).count()
+
+    delta_pct = 0
+    if prev_referrals:
+        delta_pct = round((referrals_this_month - prev_referrals) * 100 / prev_referrals)
+
+    return {
+        "referrals_month": referrals_this_month,
+        "referrals_delta_pct": delta_pct,
+        "rewards_sent": Reward.objects.filter(company=company, state="SENT").count(),
+        "rewards_pending": Reward.objects.filter(company=company, state="PENDING").count(),
+        "clients": Client.objects.filter(company=company).count(),
+    }
+
+def _recent_events_for_company(company: Company, limit=8):
+    events = []
+
+    for r in (
+        Referral.objects.select_related("referrer", "referee")
+        .filter(company=company)
+        .order_by("-created_at")[:limit]
+    ):
+        events.append(
+            {
+                "icon": "👥",
+                "text": f"Parrainage validé — {r.referrer.last_name} {r.referrer.first_name} → "
+                        f"{r.referee.last_name} {r.referee.first_name}",
+                "badge": "OK",
+            }
+        )
+
+    pend = Reward.objects.filter(company=company, state="PENDING").count()
+    if pend:
+        events.append(
+            {"icon": "🎁", "text": "Cadeau en attente — Envoyer le lien au parrain", "badge": str(pend)}
+        )
+
+    events.append({"icon": "🧑", "text": "Base clients — total à jour", "badge": "+1"})
+    return events[:limit]
+
+# -------------------------------------------------------------
+# Redirections d’accueil selon le rôle
+# -------------------------------------------------------------
+@login_required
+def dashboard_root(request):
+    u = request.user
+    if _is_superadmin(u):
+        return redirect("dashboard:superadmin_home")
+    if _is_company_admin(u) or _is_operator(u):
+        return redirect("dashboard:company_home")
+    raise PermissionDenied("Accès réservé au personnel.")
+
+@login_required
+def superadmin_home(request):
+    if not _is_superadmin(request.user):
+        raise PermissionDenied("Réservé au Superadmin.")
+
+    companies = Company.objects.all().order_by("name")
+
+    totals = {"referrals_month": 0, "rewards_sent": 0, "rewards_pending": 0, "clients": 0}
+    rows = []
+
+    for c in companies:
+        k = _kpis_for_company(c)
+        rows.append(
+            {
+                "company": c,
+                "referrals_month": k["referrals_month"],
+                "rewards_sent": k["rewards_sent"],
+                "rewards_pending": k["rewards_pending"],
+                "clients": k["clients"],
+            }
+        )
+        totals["referrals_month"] += k["referrals_month"]
+        totals["rewards_sent"] += k["rewards_sent"]
+        totals["rewards_pending"] += k["rewards_pending"]
+        totals["clients"] += k["clients"]
+
+    events = []  # (optionnel) activité globale
+    return render(
+        request,
+        "dashboard/superadmin_home.html",
+        {"kpi": totals, "events": events, "rows": rows},
+    )
+
+@login_required
+def company_home(request):
+    u = request.user
+    if not (_is_superadmin(u) or _is_company_admin(u) or _is_operator(u)):
+        raise PermissionDenied("Réservé à l’Admin/Opérateur (ou Superadmin).")
+
+    # valeur par défaut : l’entreprise de l’utilisateur
+    company = _company_for(u)  # admin/opérateur -> user.company
+
+    # superadmin peut cibler une entreprise via ?company=<id>
+    if _is_superadmin(u):
+        cid = (request.GET.get("company") or "").strip()
+        if cid:
+            company = get_object_or_404(Company, pk=cid)
+            # (Optionnel) mémoriser le contexte pour la navigation suivante :
+            # request.session["dash_company_id"] = company.id
+
+    if not company:
+        messages.info(request, "Sélectionnez une entreprise.")
+        return redirect("accounts:company_list")
+
+    kpi = _kpis_for_company(company)
+    events = _recent_events_for_company(company)
+    return render(
+        request,
+        "dashboard/company_home.html",
+        {"company": company, "kpi": kpi, "events": events},
+    )
+
+# -------------------------------------------------------------
+# Clients : liste / détail
+# -------------------------------------------------------------
+@login_required
+def clients_list(request):
+    _require_company_staff(request.user)
+    u = request.user
+
+    qs = Client.objects.filter(is_referrer=True)
+    if not _is_superadmin(u):
+        qs = qs.filter(company=u.company)
+
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        qs = qs.filter(
+            Q(last_name__icontains=q)
+            | Q(first_name__icontains=q)
+            | Q(email__icontains=q)
+        )
+
+    qs = qs.order_by("last_name", "first_name")
+    return render(
+        request,
+        "dashboard/clients_list.html",
+        {"clients": qs, "filter_type": "parrains", "current_q": q},
+    )
+
+@login_required
+def client_detail(request, pk: int):
+    _require_company_staff(request.user)
+
+    u = request.user
+    if _is_superadmin(u):
+        client = get_object_or_404(Client.objects.select_related("company"), pk=pk)
+    else:
+        client = get_object_or_404(
+            Client.objects.select_related("company"), pk=pk, company=u.company
+        )
+
+    # Historique des parrainages (où ce client est parrain OU filleul)
+    history_qs = (
+        Referral.objects.select_related("referrer", "referee")
+        .filter(company=client.company)
+        .filter(Q(referrer=client) | Q(referee=client))
+        .order_by("-created_at", "-id")
+    )
+    history_page = Paginator(history_qs, 8).get_page(request.GET.get("h"))
+
+    # Map referral_id -> reward_id (récompense de ce client liée à ce parrainage)
+    ref_ids = [r.id for r in history_page.object_list]
+    rewards_for_rows = (
+        Reward.objects.filter(company=client.company, client=client, referral_id__in=ref_ids)
+        .exclude(state="DISABLED")
+        .values_list("referral_id", "id")
+    )
+    ref_rewards = {ref_id: reward_id for ref_id, reward_id in rewards_for_rows}
+    for r in history_page.object_list:
+        r.existing_reward_id = ref_rewards.get(r.id)
+
+    # Récompenses par statut (3 colonnes)
+    rewards_ok = (
+        Reward.objects.filter(company=client.company, client=client, state="SENT").order_by("-id")
+    )
+    rewards_pending = (
+        Reward.objects.filter(company=client.company, client=client, state="PENDING").order_by("-id")
+    )
+    rewards_unused = (
+        Reward.objects.filter(company=client.company, client=client, state="DISABLED").order_by("-id")
+    )
+
+    page_ok = Paginator(rewards_ok, 5).get_page(request.GET.get("ok"))
+    page_pending = Paginator(rewards_pending, 5).get_page(request.GET.get("pending"))
+    page_unused = Paginator(rewards_unused, 5).get_page(request.GET.get("unused"))
+
+    return render(
+        request,
+        "dashboard/client_detail.html",
+        {
+            "company": client.company,
+            "client": client,
+            "history_page": history_page,
+            "page_ok": page_ok,
+            "page_pending": page_pending,
+            "page_unused": page_unused,
+            "kpi_obtenus": rewards_ok.count(),
+            "kpi_attente": rewards_pending.count(),
+            "kpi_nonutils": rewards_unused.count(),
+        },
+    )
+
+# -------------------------------------------------------------
+# Clients : création / édition / suppression
+# -------------------------------------------------------------
+@login_required
+@transaction.atomic
+def client_update(request, pk: int):
+    """
+    Éditer un client (parrain OU filleul).
+    Choix automatique du bon formulaire et verrouillage du périmètre.
+    """
+    _require_company_staff(request.user)
+
+    qs = Client.objects.select_related("company")
+    obj = (
+        get_object_or_404(qs, pk=pk)
+        if _is_superadmin(request.user)
+        else get_object_or_404(qs, pk=pk, company=request.user.company)
+    )
+
+    is_ref = bool(obj.is_referrer)
+    FormCls = ReferrerClientForm if is_ref else RefereeClientForm
+    template = "dashboard/referrer_form.html" if is_ref else "dashboard/referee_form.html"
+
+    form = FormCls(request.POST or None, instance=obj, request=request)
+
+    if not _is_superadmin(request.user) and "company" in form.fields:
+        form.fields["company"].disabled = True
+
+    if request.method == "POST" and form.is_valid():
+        c = form.save(commit=False)
+        c.is_referrer = True if is_ref else False
+        if not _is_superadmin(request.user):
+            c.company = request.user.company
+        try:
+            c.save()
+        except IntegrityError:
+            if is_ref:
+                form.add_error(
+                    "last_name",
+                    "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.",
+                )
+            else:
+                form.add_error(None, "Conflit d’unicité détecté pour ce client.")
+        else:
+            messages.success(request, "Client mis à jour.")
+            return redirect("dashboard:clients_list")
+
+    return render(
+        request,
+        template,
+        {"form": form, "referrer": obj if is_ref else None, "is_update": True},
+    )
+
+@login_required
+def client_delete(request, pk: int):
+    _require_company_staff(request.user)
+
+    obj = get_object_or_404(Client, pk=pk)
+    if not _is_superadmin(request.user) and obj.company_id != request.user.company_id:
+        raise PermissionDenied("Accès refusé.")
+
+    if request.method == "POST":
+        obj.delete()
+        messages.success(request, "Client supprimé.")
+        return redirect("dashboard:clients_list")
+
+    return render(
+        request,
+        "dashboard/confirm_delete.html",
+        {
+            "title": "Supprimer le client",
+            "message": f"Supprimer définitivement {obj.last_name} {obj.first_name} ?",
+            "post_action": "dashboard:client_delete",
+            "post_kwargs": {"pk": obj.pk},
+            "back_url_name": "dashboard:clients_list",
+            "back_url_kwargs": {},
+        },
+    )
+
+# -------------------------------------------------------------
+# Parrains : CRUD + API recherche
+# -------------------------------------------------------------
+@login_required
+def referrer_create(request):
+    """
+    Créer un PARRAIN (client is_referrer=True).
+    Superadmin choisit l’entreprise, sinon forcée à user.company.
+    """
+    _require_company_staff(request.user)
+    form = ReferrerClientForm(request.POST or None, request=request)
+
+    if request.method == "POST" and form.is_valid():
+        try:
+            ref = form.save(commit=False)  # le form force is_referrer=True
+            if not _is_superadmin(request.user):
+                ref.company = request.user.company
+            ref.save()
+        except IntegrityError:
+            form.add_error(
+                "last_name",
+                "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.",
+            )
+        else:
+            messages.success(request, "Parrain créé avec succès.")
+            return redirect("dashboard:clients_list")
+
+    return render(request, "dashboard/referrer_form.html", {"form": form})
+
+@login_required
+def referrer_update(request, pk: int):
+    """
+    Modifier un PARRAIN (is_referrer=True) avec les mêmes règles de périmètre.
+    """
+    _require_company_staff(request.user)
+
+    base_qs = Client.objects.select_related("company").filter(is_referrer=True)
+    obj = (
+        get_object_or_404(base_qs, pk=pk)
+        if _is_superadmin(request.user)
+        else get_object_or_404(base_qs, pk=pk, company=request.user.company)
+    )
+
+    form = ReferrerClientForm(request.POST or None, instance=obj, request=request)
+
+    if request.method == "POST" and form.is_valid():
+        try:
+            ref = form.save(commit=False)
+            ref.is_referrer = True
+            if not _is_superadmin(request.user):
+                ref.company = request.user.company
+            ref.save()
+        except IntegrityError:
+            form.add_error(
+                "last_name",
+                "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.",
+            )
+        else:
+            messages.success(request, "Parrain modifié avec succès.")
+            return redirect("dashboard:clients_list")
+
+    return render(
+        request, "dashboard/referrer_form.html", {"form": form, "referrer": obj, "is_update": True}
+    )
+
+@login_required
+def referrer_lookup(request):
+    """
+    API JSON pour l’autocomplete des parrains.
+    """
+    _require_company_staff(request.user)
+
+    q = (request.GET.get("q") or "").strip()
+    id_param = request.GET.get("id")
+    company_id = request.GET.get("company_id")
+
+    qs = Client.objects.filter(is_referrer=True).select_related("company")
+
+    if _is_superadmin(request.user):
+        if company_id:
+            qs = qs.filter(company_id=company_id)
+    else:
+        qs = qs.filter(company=request.user.company)
+
+    if id_param:
+        obj = qs.filter(pk=id_param).first()
+        if not obj:
+            from django.http import JsonResponse
+
+            return JsonResponse({"ok": False, "error": "not_found"}, status=404)
+        label = f"{obj.last_name} {obj.first_name}".strip() or (obj.email or "—")
+        label += f" — {obj.email or '—'} ({obj.company.name if obj.company else '—'})"
+        return JsonResponse({"ok": True, "result": {"id": obj.id, "label": label}})
+
+    if q:
+        qs = qs.filter(
+            Q(last_name__icontains=q) | Q(first_name__icontains=q) | Q(email__icontains=q)
+        )
+
+    qs = qs.order_by("last_name", "first_name")[:20]
+
+    def to_item(o):
+        label = f"{o.last_name} {o.first_name}".strip() or (o.email or "—")
+        label += f" — {o.email or '—'} ({o.company.name if o.company else '—'})"
+        return {"id": o.id, "label": label}
+
+    from django.http import JsonResponse
+
+    return JsonResponse({"ok": True, "results": [to_item(o) for o in qs]})
+
+# -------------------------------------------------------------
+# Parrainage : création (recherche parrain + filleul inline)
+# -------------------------------------------------------------
+@login_required
+@transaction.atomic
+def referral_create(request, company_id=None):
+    """
+    1) Sélection d’un parrain via autocomplete,
+    2) Saisie/repérage du filleul (création si besoin dans l’entreprise du parrain),
+    3) Création du parrainage + 2 récompenses PENDING (parrain & filleul),
+       puis envoi automatique du lien au parrain si possible.
+    """
+    # ---- Contexte entreprise pour l’autocomplete ----
+    if _is_superadmin(request.user) and company_id:
+        company_ctx = Company.objects.filter(pk=company_id).first()
+    else:
+        company_ctx = getattr(request.user, "company", None)
+
+    ref_form = RefereeInlineForm(request.POST or None)
+    referrer_error = None
+
+    if request.method == "POST":
+        # Parrain choisi (ID venant du champ caché)
+        raw_referrer_id = (request.POST.get("referrer") or "").strip()
+
+        referrer_qs = Client.objects.filter(is_referrer=True).select_related("company")
+        if not _is_superadmin(request.user):
+            referrer_qs = referrer_qs.filter(company=request.user.company)
+
+        referrer = None
+        if raw_referrer_id:
+            try:
+                referrer = referrer_qs.filter(pk=int(raw_referrer_id)).first()
+            except (TypeError, ValueError):
+                referrer = None
+
+        if not referrer:
+            referrer_error = "Sélectionnez un parrain valide dans la liste."
+        elif ref_form.is_valid():
+            # Créer / réutiliser le filleul dans l’entreprise du parrain
+            company = referrer.company
+            email = (ref_form.cleaned_data.get("email") or "").strip().lower()
+            referee = (
+                Client.objects.filter(company=company, email__iexact=email).first()
+                if email
+                else None
+            )
+            if referee is None:
+                referee = ref_form.save_with_company(company)
+
+            # Création du parrainage (valide les cohérences via ReferralForm)
+            rf = ReferralForm(
+                data={"referrer": referrer.pk, "referee": referee.pk},
+                request=request,
+                company=company,
+            )
+            if rf.is_valid():
+                referral = rf.save(commit=False)
+                referral.company = company
+                try:
+                    referral.save()
+                except IntegrityError:
+                    ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
+                else:
+                    # Crée les 2 récompenses (parrain & filleul) — idempotent par (company, client, referral)
+                    reward_parrain, reward_filleul = award_both_parties(referral=referral)
+
+                    messages.success(
+                        request,
+                        f"Parrainage créé : {referrer} → {referee}. "
+                        f"Récompenses : Parrain « {reward_parrain.label} » et Filleul « {reward_filleul.label} ».",
+                    )
+
+                    # Envoi du lien au parrain si on a un téléphone et un lien
+                    claim_abs = (
+                        request.build_absolute_uri(reward_parrain.claim_path)
+                        if reward_parrain.claim_path
+                        else ""
+                    )
+
+                    if referrer.phone and claim_abs:
+                        # Envoi différé après commit (SMS via Twilio si configuré)
+                        def _after_commit():
+                            from os import getenv
+                            try:
+                                from twilio.rest import Client as TwilioClient  # type: ignore
+                                sid = getenv("TWILIO_ACCOUNT_SID")
+                                token = getenv("TWILIO_AUTH_TOKEN")
+                                sender = getenv("TWILIO_SMS_FROM")
+                                if sid and token and sender:
+                                    TwilioClient(sid, token).messages.create(
+                                        to=referrer.phone, from_=sender, body=f"{referrer.first_name or referrer.last_name}, voici votre lien cadeau : {claim_abs}"
+                                    )
+                                    messages.success(request, "Lien de récompense envoyé au parrain par SMS.")
+                                else:
+                                    messages.info(request, "Parrainage OK. SMS non envoyé (Twilio non configuré).")
+                            except Exception as e:
+                                messages.warning(request, f"Parrainage OK, SMS non envoyé : {e}")
+
+                        transaction.on_commit(_after_commit)
+                    else:
+                        messages.info(request, "Parrainage OK. SMS non envoyé (numéro du parrain ou lien manquant).")
+
+                    return redirect("dashboard:clients_list")
+            else:
+                err = rf.errors.get("referee")
+                if err:
+                    ref_form.add_error(None, err.as_text().replace("* ", ""))
+                else:
+                    messages.error(request, "Le parrainage n'a pas pu être créé. Corrigez les erreurs.")
+
+    return render(
+        request,
+        "dashboard/referral_form.html",
+        {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
+    )
+
+# -------------------------------------------------------------
+# Parrainage : édition / suppression
+# -------------------------------------------------------------
+@login_required
+def referral_update(request, pk: int):
+    _require_company_staff(request.user)
+
+    obj = get_object_or_404(Referral, pk=pk)
+    if not _is_superadmin(request.user) and obj.company_id != request.user.company_id:
+        raise PermissionDenied("Accès refusé.")
+
+    current_company = None if _is_superadmin(request.user) else request.user.company
+
+    if request.method == "POST":
+        form = ReferralForm(request.POST, instance=obj, request=request, company=current_company)
+        if form.is_valid():
+            r = form.save(commit=False)
+            r.company = r.referrer.company
+            r.save()
+            messages.success(request, "Parrainage mis à jour.")
+            return redirect("dashboard:clients_list")
+    else:
+        form = ReferralForm(instance=obj, request=request, company=current_company)
+
+    return render(request, "dashboard/referral_form.html", {"form": form})
+
+@login_required
+def referral_delete(request, pk: int):
+    """
+    Supprime un parrainage.
+    Si back_client est fourni, retour à la fiche client, sinon à la liste des clients.
+    """
+    _require_company_staff(request.user)
+
+    obj = get_object_or_404(Referral, pk=pk)
+    if not _is_superadmin(request.user) and obj.company_id != getattr(request.user, "company_id", None):
+        raise PermissionDenied("Accès refusé.")
+
+    back_client_id = request.POST.get("back_client") or request.GET.get("back_client")
+    back_url_name = "dashboard:client_detail" if back_client_id else "dashboard:clients_list"
+    back_url_kwargs = {"pk": back_client_id} if back_client_id else {}
+
+    if request.method == "POST":
+        obj.delete()
+        messages.success(request, "Parrainage supprimé.")
+        return redirect(back_url_name, **back_url_kwargs)
+
+    return render(
+        request,
+        "dashboard/confirm_delete.html",
+        {
+            "title": "Supprimer le parrainage",
+            "message": "Confirmer la suppression de ce parrainage ?",
+            "post_action": "dashboard:referral_delete",
+            "post_kwargs": {"pk": obj.pk},
+            "back_url_name": back_url_name,
+            "back_url_kwargs": back_url_kwargs,
+            "back_client_id": back_client_id,
+        },
+    )
+
+# -------------------------------------------------------------
+# Récompenses : création manuelle + validations
+# -------------------------------------------------------------
+@login_required
+def reward_create(request, pk: int):
+    """
+    Création manuelle d’une Reward pour un client.
+    """
+    _require_company_staff(request.user)
+
+    u = request.user
+    client = get_object_or_404(
+        Client, pk=pk, **({} if _is_superadmin(u) else {"company": u.company})
+    )
+
+    if request.method == "POST":
+        form = RewardTemplateForm(request.POST)
+        if form.is_valid():
+            reward = form.save(commit=False)
+            reward.client = client
+            reward.company = client.company
+            reward.save()
+            messages.success(request, "Récompense créée.")
+            return redirect("dashboard:client_detail", pk=client.pk)
+    else:
+        form = RewardTemplateForm()
+
+    return render(request, "dashboard/reward_form.html", {"form": form, "client": client})
+
+@login_required
+@transaction.atomic
+def validate_referral_and_award(request, referral_id: int):
+    """
+    Valide un parrainage et attribue une récompense au FILLEUL,
+    puis redirige vers l’animation de tirage.
+    """
+    _require_company_staff(request.user)
+
+    referral = get_object_or_404(
+        Referral.objects.select_related("referee", "referrer", "company"), pk=referral_id
+    )
+
+    user_company = _company_for(request.user)
+    if user_company and referral.company_id != user_company.id and not _is_superadmin(request.user):
+        messages.error(request, "Ce parrainage n’appartient pas à votre entreprise.")
+        return redirect("dashboard:clients_list")
+
+    client = referral.referee
+    # Exemple: tirage exact via un bucket/token déjà configuré (adapter si nécessaire)
+    # Ici on clone simplement un template au même bucket
+    token = RewardTemplate.objects.filter(company=referral.company).first().bucket  # (à adapter)
+    tpl = get_object_or_404(RewardTemplate, company=referral.company, bucket=token)
+
+    reward = Reward.objects.create(
+        company=referral.company,
+        client=client,
+        referral=referral,
+        label=tpl.label,
+        bucket=token,
+        cooldown_days=tpl.cooldown_days,
+        state="PENDING",
+    )
+
+    messages.success(
+        request, f"Parrainage validé. Récompense pour le filleul « {client} » : {tpl.label}."
+    )
+    return redirect("rewards:spin", reward_id=reward.id)
+
+@login_required
+def validate_referral_and_award_referrer(request, referral_id: int):
+    """
+    Valide un parrainage et attribue une récompense au PARRAIN ET au FILLEUL.
+    """
+    referral = get_object_or_404(
+        Referral.objects.select_related("company", "referrer", "referee"), pk=referral_id
+    )
+    company: Company = referral.company
+
+    user = request.user
+    if not (_is_superadmin(user) or getattr(user, "company_id", None) == company.id):
+        messages.error(request, "Accès refusé.")
+        return redirect("dashboard:client_detail", pk=referral.referrer_id)
+
+    reward_parrain, reward_filleul = award_both_parties(referral=referral)
+
+    messages.success(
+        request,
+        f"Parrainage validé. Récompenses créées : Parrain « {reward_parrain.label} » "
+        f"et Filleul « {reward_filleul.label} ».",
+    )
+    return redirect("dashboard:client_detail", pk=referral.referrer_id)
+===== ./templates/dashboard/home.html =====
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ParrainApp{% endblock %}</title>
+  <!-- Bootstrap + thème local -->
+  <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body data-page="{% block body_data_page %}{% endblock %}">
+  <!-- TOP BAR (horizontal) -->
+  <header class="topbar border-bottom sticky-top">
+    <div class="topbar-gradient">
+      <div class="container py-3">
+        <div class="d-flex align-items-center justify-content-between gap-3">
+          <a class="navbar-brand d-flex align-items-center gap-2 text-white text-decoration-none" href="{% url 'dashboard_home' %}">
+            <span class="brand-dot"></span>
+            <span class="fw-bold">ParrainApp</span>
+          </a>
+          <form class="d-none d-md-flex" role="search" style="min-width: 380px;">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">🔎</span>
+              <input class="form-control" type="search" placeholder="Rechercher (clients, parrains…)" aria-label="Search">
+            </div>
+          </form>
+          <div class="d-flex align-items-center gap-2">
+            <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
+            <a class="btn btn-sm btn-primary" href="{% url 'accounts:company_list' %}">Entreprises</a>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
+                {{ request.user.get_username|default:"Compte" }}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="#">Profil</a></li>
+                <li><a class="dropdown-item" href="#">Paramètres</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'accounts:logout' %}">Déconnexion</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HORIZONTAL NAV (pills) -->
+    <div class="topbar-nav bg-white">
+      <div class="container">
+        <ul class="nav nav-pills gap-1 py-2" id="mainNav">
+          <li class="nav-item"><a class="nav-link {% block nav_dashboard_active %}{% endblock %}" href="{% url 'dashboard_home' %}">Tableau de bord</a></li>
+          <li class="nav-item"><a class="nav-link {% block nav_users_active %}{% endblock %}" href="{% url 'accounts:user_list' %}">Utilisateurs</a></li>
+          <li class="nav-item"><a class="nav-link {% block nav_companies_active %}{% endblock %}" href="{% url 'accounts:company_list' %}">Entreprises</a></li>
+          <!-- nav métiers (quand on branchera les templates) -->
+          <li class="nav-item"><a class="nav-link" href="#">Parrains</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Parrainés</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Récompenses</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Statistiques</a></li>
+        </ul>
+      </div>
+    </div>
+  </header>
+
+  <main class="container my-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+  <script src="{% static 'js/app.js' %}"></script>
+</body>
+</html>
+===== ./templates/dashboard/company_home.html =====
+{% extends "base_dashboard.html" %}
+{% block title %}Tableau de bord (Entreprise) • ParrainApp{% endblock %}
+{% block body_data_page %}dashboard{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">
+    Tableau de bord — {{ company.name|default:"Mon entreprise" }}
+  </h1>
+  <div class="text-secondary">
+    Vue d’ensemble des parrainages, cadeaux et activité récente de l’entreprise.
+  </div>
+</header>
+
+{# ... entête conservée ... #}
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Parrainages (mois)</div>
+          <div class="stat-num">{{ kpi.referrals_month }}</div>
+        </div>
+        <span class="badge badge-soft">
+          {% if kpi.referrals_delta_pct > 0 %}+{% endif %}{{ kpi.referrals_delta_pct }}% vs. N-1
+        </span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Cadeaux distribués</div>
+          <div class="stat-num">{{ kpi.rewards_sent }}</div>
+        </div>
+        <span class="badge text-bg-success">OK</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Cadeaux en attente</div>
+          <div class="stat-num">{{ kpi.rewards_pending }}</div>
+        </div>
+        <span class="badge text-bg-warning">Action</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Base clients</div>
+          <div class="stat-num">{{ kpi.clients }}</div>
+        </div>
+        <span class="badge text-bg-secondary">Actifs</span>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{# Raccourcis : on garde tes URLs existantes #}
+{# Exemple: referrer_create, referral_create, rewards:list, rewards:stats (ils existent déjà) #}
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header">Raccourcis</div>
+      <div class="card-body d-grid gap-2">
+        <div class="row g-2">
+          <div class="col-md-6">
+            <a href="{% url 'dashboard:referrer_create' %}" class="btn btn-outline-primary w-100">Inscrire un parrain</a>
+          </div>
+          <div class="col-md-6">
+            <a href="{% url 'dashboard:referral_create' %}" class="btn btn-outline-primary w-100">Enregistrer un parrainé</a>
+          </div>
+          <div class="col-md-6">
+            <a href="{% url 'rewards:list' %}" class="btn btn-outline-primary w-100">Gérer les récompenses</a>
+          </div>
+          <div class="col-md-6">
+            <a href="{% url 'rewards:stats' %}" class="btn btn-outline-primary w-100">Voir les statistiques</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header">Activité récente</div>
+      <div class="card-body small vstack gap-2">
+        {% for ev in events %}
+          <div class="d-flex justify-content-between">
+            <div>{{ ev.icon }} {{ ev.text }}</div>
+            {% if ev.badge %}<span class="badge text-bg-secondary rounded-pill">{{ ev.badge }}</span>{% endif %}
+          </div>
+        {% empty %}
+          <div class="text-secondary">Aucune activité récente.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}===== ./templates/dashboard/client_detail.html =====
+{# templates/dashboard/client_detail.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Fiche client — {{ client.last_name }} {{ client.first_name }}{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+{% load url_extras %}
+
+{% block content %}
+<style>
+  .tall-card .card-body { max-height: 360px; overflow: auto; }
+  @media (min-width: 1400px){
+    .tall-card .card-body { max-height: 420px; }
+  }
+</style>
+
+<header class="mb-3">
+  <h1 class="h4 section-title mb-1">Fiche client</h1>
+  <div class="text-secondary">Informations, cadeaux et historique</div>
+</header>
+
+<div class="row g-3">
+
+  {# --------- COLONNE GAUCHE --------- #}
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <h2 class="h6 mb-3">Informations</h2>
+          {% if client.is_referrer %}
+            <span class="badge text-bg-info">Parrain</span>
+          {% else %}
+            <span class="badge text-bg-secondary">Filleul</span>
+          {% endif %}
+        </div>
+
+        <div class="vstack gap-1 small mb-3">
+          <div><span class="text-secondary">Nom :</span> {{ client.last_name|default:"—" }}</div>
+          <div><span class="text-secondary">Prénom :</span> {{ client.first_name|default:"—" }}</div>
+          <div><span class="text-secondary">Téléphone :</span> {{ client.phone|default:"—" }}</div>
+          <div><span class="text-secondary">Email :</span> {{ client.email|default:"—" }}</div>
+          <div><span class="text-secondary">Entreprise :</span> {{ company.name }}</div>
+        </div>
+
+        <a href="{% url 'rewards:history_company' %}"
+           class="btn btn-sm btn-outline-primary">Historique des récompenses (entreprise)</a>
+
+        <hr class="my-2">
+
+        <div class="fw-semibold mb-2">Historique des parrainages</div>
+
+        <div class="tall-card">
+          <div class="card-body p-0">
+            {% if history_page and history_page.object_list %}
+              <div class="list-group list-group-flush">
+                {% for r in history_page.object_list %}
+                  <div class="list-group-item d-flex justify-content-between">
+                    <div class="me-2">
+                      {% if r.referrer_id == client.id %}
+                        <strong>{{ r.referee.first_name }} {{ r.referee.last_name }}</strong>
+                        <small class="text-secondary d-block">Parrainé par {{ client.first_name }} {{ client.last_name }}</small>
+                      {% else %}
+                        <strong>{{ r.referrer.first_name }} {{ r.referrer.last_name }}</strong>
+                        <small class="text-secondary d-block">Parrain de ce client</small>
+                      {% endif %}
+                      <small class="text-secondary">{{ r.created_at|date:"d/m/Y" }}</small>
+                    </div>
+
+                    <div class="d-flex flex-column gap-1 align-items-end">
+                      {% if r.referrer_id == client.id %}
+                        {% if r.existing_reward_id %}
+                          <a class="btn btn-sm btn-outline-secondary"
+                             href="{% url 'rewards:spin' reward_id=r.existing_reward_id %}">
+                            Distribués
+                          </a>
+                        {% else %}
+                          <form method="post" action="{% url 'dashboard:validate_referral_and_award_referrer' referral_id=r.id %}">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-primary">Attribuer</button>
+                          </form>
+                        {% endif %}
+                      {% endif %}
+
+                      <form method="post"
+                            action="{% url 'rewards:referral_delete' r.id %}"
+                            onsubmit="return confirm('Supprimer ce parrainage ?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="back_client" value="{{ client.id }}">
+                        <button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button>
+                      </form>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+
+              {% if history_page.paginator.num_pages > 1 %}
+                <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+                  {% if history_page.has_previous %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="?h={{ history_page.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+                      Préc.
+                    </a>
+                  {% endif %}
+                  <span class="small align-self-center">
+                    Page {{ history_page.number }}/{{ history_page.paginator.num_pages }}
+                  </span>
+                  {% if history_page.has_next %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="?h={{ history_page.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}">
+                      Suiv.
+                    </a>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+            {% else %}
+              <div class="p-3 text-secondary">Aucun parrainage.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# --------- COLONNE DROITE --------- #}
+  <div class="col-lg-8">
+
+    {# 1) Cadeaux distribués (SENT) #}
+    <div class="card shadow-sm tall-card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cadeaux distribués <span class="badge rounded-pill text-bg-success">{{ kpi_obtenus }}</span></span>
+      </div>
+      <div class="card-body">
+        {% if page_ok and page_ok.object_list %}
+          <div class="list-group list-group-flush">
+            {% for rw in page_ok.object_list %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold">{{ rw.label }}</div>
+                  <small class="text-secondary">Obtenu le {{ rw.created_at|date:"d/m/Y" }}</small>
+                </div>
+                <span class="badge text-bg-success">OK</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-secondary">Aucun cadeau obtenu.</div>
+        {% endif %}
+      </div>
+      {% if page_ok and page_ok.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+          {% if page_ok.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?ok={{ page_ok.previous_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Préc.
+            </a>
+          {% endif %}
+          <span class="small align-self-center">Page {{ page_ok.number }}/{{ page_ok.paginator.num_pages }}</span>
+          {% if page_ok.has_next %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?ok={{ page_ok.next_page_number }}&pending={{ page_pending.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Suiv.
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {# 2) Cadeaux en attente (PENDING) #}
+    <div class="card shadow-sm tall-card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cadeaux en attente <span class="badge rounded-pill text-bg-warning">{{ kpi_attente }}</span>
+      </div>
+
+      <div class="card-body">
+        {% if page_pending and page_pending.object_list %}
+          <div class="list-group list-group-flush">
+            {% for rw in page_pending.object_list %}
+              {% abs_uri rw.claim_path as claim_abs %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="me-3">
+                  <div class="fw-semibold">{{ rw.label }}</div>
+                  <small class="text-secondary">Créée le {{ rw.created_at|date:"d/m/Y" }}</small>
+
+                  {% if claim_abs %}
+                    <div class="small mt-1 text-break">
+                      Lien : <a href="{{ claim_abs }}">{{ claim_abs }}</a>
+                    </div>
+                    {# >>> AJOUT : délai d'utilisation juste sous le lien <<< #}
+                    <div class="small text-secondary mt-1">
+                      {{ rw.validity_sentence }}
+                    </div>
+                  {% else %}
+                    <div class="small mt-1 text-warning">
+                      Aucun lien encore généré pour cette récompense.
+                    </div>
+                  {% endif %}
+                </div>
+
+                <div class="d-flex flex-column gap-1">
+                  <form method="post" action="{% url 'rewards:distribute' rw.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="back_client" value="{{ client.id }}">
+                    <button class="btn btn-sm btn-success" type="submit">Distribuer</button>
+                  </form>
+
+                  {% if client.email and claim_abs %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="mailto:{{ client.email }}?subject={{ 'Votre récompense'|urlencode }}&body={{ claim_abs|urlencode }}">
+                      Envoyer par e-mail
+                    </a>
+                  {% endif %}
+                  {% if client.phone and claim_abs %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="sms:{{ client.phone }}?&body={{ claim_abs|urlencode }}">
+                      Envoyer par SMS
+                    </a>
+                  {% endif %}
+                  {% if claim_abs %}
+                    <button class="btn btn-sm btn-outline-dark" type="button"
+                            onclick="navigator.clipboard.writeText('{{ claim_abs|escapejs }}')">
+                      Copier le lien
+                    </button>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-secondary">Aucun cadeau en attente.</div>
+        {% endif %}
+      </div>
+
+      {% if page_pending and page_pending.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+          {% if page_pending.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?pending={{ page_pending.previous_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Préc.
+            </a>
+          {% endif %}
+          <span class="small align-self-center">Page {{ page_pending.number }}/{{ page_pending.paginator.num_pages }}</span>
+          {% if page_pending.has_next %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?pending={{ page_pending.next_page_number }}&ok={{ page_ok.number }}&unused={{ page_unused.number }}&h={{ history_page.number }}">
+              Suiv.
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {# 3) Cadeaux non utilisés (DISABLED) #}
+    <div class="card shadow-sm tall-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cadeaux non utilisés <span class="badge rounded-pill text-bg-secondary">{{ kpi_nonutils }}</span></span>
+        <small class="text-secondary">Distribués mais non consommés</small>
+      </div>
+
+      <div class="card-body">
+        {% if page_unused and page_unused.object_list %}
+          <div class="list-group list-group-flush">
+            {% for rw in page_unused.object_list %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold">{{ rw.label }}</div>
+                  <small class="text-secondary">Distribué le {{ rw.created_at|date:"d/m/Y" }}</small>
+                </div>
+                <span class="badge text-bg-warning">En cours</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-secondary">Aucun cadeau non utilisé.</div>
+        {% endif %}
+      </div>
+
+      {% if page_unused and page_unused.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+          {% if page_unused.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?unused={{ page_unused.previous_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">
+              Préc.
+            </a>
+          {% endif %}
+          <span class="small align-self-center">Page {{ page_unused.number }}/{{ page_unused.paginator.num_pages }}</span>
+          {% if page_unused.has_next %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="?unused={{ page_unused.next_page_number }}&ok={{ page_ok.number }}&pending={{ page_pending.number }}&h={{ history_page.number }}">
+              Suiv.
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+
+  </div>
+
+  {# dans un template fiche client (ex: dashboard/client_detail.html) #}
+{% load dict_extras %}
+
+{% with pct=get_normalized_percentages company client as P %}
+<div class="card mt-3">
+  <div class="card-header">Probabilités normalisées (éligibilité actuelle)</div>
+  <div class="card-body small text-secondary">
+    <div>SOUVENT : {{ P.SOUVENT }} %</div>
+    <div>MOYEN : {{ P.MOYEN }} %</div>
+    <div>RARE : {{ P.RARE }} %</div>
+    <div>TRES_RARE : {{ P.TRES_RARE }} %</div>
+  </div>
+</div>
+{% endwith %}
+
+</div>
+{% endblock %}
+===== ./templates/dashboard/referral_form.html =====
+{% extends "base_dashboard.html" %}
+{% load widget_tweaks %}
+
+{% block title %}Créer un parrainage{% endblock %}
+{% block body_data_page %}referral-create{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-10 col-xl-8">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h1 class="h4 section-title mb-1">Créer un parrainage</h1>
+        <div class="text-secondary">
+          1) Recherchez le <strong>parrain</strong> • 2) Saisissez la <strong>fiche du filleul</strong> • 3) Enregistrez.
+        </div>
+      </div>
+      <div>
+        <a href="{% url 'dashboard:clients_list' %}" class="btn btn-outline-secondary btn-sm">← Retour</a>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-white py-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-info">Parrainage</span>
+          <strong>Parrain + Filleul</strong>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if referrer_error %}
+            <div class="alert alert-danger" role="alert">{{ referrer_error }}</div>
+          {% endif %}
+          {% if ref_form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">{{ ref_form.non_field_errors|striptags }}</div>
+          {% endif %}
+
+          <div class="row g-3">
+
+            <!-- 🔎 Barre de recherche PARRAIN -->
+            <div class="col-12">
+              <label class="form-label">Parrain (recherche)</label>
+
+              <div class="position-relative" id="referrer-search-wrap">
+                <input
+                  type="text"
+                  id="referrer-search"
+                  class="form-control"
+                  placeholder="Tapez un nom, prénom ou email…"
+                  autocomplete="off"
+                  aria-describedby="referrerHelp"
+                />
+                <div id="referrer-results" class="list-group mt-1" style="position:absolute; z-index: 10; width:100%; display:none;"></div>
+              </div>
+              <div id="referrerHelp" class="form-text">Sélectionnez un parrain dans la liste.</div>
+
+              <!-- Champ caché réel (ID du parrain) -->
+              <input type="hidden" name="referrer" id="id_referrer" value="{{ request.POST.referrer|default:'' }}"/>
+
+              <noscript>
+                <div class="alert alert-warning mt-2">Activez JavaScript pour rechercher un parrain.</div>
+              </noscript>
+            </div>
+
+            <!-- 🧒 FICHE FILLEUL (désactivée tant que pas de parrain) -->
+            <div class="col-12">
+              <div class="border rounded p-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <strong>Filleul — Informations</strong>
+                  <span class="text-secondary small">Il sera créé dans la même entreprise que le parrain.</span>
+                </div>
+
+                <!-- ✅ fieldset désactivé par défaut ; on l’active en JS quand un parrain est choisi -->
+                <fieldset id="referee-fieldset" disabled>
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Nom</label>
+                      {% render_field ref_form.last_name class+="form-control" placeholder="Nom" %}
+                      {% if ref_form.last_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.last_name.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Prénom</label>
+                      {% render_field ref_form.first_name class+="form-control" placeholder="Prénom" %}
+                      {% if ref_form.first_name.errors %}<div class="invalid-feedback d-block">{{ ref_form.first_name.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Email</label>
+                      {% render_field ref_form.email class+="form-control" placeholder="email@exemple.com" %}
+                      {% if ref_form.email.errors %}<div class="invalid-feedback d-block">{{ ref_form.email.errors|striptags }}</div>{% endif %}
+                      <div class="form-text">S’il existe déjà un client avec cet email dans l’entreprise, il sera réutilisé.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Téléphone</label>
+                      {% render_field ref_form.phone class+="form-control" placeholder="06 00 00 00 00" %}
+                      {% if ref_form.phone.errors %}<div class="invalid-feedback d-block">{{ ref_form.phone.errors|striptags }}</div>{% endif %}
+                    </div>
+                  </div>
+                </fieldset>
+              </div>
+            </div>
+
+          </div>
+
+          <hr class="my-4">
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" id="submit-referral" type="submit" disabled>Créer le parrainage</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% if company %}
+      <div class="text-muted small mt-3">Entreprise ciblée : <strong>{{ company }}</strong></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- JS d'autocomplétion + verrouillage du bloc FILLEUL -->
+<script>
+(function() {
+  const input = document.getElementById('referrer-search');
+  const hidden = document.getElementById('id_referrer');
+  const results = document.getElementById('referrer-results');
+  const wrap = document.getElementById('referrer-search-wrap');
+  const endpoint = "{% url 'dashboard:referrer_lookup' %}";
+  const companyId = "{{ company.id|default_if_none:'' }}";
+  const fieldset = document.getElementById('referee-fieldset');
+  const submitBtn = document.getElementById('submit-referral');
+
+  let lastController = null;
+  let debounceTimer = null;
+
+  function clearResults() {
+    results.innerHTML = "";
+    results.style.display = "none";
+  }
+
+  function setRefereeEnabled(on) {
+    // Toggle fieldset + bouton submit
+    if (on) {
+      fieldset.removeAttribute('disabled');
+      submitBtn.removeAttribute('disabled');
+    } else {
+      fieldset.setAttribute('disabled', '');
+      submitBtn.setAttribute('disabled', '');
+    }
+  }
+
+  function showResults(items) {
+    results.innerHTML = "";
+    items.forEach(item => {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.className = 'list-group-item list-group-item-action';
+      a.textContent = item.label;
+      a.dataset.id = item.id;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        hidden.value = item.id;          // ✅ parrain fixé
+        input.value = item.label;
+        setRefereeEnabled(true);         // ✅ déverrouille le bloc Filleul
+        clearResults();
+      });
+      results.appendChild(a);
+    });
+    results.style.display = items.length ? "block" : "none";
+  }
+
+  function searchNow(q) {
+    if (lastController) lastController.abort();
+    lastController = new AbortController();
+
+    const url = new URL(endpoint, window.location.origin);
+    if (q) url.searchParams.set('q', q);
+    if (companyId) url.searchParams.set('company_id', companyId);
+
+    fetch(url, {signal: lastController.signal})
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(j => { if (j && j.ok) showResults(j.results || []); })
+      .catch(()=>{});
+  }
+
+  // Quand on retape dans la barre → on “perd” le parrain choisi
+  input.addEventListener('input', () => {
+    hidden.value = "";                // ❌ plus de parrain sélectionné
+    setRefereeEnabled(false);         // 🔒 rebloque le formulaire filleul
+    const q = input.value.trim();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (q.length < 2) { clearResults(); return; }
+      searchNow(q);
+    }, 250);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) clearResults();
+  });
+
+  // ⏪ Rechargement après erreurs serveur : si un parrain était déjà choisi, on réactive
+  setRefereeEnabled(Boolean(hidden.value));
+})();
+</script>
+{% endblock %}
+===== ./templates/dashboard/superadmin_home.html =====
+{# templates/dashboard/superadmin_home.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Tableau de bord (Superadmin) • ParrainApp{% endblock %}
+{% block body_data_page %}dashboard{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Tableau de bord — Superadmin</h1>
+  <div class="text-secondary">Vue d’ensemble de la plateforme (toutes entreprises).</div>
+</header>
+
+{# ===== Cartes KPI globales ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Parrainages (mois)</div>
+          <div class="stat-num">{{ kpi.referrals_month|default:0 }}</div>
+        </div>
+        <span class="badge badge-soft">
+          {% if kpi.referrals_delta_pct > 0 %}+{% endif %}{{ kpi.referrals_delta_pct|default:0 }}% vs. N-1
+        </span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Cadeaux distribués</div>
+          <div class="stat-num">{{ kpi.rewards_sent|default:0 }}</div>
+        </div>
+        <span class="badge text-bg-success">OK</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Cadeaux en attente</div>
+          <div class="stat-num">{{ kpi.rewards_pending|default:0 }}</div>
+        </div>
+        <span class="badge text-bg-warning">Action</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="text-secondary small">Base clients</div>
+          <div class="stat-num">{{ kpi.clients|default:0 }}</div>
+        </div>
+        <span class="badge text-bg-secondary">Actifs</span>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{# ===== Raccourcis + Activité récente ===== #}
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="fw-semibold">Raccourcis</div>
+        <small class="text-secondary">Modules</small>
+      </div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'dashboard:referrer_create' %}">Inscrire un parrain</a>
+          </div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'dashboard:referral_create' %}">Enregistrer un parrainé</a>
+          </div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'rewards:list' %}">Gérer les récompenses</a>
+          </div>
+          <div class="col-6 d-grid">
+            <a class="btn btn-outline-primary" href="{% url 'rewards:stats' %}">Voir les statistiques</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Activité récente</div>
+      <div class="card-body">
+        <ul class="list-group list-group-flush">
+          {% if events %}
+            {% for ev in events %}
+              <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                  <div class="fw-semibold">{{ ev.icon }} {{ ev.title|default:"" }}</div>
+                  {{ ev.text|default:"" }}
+                </div>
+                {% if ev.badge %}<span class="badge text-bg-secondary rounded-pill">{{ ev.badge }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          {% else %}
+            <li class="list-group-item text-secondary">Aucune activité récente.</li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ===== Vue par entreprise (tableau) ===== #}
+<div class="card shadow-sm mt-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="fw-semibold">Vue par entreprise</div>
+    <small class="text-secondary">Parrainages du mois, cadeaux et base clients</small>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Entreprise</th>
+            <th class="text-end">Parrainages (mois)</th>
+            <th class="text-end">Cadeaux distribués</th>
+            <th class="text-end">Cadeaux en attente</th>
+            <th class="text-end">Base clients</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td class="fw-semibold">{{ r.company.name }}</td>
+              <td class="text-end">{{ r.referrals_month }}</td>
+              <td class="text-end"><span class="badge text-bg-success">{{ r.rewards_sent }}</span></td>
+              <td class="text-end"><span class="badge text-bg-warning">{{ r.rewards_pending }}</span></td>
+              <td class="text-end">{{ r.clients }}</td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-2">
+                  <a class="btn btn-sm btn-outline-primary"
+                     href="{% url 'dashboard:company_home' %}?company={{ r.company.id }}">
+                    Ouvrir le tableau
+                  </a>
+                  <a class="btn btn-sm btn-outline-secondary"
+                     href="{% url 'rewards:history_company' %}?company={{ r.company.id }}">
+                    Récompenses
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" class="text-secondary p-3">Aucune entreprise.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+===== ./templates/dashboard/reward_form.html =====
+{% extends "base_dashboard.html" %}
+{% block title %}Créer une récompense — {{ client.last_name }} {{ client.first_name }}{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <div class="d-flex align-items-center justify-content-between">
+    <div>
+      <h1 class="h4 section-title mb-1">Créer une récompense</h1>
+      <div class="text-secondary">
+        Client : <strong>{{ client.last_name }} {{ client.first_name }}</strong> • Entreprise : {{ client.company.name }}
+      </div>
+    </div>
+    <div class="d-none d-md-block">
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard:client_detail' client.id %}">← Retour à la fiche</a>
+    </div>
+  </div>
+</header>
+
+<div class="row g-3">
+  <!-- Formulaire -->
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="fw-semibold">Nouvelle récompense</div>
+        <small class="text-secondary">Renseigne l’intitulé, le canal, etc.</small>
+      </div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="mb-3">
+            {% with field=form.label %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            {% endwith %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                {% with field=form.channel %}
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  <div class="form-text">Ex : Mail, SMS, …</div>
+                  {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+                {% endwith %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                {% with field=form.code %}
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  <div class="form-text">Ex : AB-123-456</div>
+                  {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+                {% endwith %}
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            {% with field=form.state %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for e in field.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            {% endwith %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:client_detail' client.id %}">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panneau récap client -->
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Client</div>
+      <div class="card-body">
+        <div class="vstack small gap-1 mb-3">
+          <div><span class="text-secondary">Nom :</span> {{ client.last_name|default:"—" }}</div>
+          <div><span class="text-secondary">Prénom :</span> {{ client.first_name|default:"—" }}</div>
+          <div><span class="text-secondary">Téléphone :</span> {{ client.phone|default:"—" }}</div>
+          <div><span class="text-secondary">Email :</span> {{ client.email|default:"—" }}</div>
+          <div><span class="text-secondary">Entreprise :</span> {{ client.company.name }}</div>
+        </div>
+
+        <div class="alert alert-info mb-0">
+          La récompense sera rattachée à <strong>{{ client.last_name }} {{ client.first_name }}</strong> et à
+          <strong>{{ client.company.name }}</strong>.
+        </div>
+      </div>
+      <div class="card-footer bg-transparent">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:client_detail' client.id %}">Voir la fiche client</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+===== ./templates/dashboard/clients_list.html =====
+{# dashboard/clients_list.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Clients{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h4 section-title mb-0">Parrains</h1>
+  <div></div> {# espace à droite pour conserver la hauteur #}
+</div>
+
+{# Boutons centrés #}
+<div class="mb-4 text-center">
+  <div class="d-grid gap-2 d-md-inline-flex justify-content-center">
+    <a class="btn btn-primary" href="{% url 'dashboard:referrer_create' %}">Créer un parrain</a>
+    <a class="btn btn-outline-primary" href="{% url 'dashboard:referral_create' %}">Créer un parrainage</a>
+    <a class="btn btn-outline-warning" href="{% url 'rewards:history_company' %}?state=PENDING">
+    récompenses (en attente)
+    </a>
+  </div>
+</div>
+
+  {# tableau des parrains #}
+  {% include "partials/_clients_table.html" %}
+{% endblock %}
+===== ./templates/dashboard/client_form.html =====
+{% extends "base_dashboard.html" %}
+{% block title %}Créer / Modifier un client{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+{% block nav_clients_active %}active{% endblock %}
+
+{% block content %}
+<header class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h4 section-title mb-1">Client</h1>
+    <div class="text-secondary">Créer ou modifier un client (parrain ou simple client).</div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">← Retour</a>
+</header>
+
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="fw-semibold">Informations</div>
+        <small class="text-secondary">Champs requis *</small>
+      </div>
+
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {# Superadmin voit le champ entreprise, Admin/Opérateur non #}
+          {% if form.company %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.company.id_for_label }}">Entreprise *</label>
+            {{ form.company }}
+            {% for e in form.company.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form.last_name.id_for_label }}">Nom *</label>
+              {{ form.last_name }}
+              {% for e in form.last_name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form.first_name.id_for_label }}">Prénom *</label>
+              {{ form.first_name }}
+              {% for e in form.first_name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form.email.id_for_label }}">Email</label>
+              {{ form.email }}
+              {% for e in form.email.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form.phone.id_for_label }}">Téléphone</label>
+              {{ form.phone }}
+              {% for e in form.phone.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="form-check mb-3">
+            {{ form.is_referrer }}
+            <label class="form-check-label" for="{{ form.is_referrer.id_for_label }}">Marquer comme <strong>Parrain</strong></label>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Aide</div>
+      <div class="card-body small text-secondary">
+        <p>Un <strong>Parrain</strong> peut parrainer des filleuls et recevoir des récompenses.</p>
+        <p>Les Admins/Opérateurs ne voient que leur entreprise. Le Superadmin peut choisir l’entreprise.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+===== ./templates/dashboard/confirm_delete.html =====
+{# dashboard/templates/dashboard/confirm_delete.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body_data_page %}clients{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h5 mb-3">{{ title }}</h1>
+        <p class="text-secondary mb-4">{{ message }}</p>
+
+        <form method="post" action="{% url post_action post_kwargs.pk %}">
+          {% csrf_token %}
+          {# On renvoie l’info de la fiche d’où l’on vient si présent #}
+          {% if back_client_id %}
+            <input type="hidden" name="back_client" value="{{ back_client_id }}">
+          {% endif %}
+
+          <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary"
+               href="{% url back_url_name **back_url_kwargs %}">
+              Annuler
+            </a>
+            <button class="btn btn-danger" type="submit">Supprimer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+===== ./templates/dashboard/referrer_form.html =====
+{% extends "base_dashboard.html" %}
+{% load widget_tweaks %}
+
+{% block title %}Créer un filleul{% endblock %}
+{% block body_data_page %}referee-form{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-10 col-xl-8">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h1 class="h4 section-title mb-1">Inscrire un parrain</h1>
+        <div class="text-secondary">Ajouter un client non parrain.</div>
+      </div>
+      <div>
+        <a href="{% url 'dashboard:clients_list' %}" class="btn btn-outline-secondary btn-sm">← Retour</a>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-white py-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-secondary">Filleul</span>
+          <strong>Informations du client</strong>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {{ form.non_field_errors|striptags }}
+            </div>
+          {% endif %}
+
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Entreprise</label>
+              {% render_field form.company class+="form-select" %}
+              {% if form.company.errors %}
+                <div class="invalid-feedback d-block">{{ form.company.errors|striptags }}</div>
+              {% else %}
+                <div class="form-text">Visible uniquement si vous êtes Superadmin.</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Email</label>
+              <div class="input-group">
+                <span class="input-group-text">@</span>
+                {% render_field form.email class+="form-control" placeholder="email@exemple.com" %}
+              </div>
+              {% if form.email.errors %}
+                <div class="invalid-feedback d-block">{{ form.email.errors|striptags }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Nom</label>
+              {% render_field form.last_name class+="form-control" placeholder="Dupont" %}
+              {% if form.last_name.errors %}
+                <div class="invalid-feedback d-block">{{ form.last_name.errors|striptags }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Prénom</label>
+              {% render_field form.first_name class+="form-control" placeholder="Marie" %}
+              {% if form.first_name.errors %}
+                <div class="invalid-feedback d-block">{{ form.first_name.errors|striptags }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Téléphone</label>
+              <div class="input-group">
+                <span class="input-group-text">📞</span>
+                {% render_field form.phone class+="form-control" placeholder="06 00 00 00 00" %}
+              </div>
+              {% if form.phone.errors %}
+                <div class="invalid-feedback d-block">{{ form.phone.errors|striptags }}</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:clients_list' %}">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
