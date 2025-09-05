@@ -7,4 +7,4 @@ class RewardsConfig(AppConfig):
     verbose_name = "Récompenses"
 
     def ready(self):
-        import rewards.signals  # <-- le bon import
+        import rewards.signals  # noqa

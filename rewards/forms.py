@@ -10,7 +10,6 @@ class RewardTemplateForm(forms.ModelForm):
         widget=forms.Select(attrs={"class": "form-select"})
     )
 
-    # NOUVEAU : champ numérique (min = 0)
     min_referrals_required = forms.IntegerField(
         min_value=0,
         label="Minimum de parrainages requis",

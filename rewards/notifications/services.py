@@ -1,4 +1,4 @@
-# notifications/services.py
+# rewards/notifications/services.py
 import os
 from twilio.rest import Client as TwilioClient
 

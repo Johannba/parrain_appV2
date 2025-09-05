@@ -1,9 +1,9 @@
-# rewards/services.py
+# rewards/services/core.py
 from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from .models import RewardTemplate, Reward
+from ..models import RewardTemplate, Reward  # ⬅️ import relatif (note les deux points)
 
 
 def create_reward_from_template(*, company, client, tpl, referral=None, label=None) -> Reward:

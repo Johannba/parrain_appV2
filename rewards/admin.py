@@ -4,11 +4,7 @@ from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
 
 from .models import ProbabilityWheel, RewardTemplate, Reward
-# Services pour piloter les roues depuis l’admin
 
-
-
-# ============ Actions utilitaires ============
 
 @admin.action(description="Marquer sélection comme Envoyée")
 def mark_sent(modeladmin, request, queryset):
@@ -30,17 +26,8 @@ def mark_archived(modeladmin, request, queryset):
     updated = queryset.update(state="ARCHIVED")
     messages.success(request, _(f"{updated} récompense(s) archivée(s)."))
 
-
-# ============ Reward ============
-
 @admin.register(Reward)
 class RewardAdmin(admin.ModelAdmin):
-    """
-    Gestion des récompenses instanciées (par client).
-    - Recherche par client / email / libellé
-    - Filtres par entreprise / type / état / date
-    - Actions de changement d’état
-    """
     list_display = (
         "company", "client", "referral",
         "label", "bucket", "state", "created_at",
@@ -55,12 +42,10 @@ class RewardAdmin(admin.ModelAdmin):
     )
     list_select_related = ("company", "client", "referral")
     autocomplete_fields = ("client", "referral")
-    raw_id_fields = ()
     date_hierarchy = "created_at"
     ordering = ("-created_at", "-id")
     actions = [mark_sent, mark_pending, mark_disabled, mark_archived]
 
-    # Optionnel: protéger la contrainte unique (company, client, referral) côté admin
     def save_model(self, request, obj, form, change):
         try:
             with transaction.atomic():
@@ -72,16 +57,8 @@ class RewardAdmin(admin.ModelAdmin):
                 level=messages.ERROR,
             )
 
-
-# ============ RewardTemplate ============
-
 @admin.register(RewardTemplate)
 class RewardTemplateAdmin(admin.ModelAdmin):
-    """
-    Les 4 templates fixes par entreprise.
-    - Seuls label + cooldown_months sont modifiables.
-    - Affiche cooldown_days et probability_display en lecture seule.
-    """
     list_display = (
         "company", "bucket", "label",
         "cooldown_months", "cooldown_days", "probability_display",
@@ -91,15 +68,8 @@ class RewardTemplateAdmin(admin.ModelAdmin):
     ordering = ("company", "bucket")
     readonly_fields = ("cooldown_days", "probability_display")
 
-
-# ============ ProbabilityWheel ============
-
 @admin.action(description="(Re)créer les deux roues pour l’entreprise (ensure_wheels)")
 def action_ensure_wheels(modeladmin, request, queryset):
-    """
-    Pour chaque roue sélectionnée, on régénère (idempotent) les DEUX roues
-    de l’entreprise afin d’assurer les tailles exactes (base et very_rare).
-    """
     companies = {w.company for w in queryset}
     for c in companies:
         ensure_wheels(c)
@@ -121,12 +91,8 @@ def action_reset_idx(modeladmin, request, queryset):
         reset_wheel(w.company, w.key)
     messages.success(request, _("Curseur réinitialisé à 0 pour la sélection."))
 
-
 @admin.register(ProbabilityWheel)
 class ProbabilityWheelAdmin(admin.ModelAdmin):
-    """
-    Visualisation et maintenance des roues.
-    """
     list_display = ("company", "key", "size", "idx")
     list_filter = ("company", "key")
     search_fields = ("company__name", "key")

@@ -32,4 +32,6 @@ urlpatterns = [
     path("clients/<int:pk>/rewards/new/", views.reward_create, name="reward_create"),
     path("referrals/<int:referral_id>/validate/", views.validate_referral_and_award, name="validate_referral_and_award"),
     path("referrals/<int:referral_id>/award-referrer/", views.validate_referral_and_award_referrer, name="validate_referral_and_award_referrer"),
+      # NEW: alias pour le lien "Tableau de bord" du layout
+    path("home/", views.dashboard_root, name="dashboard_home"),
 ]

@@ -13,47 +13,53 @@
   </div>
 </header>
 
-{# On réutilise exactement la même grille que le superadmin, c’est le même design. #}
+{# ... entête conservée ... #}
+
 <div class="row g-3 mb-3">
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Parrainages (mois)</div>
-          <div class="stat-num">18</div>
+          <div class="stat-num">{{ kpi.referrals_month }}</div>
         </div>
-        <span class="badge badge-soft">+8% vs. N-1</span>
+        <span class="badge badge-soft">
+          {% if kpi.referrals_delta_pct > 0 %}+{% endif %}{{ kpi.referrals_delta_pct }}% vs. N-1
+        </span>
       </div>
     </div></div>
   </div>
+
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Cadeaux distribués</div>
-          <div class="stat-num">47</div>
+          <div class="stat-num">{{ kpi.rewards_sent }}</div>
         </div>
         <span class="badge text-bg-success">OK</span>
       </div>
     </div></div>
   </div>
+
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Cadeaux en attente</div>
-          <div class="stat-num">2</div>
+          <div class="stat-num">{{ kpi.rewards_pending }}</div>
         </div>
         <span class="badge text-bg-warning">Action</span>
       </div>
     </div></div>
   </div>
+
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm"><div class="card-body">
       <div class="d-flex justify-content-between">
         <div>
           <div class="text-secondary small">Base clients</div>
-          <div class="stat-num">320</div>
+          <div class="stat-num">{{ kpi.clients }}</div>
         </div>
         <span class="badge text-bg-secondary">Actifs</span>
       </div>
@@ -61,41 +67,44 @@
   </div>
 </div>
 
+{# Raccourcis : on garde tes URLs existantes #}
+{# Exemple: referrer_create, referral_create, rewards:list, rewards:stats (ils existent déjà) #}
+
 <div class="row g-3">
-  <div class="col-lg-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="fw-semibold">Raccourcis</div>
-        <small class="text-secondary">Modules</small>
-      </div>
-      <div class="card-body">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header">Raccourcis</div>
+      <div class="card-body d-grid gap-2">
         <div class="row g-2">
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Inscrire un parrain</a></div>
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Enregistrer un parrainé</a></div>
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Gérer les récompenses</a></div>
-          <div class="col-6 d-grid"><a class="btn btn-outline-primary" href="#">Voir les statistiques</a></div>
+          <div class="col-md-6">
+            <a href="{% url 'dashboard:referrer_create' %}" class="btn btn-outline-primary w-100">Inscrire un parrain</a>
+          </div>
+          <div class="col-md-6">
+            <a href="{% url 'dashboard:referral_create' %}" class="btn btn-outline-primary w-100">Enregistrer un parrainé</a>
+          </div>
+          <div class="col-md-6">
+            <a href="{% url 'rewards:list' %}" class="btn btn-outline-primary w-100">Gérer les récompenses</a>
+          </div>
+          <div class="col-md-6">
+            <a href="{% url 'rewards:stats' %}" class="btn btn-outline-primary w-100">Voir les statistiques</a>
+          </div>
         </div>
       </div>
     </div>
   </div>
-  <div class="col-lg-6">
-    <div class="card shadow-sm h-100">
+
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
       <div class="card-header">Activité récente</div>
-      <div class="card-body">
-        <ul class="list-group list-group-flush">
-          <li class="list-group-item d-flex justify-content-between align-items-start">
-            <div class="ms-2 me-auto"><div class="fw-semibold">Parrainage validé</div> Client ACME → « -15% »</div>
-            <span class="badge text-bg-success rounded-pill">OK</span>
-          </li>
-          <li class="list-group-item d-flex justify-content-between align-items-start">
-            <div class="ms-2 me-auto"><div class="fw-semibold">Cadeau en attente</div> Envoyer le lien au parrain</div>
-            <span class="badge text-bg-warning rounded-pill">2</span>
-          </li>
-          <li class="list-group-item d-flex justify-content-between align-items-start">
-            <div class="ms-2 me-auto"><div class="fw-semibold">Base clients</div> 1 nouveau contact importé</div>
-            <span class="badge text-bg-secondary rounded-pill">+1</span>
-          </li>
-        </ul>
+      <div class="card-body small vstack gap-2">
+        {% for ev in events %}
+          <div class="d-flex justify-content-between">
+            <div>{{ ev.icon }} {{ ev.text }}</div>
+            {% if ev.badge %}<span class="badge text-bg-secondary rounded-pill">{{ ev.badge }}</span>{% endif %}
+          </div>
+        {% empty %}
+          <div class="text-secondary">Aucune activité récente.</div>
+        {% endfor %}
       </div>
     </div>
   </div>

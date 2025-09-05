@@ -20,7 +20,7 @@ from rewards.models import RewardTemplate, Reward
 # Tirage de récompense
 
 from django.db import transaction
-
+import rewards.services as reward_services 
 import os
 from twilio.rest import Client as TwilioClient
 
@@ -52,6 +52,84 @@ def _company_for(user):
     return getattr(user, "company", None)
 
 
+from django.utils import timezone
+from django.db.models import Count
+from rewards.models import Reward
+from dashboard.models import Client, Referral
+from accounts.models import Company
+
+def _month_bounds(now=None):
+    now = now or timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_month_end = month_start
+    # début du mois précédent
+    if month_start.month == 1:
+        prev_month_start = month_start.replace(year=month_start.year-1, month=12)
+    else:
+        prev_month_start = month_start.replace(month=month_start.month-1)
+    return month_start, prev_month_start, prev_month_end
+
+def _kpis_for_company(company: Company):
+    now = timezone.now()
+    month_start, prev_month_start, prev_month_end = _month_bounds(now)
+
+    referrals_this_month = Referral.objects.filter(
+        company=company, created_at__gte=month_start
+    ).count()
+
+    # mois précédent
+    prev_referrals = Referral.objects.filter(
+        company=company, created_at__gte=prev_month_start, created_at__lt=prev_month_end
+    ).count()
+    delta_pct = 0
+    if prev_referrals:
+        delta_pct = round((referrals_this_month - prev_referrals) * 100 / prev_referrals)
+
+    rewards_sent    = Reward.objects.filter(company=company, state="SENT").count()
+    rewards_pending = Reward.objects.filter(company=company, state="PENDING").count()
+    clients_count   = Client.objects.filter(company=company).count()
+
+    return {
+        "referrals_month": referrals_this_month,
+        "referrals_delta_pct": delta_pct,
+        "rewards_sent": rewards_sent,
+        "rewards_pending": rewards_pending,
+        "clients": clients_count,
+    }
+
+def _recent_events_for_company(company: Company, limit=8):
+    events = []
+
+    # Derniers parrainages (ordre chronologique inverse)
+    for r in (Referral.objects
+              .select_related("referrer", "referee")
+              .filter(company=company)
+              .order_by("-created_at")[:limit]):
+        events.append({
+            "icon": "👥",
+            "text": f"Parrainage validé — {r.referrer.last_name} {r.referrer.first_name} → {r.referee.last_name} {r.referee.first_name}",
+            "badge": "OK",
+        })
+
+    # Un mémo sur les cadeaux en attente
+    pend = Reward.objects.filter(company=company, state="PENDING").count()
+    if pend:
+        events.append({
+            "icon": "🎁",
+            "text": "Cadeau en attente — Envoyer le lien au parrain",
+            "badge": str(pend),
+        })
+
+    # Base clients (on ne dépend pas d’un created_at client)
+    events.append({
+        "icon": "🧑",
+        "text": "Base clients — total à jour",
+        "badge": "+1",  # si plus tard tu ajoutes created_at sur Client, remplace par le vrai diff semaine
+    })
+
+    return events[:limit]
+
+
 # -------------------------------------------------------------
 # Redirections d’accueil selon le rôle
 # -------------------------------------------------------------
@@ -69,8 +147,21 @@ def dashboard_root(request):
 def superadmin_home(request):
     if not _is_superadmin(request.user):
         raise PermissionDenied("Réservé au Superadmin.")
-    return render(request, "dashboard/superadmin_home.html", {})
-
+    # Par défaut: agrégation globale; si tu veux cibler via ?company=ID, récupère-la comme dans _current_company
+    companies = Company.objects.all()
+    # Agrège rapidement (somme) — option simple pour le superadmin
+    kpi = {
+        "referrals_month": sum(
+            Referral.objects.filter(company=c, created_at__gte=_month_bounds()[0]).count()
+            for c in companies
+        ),
+        "referrals_delta_pct": 0,  # tu peux raffiner si besoin
+        "rewards_sent":    sum(Reward.objects.filter(company=c, state="SENT").count() for c in companies),
+        "rewards_pending": sum(Reward.objects.filter(company=c, state="PENDING").count() for c in companies),
+        "clients":         sum(Client.objects.filter(company=c).count() for c in companies),
+    }
+    events = []  # tu peux concaténer _recent_events_for_company(c) si tu veux un mix multi-entreprises
+    return render(request, "dashboard/superadmin_home.html", {"kpi": kpi, "events": events})
 
 @login_required
 def company_home(request):
@@ -78,7 +169,9 @@ def company_home(request):
     if not (_is_superadmin(u) or _is_company_admin(u) or _is_operator(u)):
         raise PermissionDenied("Réservé à l’Admin/Opérateur (ou Superadmin).")
     company = _company_for(u)
-    return render(request, "dashboard/company_home.html", {"company": company})
+    kpi = _kpis_for_company(company)
+    events = _recent_events_for_company(company)
+    return render(request, "dashboard/company_home.html", {"company": company, "kpi": kpi, "events": events})
 
 
 from .forms import ReferrerClientForm, RefereeClientForm, ReferralForm, RefereeInlineForm
@@ -854,3 +947,108 @@ def referrer_create(request):
             return redirect("dashboard:clients_list")
 
     return render(request, "dashboard/referrer_form.html", {"form": form})
+
+
+# dashboard/views.py
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+from django.db.models import Count
+
+from accounts.models import Company
+from dashboard.models import Client, Referral
+from rewards.models import Reward
+
+
+# -------- Helpers --------
+def _current_company(request):
+    """
+    Admin d’entreprise = user.company ; Superadmin peut cibler via ?company=<id>
+    """
+    user = request.user
+    company = getattr(user, "company", None)
+    cid = (request.GET.get("company") or "").strip()
+    if getattr(user, "is_superadmin", lambda: False)() and cid:
+        company = get_object_or_404(Company, pk=cid)
+    return company
+
+
+# -------- Vue principale du tableau de bord --------
+@login_required
+def dashboard_home(request):
+    company = _current_company(request)
+    if not company:
+        # même redirection que le reste de l’app
+        return redirect("dashboard:root")  # Si ton root == cette vue, remplace par une page sûre
+
+    # Bornes du mois courant (aware)
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # KPIs
+    referrals_this_month = Referral.objects.filter(company=company, created_at__gte=month_start).count()
+    rewards_sent = Reward.objects.filter(company=company, state="SENT").count()
+    rewards_pending = Reward.objects.filter(company=company, state="PENDING").count()
+    clients_count = Client.objects.filter(company=company).count()
+
+    # Activité récente (8 dernières entrées confondues)
+    events = []
+
+    # Parrainages créés
+    for r in (
+        Referral.objects
+        .select_related("referrer", "referee")
+        .filter(company=company)
+        .order_by("-created_at")[:10]
+    ):
+        if r.created_at:
+            events.append({
+                "ts": r.created_at,
+                "icon": "👥",
+                "text": f"Parrainage : {getattr(r.referrer, 'last_name', '')} {getattr(r.referrer, 'first_name', '')} → "
+                        f"{getattr(r.referee, 'last_name', '')} {getattr(r.referee, 'first_name', '')}",
+            })
+
+    # Récompenses distribuées
+    for rw in (
+        Reward.objects
+        .select_related("client")
+        .filter(company=company, redeemed_at__isnull=False)
+        .order_by("-redeemed_at")[:10]
+    ):
+        events.append({
+            "ts": rw.redeemed_at,
+            "icon": "🎁",
+            "text": f"Récompense « {rw.label} » distribuée à "
+                    f"{getattr(rw.client, 'last_name', '')} {getattr(rw.client, 'first_name', '')}",
+        })
+
+    # Nouveaux clients
+    for c in (
+        Client.objects
+        .filter(company=company)
+        .order_by("-created_at")[:10]
+    ):
+        if c.created_at:
+            events.append({
+                "ts": c.created_at,
+                "icon": "🧑",
+                "text": f"Nouveau client : {getattr(c, 'last_name', '')} {getattr(c, 'first_name', '')}",
+            })
+
+    # Tri global et limitation
+    events = [e for e in events if e.get("ts")]
+    events.sort(key=lambda x: x["ts"], reverse=True)
+    events = events[:8]
+
+    context = {
+        "company": company,
+        "kpi": {
+            "referrals_month": referrals_this_month,
+            "rewards_sent": rewards_sent,
+            "rewards_pending": rewards_pending,
+            "clients": clients_count,
+        },
+        "events": events,
+    }
+    return render(request, "dashboard/home.html", context)

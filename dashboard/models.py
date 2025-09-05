@@ -40,6 +40,11 @@ class Referral(models.Model):
 
     class Meta:
         constraints = [
+            # si tu as déjà d'autres contraintes, garde-les
+            models.UniqueConstraint(
+                fields=["company", "referee"],
+                name="uniq_referee_per_company",   # <-- NOM EXACT attendu par la migration
+            ),
         ]
 
     def __str__(self):

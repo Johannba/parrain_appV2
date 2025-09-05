@@ -47,20 +47,17 @@ class RewardTemplate(models.Model):
     )
     bucket = models.CharField(max_length=10, choices=BUCKETS)
 
-    # nom affiché (modifiable par l’admin)
     label = models.CharField(max_length=120, default="-10 % de remise")
-
-    # délai choisi par l’admin en mois (1..6) + miroir en jours pour calculs
     cooldown_months = models.PositiveSmallIntegerField(default=1)
     cooldown_days = models.PositiveIntegerField(default=30)
 
-    # nombre minimum de parrainages requis
+    # Seuil d’éligibilité
     min_referrals_required = models.PositiveIntegerField(
         default=0,
         help_text="Nombre minimum de parrainages requis pour débloquer cette récompense."
     )
 
-    # uniquement pour affichage (ex “980/1000”)
+    # Purement affichage (ex. '980/1000')
     probability_display = models.CharField(max_length=20, default="", editable=False)
 
     class Meta:
@@ -68,7 +65,6 @@ class RewardTemplate(models.Model):
         ordering = ("company", "bucket")
 
     def save(self, *args, **kwargs):
-        # tient cooldown_days en phase avec cooldown_months (simple approx 30j/mois)
         self.cooldown_days = int(self.cooldown_months) * 30
         super().save(*args, **kwargs)
 
@@ -93,7 +89,6 @@ class Reward(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="rewards")
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="rewards")
 
-    # lie la récompense à un parrainage précis (règle « 1 par filleul »)
     referral = models.ForeignKey(
         Referral, on_delete=models.CASCADE, related_name="rewards",
         null=True, blank=True
@@ -120,37 +115,23 @@ class Reward(models.Model):
             )
         ]
 
-    # ----------------- Helpers & propriétés d’affichage -----------------
+    # ----------------- Helpers d’affichage -----------------
 
     def ensure_token(self, force: bool = False):
-        """
-        Génère un token si nécessaire. Aligne éventuellement l'expiration du lien
-        sur le délai d’utilisation.
-        """
         if force or not self.token:
             self.token = secrets.token_urlsafe(24)
         if not self.token_expires_at:
-            # Par défaut : 180 jours, mais si un cooldown est défini,
-            # on privilégie une cohérence lien/délai.
             days = int(self.cooldown_days or 180)
             self.token_expires_at = timezone.now() + timedelta(days=days)
 
     @property
     def valid_until(self):
-        """
-        Date limite d'utilisation = created_at + cooldown_days (si > 0).
-        Retourne None si illimité (cooldown_days == 0) ou si created_at absent.
-        """
         if self.cooldown_days and self.created_at:
             return self.created_at + timedelta(days=int(self.cooldown_days))
         return None
 
     @property
     def cooldown_label(self) -> str:
-        """
-        Libellé humain du délai (ex. '1 mois', '3 mois', '6 mois', ou '15 jours').
-        30j = 1 mois, 60j = 2 mois, etc. 0 = illimité.
-        """
         d = int(self.cooldown_days or 0)
         if d == 0:
             return "illimité"
@@ -160,11 +141,6 @@ class Reward(models.Model):
         return f"{d} jours"
 
     def validity_sentence(self) -> str:
-        """
-        Phrase prête à afficher, ex:
-        - 'Validité : 1 mois (jusqu’au 12/11/2025)'
-        - 'Validité : illimité'
-        """
         if self.valid_until:
             return f"Validité : {self.cooldown_label} (jusqu’au {timezone.localtime(self.valid_until).strftime('%d/%m/%Y')})"
         return "Validité : illimité"
@@ -175,10 +151,6 @@ class Reward(models.Model):
 
     @property
     def claim_url(self) -> str:
-        """
-        Alias utilisé par des templates historiques.
-        Retourne le chemin utilisable dans un <a href>.
-        """
         return self.claim_path
 
     def __str__(self):

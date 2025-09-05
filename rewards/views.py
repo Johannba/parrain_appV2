@@ -2,15 +2,19 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.utils import timezone
+from django.db.models.functions import TruncMonth
 
 from accounts.models import Company
 from dashboard.models import Referral
-from .models import RewardTemplate, Reward
-from django.utils import timezone 
+from .models import RewardTemplate, Reward, ProbabilityWheel
+from .forms import RewardTemplateForm
 
+
+# ----------------------------- UI Dictionaries -----------------------------
 
 BUCKET_UI = {
     "SOUVENT":   {"label": "Souvent",   "badge": "success", "prob": "980/1000"},
@@ -27,9 +31,11 @@ STATE_UI = {
 }
 
 
+# ----------------------------- Helpers généraux -----------------------------
+
 def _current_company(request):
     """
-    super simple : admin entreprise = user.company ; superadmin -> ?company=<id>
+    Admin d’entreprise = user.company ; Superadmin peut cibler via ?company=<id>
     """
     user = request.user
     company = getattr(user, "company", None)
@@ -47,10 +53,10 @@ def _can_manage_company(user, company) -> bool:
 
 def ensure_reward_templates(company):
     """
-    Crée les 4 lignes si manquantes, avec probabilités affichées figées.
+    Crée les 4 templates si manquants, avec probas affichées figées.
     """
     for key, ui in BUCKET_UI.items():
-        obj, created = RewardTemplate.objects.get_or_create(
+        obj, _created = RewardTemplate.objects.get_or_create(
             company=company, bucket=key,
             defaults={
                 "label": "- 10 % de remise" if key in ("SOUVENT", "MOYEN") else (
@@ -66,7 +72,104 @@ def ensure_reward_templates(company):
             obj.save(update_fields=["probability_display"])
 
 
-# ----------------------------- VUES CRUD TEMPLATES -----------------------------
+def _last_12_month_starts(today):
+    """
+    Retourne la liste des 12 premiers jours de mois (du plus ancien au plus récent)
+    en stdlib uniquement (sans dateutil).
+    """
+    from datetime import date
+    y, m = today.year, today.month
+    out = []
+    for i in range(11, -1, -1):
+        yy = y
+        mm = m - i
+        while mm <= 0:
+            mm += 12
+            yy -= 1
+        out.append(date(yy, mm, 1))
+    return out
+
+
+# ----------------------------- Snapshot des roues (local) -----------------------------
+# On évite l'import "rewards.services.probabilities" (conflit module/paquet).
+# Clés/tokens alignés avec rewards/services/probabilities.py
+_BASE_KEY = "base_100"
+_VERY_RARE_KEY = "very_rare_10000"
+
+_TOK_BASE = ["SOUVENT", "MOYEN", "RARE"]
+_TOK_VR   = ["TRES_RARE", "NO_HIT"]
+
+
+def _remaining_counts(pool, idx, tokens):
+    """Compte ce qu'il reste AVANT la fin du cycle actuel (de idx -> fin)."""
+    tail = pool[idx:] if pool and 0 <= idx < len(pool) else pool
+    out = {}
+    for t in tokens:
+        out[t] = tail.count(t) if tail else 0
+    return out
+
+
+def _wheels_snapshot(company):
+    """
+    Renvoie un dict comme get_snapshot(company) l'aurait fait :
+    {
+      "base": {
+        "size": int, "idx": int, "progress_pct": int,
+        "remaining_by_token": {token: n}, "total_by_token": {token: n}
+      },
+      "very_rare": { ... }
+    }
+    Si une roue n'existe pas encore, on renvoie des zéros élégants.
+    """
+    snap = {}
+    # --- BASE ---
+    try:
+        base = ProbabilityWheel.objects.get(company=company, key=_BASE_KEY)
+        base_total = {t: base.pool.count(t) for t in _TOK_BASE}
+        base_remaining = _remaining_counts(base.pool, base.idx, _TOK_BASE)
+        base_progress = int((base.idx / base.size) * 100) if base.size else 0
+        snap["base"] = {
+            "size": base.size,
+            "idx": base.idx,
+            "progress_pct": base_progress,
+            "remaining_by_token": base_remaining,
+            "total_by_token": base_total,
+        }
+    except ProbabilityWheel.DoesNotExist:
+        snap["base"] = {
+            "size": 0,
+            "idx": 0,
+            "progress_pct": 0,
+            "remaining_by_token": {t: 0 for t in _TOK_BASE},
+            "total_by_token": {t: 0 for t in _TOK_BASE},
+        }
+
+    # --- VERY RARE ---
+    try:
+        vr = ProbabilityWheel.objects.get(company=company, key=_VERY_RARE_KEY)
+        vr_total = {t: vr.pool.count(t) for t in _TOK_VR}
+        vr_remaining = _remaining_counts(vr.pool, vr.idx, _TOK_VR)
+        vr_progress = int((vr.idx / vr.size) * 100) if vr.size else 0
+        snap["very_rare"] = {
+            "size": vr.size,
+            "idx": vr.idx,
+            "progress_pct": vr_progress,
+            "remaining_by_token": vr_remaining,
+            "total_by_token": vr_total,
+        }
+    except ProbabilityWheel.DoesNotExist:
+        snap["very_rare"] = {
+            "size": 0,
+            "idx": 0,
+            "progress_pct": 0,
+            "remaining_by_token": {t: 0 for t in _TOK_VR},
+            "total_by_token": {t: 0 for t in _TOK_VR},
+        }
+
+    return snap
+
+
+# ----------------------------- CRUD Templates -----------------------------
 
 @login_required
 def reward_list(request):
@@ -87,8 +190,6 @@ def reward_list(request):
     return render(request, "rewards/list.html", {"items": items})
 
 
-from .forms import RewardTemplateForm  # si tu as un formulaire d’édition
-
 @login_required
 def reward_update(request, pk):
     company = _current_company(request)
@@ -104,36 +205,18 @@ def reward_update(request, pk):
     return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket]})
 
 
-# ------------------------------ HISTORIQUE (ENTREPRISE) ------------------------------
-
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.core.paginator import Paginator
-from django.db.models import Q
-from django.shortcuts import render, redirect
-
-# suppose que _current_company, BUCKET_UI, STATE_UI, Reward sont déjà importés/définis plus haut
+# ------------------------------ Historique (entreprise) ------------------------------
 
 @login_required
 def rewards_history_company(request):
-    """
-    Historique de TOUTES les récompenses d'une entreprise (tous les clients).
-    Filtres: bucket, état, recherche. Pagination.
-    """
     company = _current_company(request)
     if not company:
         messages.error(request, "Aucune entreprise sélectionnée.")
         return redirect("dashboard:root")
 
-    # ✅ Précharge client, referral, parrain et filleul pour éviter les N+1
     qs = (
         Reward.objects
-        .select_related(
-            "client",
-            "referral",
-            "referral__referrer",
-            "referral__referee",
-        )
+        .select_related("client", "referral", "referral__referrer", "referral__referee")
         .filter(company=company)
         .order_by("-created_at", "-id")
     )
@@ -168,14 +251,11 @@ def rewards_history_company(request):
         "states": [(k, v["label"]) for k, v in STATE_UI.items()],
     })
 
-# ------------------------------ ROUE / SPIN ------------------------------
+
+# ------------------------------ Spin (animation) ------------------------------
 
 @login_required
 def reward_spin(request, reward_id: int):
-    """
-    Page avec une roue animée et des couleurs qui correspondent au type de récompense.
-    - Segments fixes (SOUVENT/MOYEN/RARE/TRES_RARE).
-    """
     reward = get_object_or_404(
         Reward.objects.select_related("company", "client"),
         pk=reward_id
@@ -197,13 +277,9 @@ def reward_spin(request, reward_id: int):
     })
 
 
-# ------------------------------ PAGE PUBLIQUE (token) ------------------------------
+# ------------------------------ Page publique (token) ------------------------------
 
 def use_reward(request, token):
-    """
-    Page publique : N’ALTÈRE PAS L’ÉTAT.
-    Affiche la récompense et explique que l’équipe validera en caisse.
-    """
     reward = get_object_or_404(Reward, token=token)
 
     context = {"reward": reward}
@@ -212,14 +288,11 @@ def use_reward(request, token):
     return render(request, "rewards/use_reward.html", context)
 
 
-# ------------------------------ ACTIONS ------------------------------
+# ------------------------------ Actions ------------------------------
 
 @login_required
 @require_POST
 def distribute_reward(request, pk: int):
-    """
-    Action opérateur/admin : passe la récompense en SENT.
-    """
     reward = get_object_or_404(
         Reward.objects.select_related("company", "client"),
         pk=pk
@@ -245,9 +318,6 @@ def distribute_reward(request, pk: int):
 @login_required
 @require_POST
 def referral_delete(request, pk: int):
-    """
-    Suppression d’un parrainage (avec contrôle périmètre).
-    """
     referral = get_object_or_404(
         Referral.objects.select_related("company", "referrer", "referee"),
         pk=pk
@@ -263,3 +333,72 @@ def referral_delete(request, pk: int):
     referral.delete()
     messages.success(request, "Parrainage supprimé.")
     return redirect("dashboard:client_detail", pk=back_client_id)
+
+
+# ------------------------------ STATS (récompenses) ------------------------------
+
+# rewards/views.py (extrait) — remplace UNIQUEMENT la vue rewards_stats par celle-ci
+from django.db.models import Count
+from django.db.models.functions import TruncMonth
+
+@login_required
+def rewards_stats(request):
+    """
+    Page stats ultra-simple : 2 visuels
+    - Parrainages par mois (aperçu des 4 derniers mois) en barres de progression
+    - Cadeaux obtenus (Top) avec part en % (progress)
+    """
+    company = _current_company(request)
+    if not company:
+        messages.error(request, "Aucune entreprise sélectionnée.")
+        return redirect("dashboard:root")
+
+    qs = Reward.objects.filter(company=company)
+
+    # ---- 4 derniers mois (mois de début) en stdlib only ----
+    def _last_n_month_starts(today, n):
+        y, m = today.year, today.month
+        out = []
+        for i in range(n-1, -1, -1):
+            yy = y
+            mm = m - i
+            while mm <= 0:
+                mm += 12
+                yy -= 1
+            from datetime import date
+            out.append(date(yy, mm, 1))
+        return out
+
+    today = timezone.now().date().replace(day=1)
+    months = _last_n_month_starts(today, 4)  # 4 mois comme sur la maquette
+
+    monthly_raw = (
+        qs.annotate(m=TruncMonth("created_at"))
+          .values("m")
+          .annotate(n=Count("id"))
+          .order_by("m")
+    )
+    monthly_map = {row["m"].date(): row["n"] for row in monthly_raw if row["m"]}
+    monthly_rows = [{"month": m, "n": monthly_map.get(m, 0)} for m in months]
+    max_n = max([r["n"] for r in monthly_rows] or [1])
+    for r in monthly_rows:
+        r["pct"] = int((r["n"] / max_n) * 100) if max_n else 0
+
+    # ---- Top cadeaux (par libellé de Reward) ----
+    gifts_raw = list(
+        qs.values("label").annotate(n=Count("id")).order_by("-n")[:4]
+    )
+    total_gifts = sum(g["n"] for g in gifts_raw) or 1
+    top_gifts = [
+        {"label": g["label"] or "—", "n": g["n"], "pct": int((g["n"]/total_gifts)*100)}
+        for g in gifts_raw
+    ]
+
+    context = {
+        "company": company,
+        "monthly_rows": monthly_rows,  # [{month: date(YYYY,MM,1), n: int, pct: int}]
+        "top_gifts": top_gifts,        # [{label,str,n,int,pct,int}]
+    }
+    return render(request, "rewards/stats.html", context)
+
+

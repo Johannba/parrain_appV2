@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from accounts.models import Company
-from rewards.services.probabilities import ensure_wheel, BASE_100, VERY_RARE_10000
+from rewards.services.probabilities import ensure_wheels
 
 class Command(BaseCommand):
     help = "Initialise les roues de probabilité pour une entreprise."
@@ -15,7 +15,5 @@ class Command(BaseCommand):
         except Company.DoesNotExist:
             raise CommandError(f"Company '{slug}' introuvable")
 
-        specs = [BASE_100, VERY_RARE_10000]
-        for spec in specs:
-            ensure_wheel(company, spec)
-            self.stdout.write(self.style.SUCCESS(f"OK: {company} • {spec.key}"))
+        ensure_wheels(company)
+        self.stdout.write(self.style.SUCCESS(f"OK: {company} • base & very_rare"))

@@ -1,47 +1,44 @@
 # rewards/services/probabilities.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from decimal import Decimal, getcontext
+from typing import Dict, List, Tuple, Set
 
 from django.db import transaction
 
 from accounts.models import Company
-from rewards.models import ProbabilityWheel
+from rewards.models import ProbabilityWheel, RewardTemplate
+from dashboard.models import Referral
 
-# ⚠️ On garde les mêmes clés pour compatibilité (vues/templates/urls),
-#    mais on va désormais construire des pools de 1000 et 100_000 cases.
-BASE_KEY = "base_100"
-VERY_RARE_KEY = "very_rare_10000"
+# Compatibilité avec les anciens helpers/tests
+from rewards.probabilities import (
+    WheelSpec as _LegacyWheelSpec,
+    ensure_wheel as _legacy_ensure_wheel,
+    draw as _legacy_draw,
+)
 
-# Tokens standardisés
+# Expose les symboles historiques
+WheelSpec = _LegacyWheelSpec
+ensure_wheel = _legacy_ensure_wheel
+draw = _legacy_draw
+
+# ------------------ Définition des deux roues “exactes” ------------------
+BASE_KEY = "base_100"           # 1000 cases = 980/19/1
+VERY_RARE_KEY = "very_rare_10000"  # 100_000 cases = 1 TRES_RARE
+
 SOUVENT = "SOUVENT"
 MOYEN = "MOYEN"
 RARE = "RARE"
 TRES_RARE = "TRES_RARE"
 NO_HIT = "NO_HIT"
 
-# -----------------------------
-#   Composition EXACTE des pools
-# -----------------------------
-# Base = 1000 cases -> Rare = 1/1000 (0,1 %)
-# Répartition choisie (simple et lisible) :
-#   - 980 x Souvent
-#   -  19 x Moyen
-#   -   1 x Rare
-BASE_COUNTS = {
-    SOUVENT: 980,
-    MOYEN: 19,
-    RARE: 1,
-}
+BASE_COUNTS = {SOUVENT: 980, MOYEN: 19, RARE: 1}
 BASE_SIZE = sum(BASE_COUNTS.values())  # 1000
 
-# Très rare = 100_000 cases -> 1/100_000 (0,001 %)
-VR_COUNTS = {
-    NO_HIT: 100_000 - 1,
-    TRES_RARE: 1,
-}
+VR_COUNTS = {NO_HIT: 100_000 - 1, TRES_RARE: 1}
 VR_SIZE = sum(VR_COUNTS.values())  # 100_000
 
+getcontext().prec = 28  # précision si on affiche des pourcentages
 
 def _build_base_pool() -> List[str]:
     pool: List[str] = []
@@ -49,20 +46,16 @@ def _build_base_pool() -> List[str]:
         pool.extend([token] * n)
     return pool
 
-
 def _build_very_rare_pool() -> List[str]:
     pool: List[str] = []
     for token, n in VR_COUNTS.items():
         pool.extend([token] * n)
     return pool
 
-
 @transaction.atomic
 def ensure_wheels(company: Company) -> Tuple[ProbabilityWheel, ProbabilityWheel]:
     """
-    Crée (ou met à niveau) les deux roues pour l’entreprise.
-    - BASE_KEY      -> 1000 cases (980/19/1)
-    - VERY_RARE_KEY -> 100_000 cases (1 TRES_RARE)
+    Crée (ou met à niveau) les deux roues exactes pour l’entreprise.
     """
     base, _ = ProbabilityWheel.objects.get_or_create(
         company=company,
@@ -75,7 +68,6 @@ def ensure_wheels(company: Company) -> Tuple[ProbabilityWheel, ProbabilityWheel]
         defaults={"pool": _build_very_rare_pool(), "size": VR_SIZE, "idx": 0},
     )
 
-    # Mise à niveau si l’ancienne taille (100 / 10_000) est encore en base
     if base.size != BASE_SIZE:
         base.pool, base.size, base.idx = _build_base_pool(), BASE_SIZE, 0
         base.save(update_fields=["pool", "size", "idx"])
@@ -86,9 +78,7 @@ def ensure_wheels(company: Company) -> Tuple[ProbabilityWheel, ProbabilityWheel]
 
     return base, very_rare
 
-
 def rebuild_wheel(company: Company, key: str) -> None:
-    """Régénère entièrement une roue (repart à idx=0)."""
     if key == BASE_KEY:
         pool, size = _build_base_pool(), BASE_SIZE
     elif key == VERY_RARE_KEY:
@@ -101,78 +91,108 @@ def rebuild_wheel(company: Company, key: str) -> None:
         defaults={"pool": pool, "size": size, "idx": 0}
     )
 
-
 def reset_wheel(company: Company, key: str) -> None:
-    """Remet le curseur à zéro (sans toucher la composition)."""
     wheel = ProbabilityWheel.objects.get(company=company, key=key)
     wheel.idx = 0
     wheel.save(update_fields=["idx"])
 
-
-def _consume_one(wheel: ProbabilityWheel) -> str:
-    value = wheel.pool[wheel.idx]
-    wheel.idx = (wheel.idx + 1) % wheel.size
-    wheel.save(update_fields=["idx"])
-    return value
-
-
-def tirer_recompense(company: Company) -> str:
+def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
     """
-    Tirage déterministe EXACT (pas d’aléatoire) :
-      1) On consomme la roue VERY_RARE_KEY (1 / 100_000 par cycle).
-         -> si TRES_RARE : on retourne immédiatement TRES_RARE
-      2) Sinon, on consomme la roue BASE_KEY (980/19/1 sur 1000 exactement).
+    Détermine l'éligibilité par bucket pour un client, en fonction de son
+    nombre de parrainages (en tant que parrain).
     """
-    base, very_rare = ensure_wheels(company)
-    vr = _consume_one(very_rare)
-    if vr == TRES_RARE:
-        return TRES_RARE
-    return _consume_one(base)
+    referrals_count = Referral.objects.filter(
+        company=company, referrer=client
+    ).count()
 
+    tpls = {
+        t.bucket: t
+        for t in RewardTemplate.objects.filter(company=company).only(
+            "bucket", "min_referrals_required"
+        )
+    }
 
-@dataclass
-class WheelSnapshot:
-    size: int
-    idx: int
-    progress_pct: int
-    remaining_by_token: Dict[str, int]
-    total_by_token: Dict[str, int]
-
-
-def _remaining_counts(pool: List[str], idx: int, tokens: List[str]) -> Dict[str, int]:
-    """Compte ce qu'il reste AVANT la fin du cycle actuel (de idx -> fin)."""
-    tail = pool[idx:]
-    out: Dict[str, int] = {}
-    for t in tokens:
-        out[t] = tail.count(t)
-    return out
-
-
-def get_snapshot(company: Company) -> Dict[str, WheelSnapshot]:
-    """Données pour l’UI (progression et restants par token)."""
-    base, very_rare = ensure_wheels(company)
-
-    base_tokens = [SOUVENT, MOYEN, RARE]
-    base_total = {t: base.pool.count(t) for t in base_tokens}
-    base_remaining = _remaining_counts(base.pool, base.idx, base_tokens)
-
-    vr_tokens = [TRES_RARE, NO_HIT]
-    vr_total = {t: very_rare.pool.count(t) for t in vr_tokens}
-    vr_remaining = _remaining_counts(very_rare.pool, very_rare.idx, vr_tokens)
+    def is_ok(bucket: str) -> bool:
+        tpl = tpls.get(bucket)
+        if not tpl:
+            return False
+        return referrals_count >= int(tpl.min_referrals_required or 0)
 
     return {
-        "base": WheelSnapshot(
-            size=base.size,
-            idx=base.idx,
-            progress_pct=int((base.idx / base.size) * 100) if base.size else 0,
-            remaining_by_token=base_remaining,
-            total_by_token=base_total,
-        ),
-        "very_rare": WheelSnapshot(
-            size=very_rare.size,
-            idx=very_rare.idx,
-            progress_pct=int((very_rare.idx / very_rare.size) * 100) if very_rare.size else 0,
-            remaining_by_token=vr_remaining,
-            total_by_token=vr_total,
-        ),
+        SOUVENT: bool(tpls.get(SOUVENT)),
+        MOYEN:   bool(tpls.get(MOYEN)),
+        RARE:    is_ok(RARE),
+        TRES_RARE: is_ok(TRES_RARE),
     }
+
+def _consume_one_eligible(wheel: ProbabilityWheel, allowed: Set[str]) -> str:
+    """
+    Consomme la roue en sautant les cases non autorisées.
+    Normalisation implicite et déterminisme conservé.
+    """
+    if wheel.size == 0:
+        raise ValueError("Roue vide")
+
+    for _ in range(wheel.size):
+        val = wheel.pool[wheel.idx]
+        wheel.idx = (wheel.idx + 1) % wheel.size
+        if val in allowed:
+            wheel.save(update_fields=["idx"])
+            return val
+
+    # Rien d'autorisé trouvé sur un cycle complet
+    wheel.save(update_fields=["idx"])
+    return NO_HIT
+
+def tirer_recompense(company: Company, client) -> str:
+    """
+    Tirage “client-aware” :
+      1) very_rare : autorise TRES_RARE seulement si éligible (sinon NO_HIT).
+      2) base      : autorise SOUVENT/MOYEN/RARE selon éligibilité.
+    """
+    elig = _eligible_buckets_for(company, client)
+    base, very_rare = ensure_wheels(company)
+
+    allowed_vr = {NO_HIT}
+    if elig.get(TRES_RARE, False):
+        allowed_vr.add(TRES_RARE)
+
+    vr = _consume_one_eligible(very_rare, allowed_vr)
+    if vr == TRES_RARE:
+        return TRES_RARE
+
+    allowed_base: Set[str] = set()
+    if elig.get(SOUVENT, False): allowed_base.add(SOUVENT)
+    if elig.get(MOYEN,   False): allowed_base.add(MOYEN)
+    if elig.get(RARE,    False): allowed_base.add(RARE)
+    if not allowed_base:
+        allowed_base = {SOUVENT}
+
+    return _consume_one_eligible(base, allowed_base)
+
+# (Optionnel) pour afficher des % conditionnels dans l’UI
+def get_normalized_percentages(company: Company, client) -> Dict[str, Decimal]:
+    elig = _eligible_buckets_for(company, client)
+
+    p_base = {
+        SOUVENT: Decimal(980) / Decimal(1000),
+        MOYEN:   Decimal(19)  / Decimal(1000),
+        RARE:    Decimal(1)   / Decimal(1000),
+    }
+    p_vr = {TRES_RARE: Decimal(1) / Decimal(100000)}
+
+    mass = Decimal(0)
+    for b, p in p_base.items():
+        if elig.get(b, False):
+            mass += p
+    if elig.get(TRES_RARE, False):
+        mass += p_vr[TRES_RARE]
+
+    if mass == 0:
+        return {SOUVENT: Decimal(100), MOYEN: Decimal(0), RARE: Decimal(0), TRES_RARE: Decimal(0)}
+
+    out = {}
+    for b, p in p_base.items():
+        out[b] = (p / mass) * Decimal(100) if elig.get(b, False) else Decimal(0)
+    out[TRES_RARE] = (p_vr[TRES_RARE] / mass) * Decimal(100) if elig.get(TRES_RARE, False) else Decimal(0)
+    return out
