@@ -27,6 +27,7 @@ urlpatterns = [
      path("clients/referrer/<int:pk>/edit/", views.referrer_update, name="referrer_update"),
       # 🔎 API de recherche de parrains
     path("api/referrers/", views.referrer_lookup, name="referrer_lookup"),
+    path("referrals/<int:pk>/delete/", views.referral_delete, name="referral_delete"),
 
     # Récompenses (manuel + validations)
     path("clients/<int:pk>/rewards/new/", views.reward_create, name="reward_create"),

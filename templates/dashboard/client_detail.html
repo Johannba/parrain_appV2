@@ -293,18 +293,5 @@
       {% endif %}
     </div>
 
-{# 4) Probabilités normalisées (éligibilité actuelle) #}
-{% with P=company|get_normalized_percentages:client %}
-  {% if P %}
-    <div class="card mt-3">
-      <div class="card-header">Probabilités normalisées (éligibilité actuelle)</div>
-      <div class="card-body small text-secondary">
-        <div>SOUVENT : {{ P.SOUVENT }} %</div>
-        <div>MOYEN : {{ P.MOYEN }} %</div>
-        <div>RARE : {{ P.RARE }} %</div>
-        <div>TRES_RARE : {{ P.TRES_RARE }} %</div>
-      </div>
-    </div>
-  {% endif %}
-  {% endwith %}
+
 {% endblock %}
