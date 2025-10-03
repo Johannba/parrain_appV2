@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date
 import secrets
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -18,6 +19,7 @@ from accounts.models import Company
 from dashboard.models import Referral
 from .models import RewardTemplate, Reward, ProbabilityWheel
 from .forms import RewardTemplateForm
+from rewards.services.probabilities import BASE_COUNTS, VR_COUNTS, BASE_SIZE, VR_SIZE
 
 
 # ----------------------------- UI Dictionaries -----------------------------
@@ -182,15 +184,28 @@ def reward_list(request):
         return redirect("dashboard:root")
 
     ensure_reward_templates(company)
-    items = RewardTemplate.objects.filter(company=company)
 
-    # ordre voulu : Souvent → Moyen → Rare → Très rare
+    # 1) Récupérer les templates
+    qs = RewardTemplate.objects.filter(company=company)
+
+    # 2) Trier par bucket (SOUVENT -> MOYEN -> RARE -> TRES_RARE)
     order = {"SOUVENT": 0, "MOYEN": 1, "RARE": 2, "TRES_RARE": 3}
-    items = sorted(items, key=lambda r: order.get(r.bucket, 99))
+    items_sorted = sorted(qs, key=lambda tpl: order.get(tpl.bucket, 99))
 
-    # pour l’affichage couleur/badge
-    items = [(r, BUCKET_UI[r.bucket]) for r in items]
-    return render(request, "rewards/list.html", {"items": items})
+    # 3) Préparer l'affichage (paire (template, ui))
+    items = [(tpl, BUCKET_UI[tpl.bucket]) for tpl in items_sorted]
+
+    # 4) Données de la roue de test (probas identiques à Reward)
+    test_wheel = {
+        "base": {"size": BASE_SIZE, "counts": BASE_COUNTS},
+        "very_rare": {"size": VR_SIZE, "counts": VR_COUNTS},
+    }
+
+    return render(request, "rewards/list.html", {
+        "items": items,
+        "TEST_WHEEL": test_wheel,
+    })
+
 
 
 @login_required
@@ -399,3 +414,185 @@ def rewards_stats(request):
         "top_gifts": top_gifts,         # [{label,str,n,int,pct,int}]
     }
     return render(request, "rewards/stats.html", context)
+
+
+# rewards/views.py
+import random
+from decimal import Decimal
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+
+@login_required
+def test_wheel(request):
+    """
+    Roue de test (sans attribution).
+
+    Probabilités « de base » (sans minimums) :
+      - SOUVENT   = 80 / 100
+      - MOYEN     = 19 / 100
+      - RARE      = 0,99999 / 100
+      - TRES_RARE = 1 / 100000
+
+    Modes :
+      - combined (défaut) : test TRES_RARE (1/100000), sinon base 80/19/~1%
+      - base              : uniquement SOUVENT/MOYEN/RARE
+      - very_rare         : TRES_RARE vs NO_HIT
+    GET:
+      - n    : simuler N tirages
+      - seed : graine RNG (reproductible)
+      - mode : combined | base | very_rare
+    """
+    mode = (request.GET.get("mode") or "combined").lower()
+    simulate_n = int(request.GET.get("n") or 0)
+    seed = request.GET.get("seed")
+    rng = random.Random(seed) if seed else random
+
+    # Probabilités demandées
+    P_S  = Decimal("80") / Decimal("100")        # 0.80
+    P_M  = Decimal("19") / Decimal("100")        # 0.19
+    P_R  = Decimal("0.99999") / Decimal("100")   # 0.0099999
+    P_TR = Decimal(1) / Decimal(100000)          # 0.00001
+
+    ORDER = ("SOUVENT", "MOYEN", "RARE", "TRES_RARE", "NO_HIT")
+
+    # ---- Tirage 1 coup (pour l’animation) : pondération simple ----
+    def weighted_choice(weights: dict[str, Decimal]) -> str:
+        total = float(sum(weights.values())) or 1.0
+        x = rng.random() * total
+        acc = 0.0
+        for k in ORDER:
+            if k in weights:
+                acc += float(weights[k])
+                if x < acc:
+                    return k
+        return next(iter(weights))
+
+    def draw_once() -> str:
+        if mode == "very_rare":
+            return weighted_choice({"TRES_RARE": P_TR, "NO_HIT": Decimal(1) - P_TR})
+        if mode == "base":
+            return weighted_choice({"SOUVENT": P_S, "MOYEN": P_M, "RARE": P_R})
+        # combined
+        if rng.random() < float(P_TR):
+            return "TRES_RARE"
+        return weighted_choice({"SOUVENT": P_S, "MOYEN": P_M, "RARE": P_R})
+
+    bucket = draw_once()
+
+    # ---- Simulation N tirages (sans remise pour respecter 80/19/1 sur 100) ----
+    counts = pct = None
+    if simulate_n > 0:
+        counts = {"SOUVENT": 0, "MOYEN": 0, "RARE": 0, "TRES_RARE": 0, "NO_HIT": 0}
+
+        if mode == "very_rare":
+            # N essais indépendants de proba 1/100000
+            for _ in range(simulate_n):
+                if rng.random() < float(P_TR):
+                    counts["TRES_RARE"] += 1
+                else:
+                    counts["NO_HIT"] += 1
+
+        else:
+            # Base « exacte » : cycles de 100 cases (80/19/1), échantillonnage sans remise.
+            full_cycles, rem = divmod(simulate_n, 100)
+            counts["SOUVENT"] += 80 * full_cycles
+            counts["MOYEN"]   += 19 * full_cycles
+            counts["RARE"]    += 1  * full_cycles
+
+            if rem:
+                base_pool = ["SOUVENT"] * 80 + ["MOYEN"] * 19 + ["RARE"] * 1
+                rng.shuffle(base_pool)
+                for t in base_pool[:rem]:
+                    counts[t] += 1
+
+            if mode == "combined":
+                # Injecte les très rares (très improbable sur 100 tirages)
+                # On convertit autant de tirages base en TRES_RARE pour rester à N total.
+                vr_hits = sum(1 for _ in range(simulate_n) if rng.random() < float(P_TR))
+                for _ in range(vr_hits):
+                    base_list = (
+                        ["SOUVENT"] * counts["SOUVENT"] +
+                        ["MOYEN"]   * counts["MOYEN"]   +
+                        ["RARE"]    * counts["RARE"]
+                    )
+                    if base_list:
+                        t = rng.choice(base_list)
+                        counts[t] -= 1
+                    counts["TRES_RARE"] += 1
+
+        total = sum(counts.values()) or 1
+        pct = {k: round(counts[k] * 100 / total, 2) for k in counts}
+
+    # ---- UI / animation ----
+    ui = BUCKET_UI.get(bucket, {"label": "Aucun gain", "badge": "secondary"})
+    wheel_order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
+    seg = 360 / len(wheel_order)
+    idx = wheel_order.index(bucket) if bucket in wheel_order else 0
+    target_angle = 4 * 360 + int(idx * seg + seg / 2)
+
+    return render(request, "rewards/test_wheel.html", {
+        "bucket": bucket,
+        "ui": ui,
+        "target_angle": target_angle,
+        "mode": mode,
+        "seed": seed or "",
+        "simulate_n": simulate_n,
+        "counts": counts,
+        "pct": pct,
+    })
+
+
+# rewards/views.py (ajouts)
+from django.views.decorators.http import require_POST
+from django.http import Http404
+from .services.smsmode import SMSPayload, send_sms, build_reward_sms_text, normalize_msisdn
+
+@login_required
+@require_POST
+def reward_send_sms(request, pk: int):
+    """
+    Envoie au client un SMS contenant le lien d’utilisation de la récompense (token).
+    POST /rewards/<pk>/send/sms/
+    """
+    reward = get_object_or_404(Reward.objects.select_related("client", "company"), pk=pk)
+
+    # --- Permissions (mêmes règles que distribute_reward) ---
+    user = request.user
+    if hasattr(user, "is_superadmin") and callable(user.is_superadmin) and user.is_superadmin():
+        pass
+    elif getattr(user, "company_id", None) and reward.company_id == user.company_id:
+        pass
+    else:
+        raise Http404("Non autorisé")
+
+    # Génère un token s’il n’existe pas encore (pour construire l’URL)
+    reward.ensure_token()
+    reward.save(update_fields=["token", "token_expires_at"])
+
+    # Données pour le SMS
+    claim_absolute = request.build_absolute_uri(reward.claim_path)
+    client_fullname = f"{reward.client.first_name} {reward.client.last_name}".strip()
+    company_name = getattr(reward.company, "name", None)
+
+    phone = normalize_msisdn(reward.client.phone or "")
+    if not phone:
+        messages.error(request, "Le client n’a pas de numéro de téléphone valide.")
+        back_id = request.POST.get("back_client")
+        return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
+
+    text = build_reward_sms_text(
+        client_fullname=client_fullname,
+        claim_absolute_url=claim_absolute,
+        company_name=company_name,
+    )
+
+    payload = SMSPayload(to=phone, text=text, sender=settings.SMSMODE.get("SENDER") or None)
+    result = send_sms(payload)
+
+    if result.ok:
+        messages.success(request, "SMS envoyé au client.")
+    else:
+        messages.error(request, f"Échec d’envoi SMS ({result.status}).")
+
+    back_id = request.POST.get("back_client")
+    return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("rewards:history_company")

@@ -23,10 +23,12 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include(('dashboard.urls', 'dashboard'), namespace='dashboard')),
+    path("", include("public.urls")),
+    path('dashboard', include(('dashboard.urls', 'dashboard'), namespace='dashboard')),
     path('accounts/', include('accounts.urls')),
     path('entreprise/', include('entreprises.urls', namespace='entreprises')),
     path('rewards/', include(('rewards.urls',"rewards"), namespace='rewards')),
+    path("accounts/", include("django.contrib.auth.urls"))
 ]
 
 

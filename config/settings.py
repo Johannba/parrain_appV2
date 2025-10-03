@@ -32,6 +32,8 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    "core",
+    "public",
    "rewards.apps.RewardsConfig",
     "entreprises",
     "accounts",
@@ -150,7 +152,42 @@ def _must(name: str) -> str:
         raise RuntimeError(f"Variable d’environnement manquante : {name}")
     return v
 
-TWILIO_ACCOUNT_SID = _must("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN  = _must("TWILIO_AUTH_TOKEN")
-TWILIO_SMS_FROM    = _must("TWILIO_SMS_FROM")
-DEFAULT_PHONE_REGION = os.getenv("DEFAULT_PHONE_REGION", "FR")
+
+import os
+
+def env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)   # 587 -> STARTTLS
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)  # False si 587 ; True uniquement si 465
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Johann Bacha <johannbacha@gmail.com>")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+# (utile en cas de réseau lent / blocage)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
+
+
+
+SMSMODE = {
+    "API_KEY": os.getenv("SMSMODE_API_KEY", ""),
+    "SENDER": os.getenv("SMSMODE_SENDER", ""),
+    "BASE_URL": os.getenv("SMSMODE_BASE_URL", "https://rest.smsmode.com"),  # <- corrigé
+    "DRY_RUN": os.getenv("SMSMODE_DRY_RUN", "false").lower() == "true",
+    "TIMEOUT": 10,
+}
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "rewards.services.smsmode": {"handlers": ["console"], "level": "INFO"},
+    },
+}

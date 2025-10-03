@@ -10,11 +10,14 @@ django = "==5.0"
 psycopg2-binary = "*"
 pytest-django = "*"
 twilio = "*"
-phonenumbers = "*"
 dotenv = "*"
 django-widget-tweaks = "*"
+pillow = "*"
+phonenumbers = "*"
 
 [dev-packages]
 
 [requires]
 python_version = "3.12"
+
+requests>=2.32.3

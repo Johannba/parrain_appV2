@@ -1,0 +1,391 @@
+{% extends "base_public.html" %}
+{% load static %}
+{% block title %}{{ company.name }} • Parrainage{% endblock %}
+
+{% block content %}
+<main class="min-h-screen bg-white text-black" data-primary="{{ company.primary_color }}" data-secondary="{{ company.secondary_color }}">
+
+  <style>
+    :root{
+      --c1: {{ company.primary_color }};
+      --c1-weak: {{ company.primary_color }}33;
+      --c1-weak2: {{ company.primary_color }}22;
+    }
+    /* Encadrés / champs */
+    .frame-double{ border:1px solid var(--c1)!important; box-shadow:0 0 0 4px var(--c1-weak2); border-radius:.75rem; }
+    .step-card{ border:1px solid var(--c1-weak)!important; border-radius:.75rem; }
+    .frame-single{ border:1px solid var(--c1)!important; border-radius:.75rem; }
+    .frame-double .form-control{ border:1px solid var(--c1-weak); }
+    .frame-double .form-control:focus{ border-color:var(--c1); box-shadow:0 0 0 .2rem var(--c1-weak2); outline:0; }
+
+    /* Hauteurs identiques des 4 étapes */
+    .equal-steps > [class*="col-"]{ display:flex; }
+    .equal-steps .step-card{ display:flex; flex-direction:column; width:100%; height:100%; }
+    .equal-steps .step-card h3{ margin-top:.25rem; }
+    .equal-steps .step-card p{ margin-top:.5rem; margin-bottom:0; }
+
+    /* Roue — slots & labels */
+    #wheel .wheel-slot{
+      position:absolute; left:50%; top:50%;
+      transform-origin:center center;
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:none;
+    }
+    /* Texte vertical (multi-lignes autorisées), jamais tronqué en "…" */
+    #wheel .wheel-label{
+      white-space:normal;
+      word-break:break-word;
+      overflow-wrap:anywhere;
+      hyphens:auto;
+      overflow:hidden;           /* on réduit la taille jusqu’à tout faire tenir */
+      letter-spacing:.1px;
+      line-height:1.05;
+      font-weight:600;
+      transform-origin:center center; /* on tournera −90° (radial) */
+    }
+    /* Séparations visuelles entre les 8 cases */
+    #wheel .wheel-line{
+      position:absolute; left:50%; top:50%;
+      width:2px; height:100%;
+      background:#ffffffcc;
+      box-shadow:0 0 0 1px #00000010;
+      transform-origin:50% calc(100% - 16px);
+      pointer-events:none;
+    }
+  </style>
+
+  <style>
+    /* Chaque libellé est découpé par un triangle invisible (clip-path) */
+    #wheel .wedge-clip{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+    #wheel .wheel-label{
+      position:absolute; left:0; top:0; transform:translate(-50%,-50%);
+      text-align:center; white-space:normal; word-break:break-word; overflow-wrap:anywhere;
+      line-height:1.15; font-weight:700; pointer-events:none;
+    }
+  </style>
+
+  <!-- Header -->
+  <header class="w-full border-b bg-black text-white" role="banner" style="border-color: {{ company.primary_color }}">
+    <div class="container py-3 d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        {% if company.logo %}
+          <img src="{{ company.logo.url }}" alt="{{ company.name }}" class="rounded-circle" style="width:24px;height:24px;object-fit:cover;">
+        {% else %}
+          <div class="rounded-circle" style="width:24px;height:24px;background: {{ company.primary_color }}"></div>
+        {% endif %}
+        <span class="fw-semibold">{{ company.name }}</span>
+      </div>
+      <span class="small opacity-75">Espace d'inscription des parrains</span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="container text-center py-4">
+    <h1 class="fw-bold" style="font-size:clamp(1.8rem,2.5vw,2.25rem);line-height:1.2;">
+      Parlez de {{ company.name }} à vos amis et recevez des cadeaux mystère
+    </h1>
+    <p class="mt-2 small opacity-75">Aucune appli à installer. 100% gratuit.</p>
+    {% if company.slogan %}<p class="mt-1 text-muted">{{ company.slogan }}</p>{% endif %}
+  </section>
+
+  <!-- Comment ça marche -->
+  <section class="container py-3" aria-labelledby="how-title">
+    <div class="bg-white p-4 shadow-sm frame-double">
+      <h2 id="how-title" class="h4 fw-semibold mb-3 text-center">Comment ça marche ?</h2>
+      <div class="row g-3 equal-steps">
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="p-3 text-center bg-white step-card">
+            <div class="mx-auto mb-2 d-flex align-items-center justify-content-center rounded-circle fw-bold" style="width:32px;height:32px;background:var(--c1-weak2);color:var(--c1);">1</div>
+            <h3 class="fs-6 fw-semibold lh-sm">Inscris-toi comme parrain.</h3>
+            <p class="small opacity-75 mt-1">Remplis le petit formulaire en bas.</p>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="p-3 text-center bg-white step-card">
+            <div class="mx-auto mb-2 d-flex align-items-center justify-content-center rounded-circle fw-bold" style="width:32px;height:32px;background:var(--c1-weak2);color:var(--c1);">2</div>
+            <h3 class="fs-6 fw-semibold lh-sm">Parle de {{ company.name }} à tes amis.</h3>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="p-3 text-center bg-white step-card">
+            <div class="mx-auto mb-2 d-flex align-items-center justify-content-center rounded-circle fw-bold" style="width:32px;height:32px;background:var(--c1-weak2);color:var(--c1);">3</div>
+            <h3 class="fs-6 fw-semibold lh-sm">Quand l’un de tes amis vient chez {{ company.name }} pour la première fois, il donne ton nom/prénom au moment de payer.</h3>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="p-3 text-center bg-white step-card">
+            <div class="mx-auto mb-2 d-flex align-items-center justify-content-center rounded-circle fw-bold" style="width:32px;height:32px;background:var(--c1-weak2);color:var(--c1);">4</div>
+            <h3 class="fs-6 fw-semibold lh-sm">Et là, boom : récompense mystère pour vous deux 🎁✨</h3>
+            <p class="small opacity-75 mt-1">Ton ami reçoit sa surprise tout de suite ; toi, tu découvres la tienne par SMS.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- ======================= ROUE ======================= -->
+<section class="container py-4" aria-labelledby="rewards-title">
+  <h2 id="rewards-title" class="h5 fw-semibold text-center mb-2">Les récompenses mystère à gagner</h2>
+  <p class="small opacity-75 text-center mb-3">Tes proches gagnent, toi aussi : double dose de bonheur ✨</p>
+
+  <style>
+    /* Tout reste strictement dans le disque => plus de “croix”/débordements */
+    #wheel-disk, #wheel-labels, #wheel-lines { border-radius:50%; overflow:hidden; }
+
+    /* Une “case” = un secteur annulaire qui clippe son contenu */
+    #wheel .wedge { position:absolute; inset:0; pointer-events:none; }
+
+    /* Slot qui porte le texte et se place au centre de la case */
+    #wheel .wheel-slot{
+      position:absolute; left:50%; top:50%;
+      transform-origin:center center;
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:none;
+    }
+
+    /* Texte multi-lignes (1 → 3 lignes max), priorité à 1 ligne */
+    #wheel .wheel-label{
+      white-space:normal;               /* plusieurs mots par ligne */
+      word-break:normal;                /* ne coupe pas au milieu d’un mot */
+      overflow-wrap:break-word;         /* coupe proprement si besoin */
+      hyphens:none;                     /* pas de césure type “-” */
+      text-align:center; line-height:1.12; letter-spacing:.1px;
+      font-weight:700;
+      transform-origin:center center;   /* on tournera le texte à -90° */
+    }
+
+    /* Traits de séparation (8 cases) */
+    #wheel .wheel-line{
+      position:absolute; left:50%; top:50%;
+      width:1px; height:100%;
+      background:#ffffffcc; box-shadow:0 0 0 1px #0000000f;
+      transform-origin:50% 100%;
+      pointer-events:none;
+    }
+
+    /* Chaque triangle qui clippe son contenu */
+    #wheel .wedge-clip{ position:absolute; inset:0; pointer-events:none; }
+
+    /* Le libellé est centré sur (left, top) via translate */
+    #wheel .wheel-label{
+      position:absolute;
+      transform:translate(-50%,-50%);  /* centre le bloc sur ses coords */
+      text-align:center;
+      line-height:1.15;
+      font-weight:700;
+      white-space:normal;
+      word-break:normal;
+      overflow-wrap:break-word;
+      hyphens:none;
+      pointer-events:none;
+  }
+  </style>
+  
+
+  <div class="d-flex justify-content-center">
+    <div id="wheel" class="position-relative" style="width:320px;height:340px;">
+      <div class="position-absolute start-50 translate-middle-x" style="top:-4px;">
+        <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:8px solid #000;"></div>
+      </div>
+
+      <!-- Disque -->
+      <div id="wheel-disk" class="position-absolute top-0 start-0 end-0 bottom-0 rounded-circle shadow border" style="top:16px;border-color: {{ company.primary_color }}"></div>
+
+      <!-- Séparateurs -->
+      <div id="wheel-lines"  class="position-absolute top-0 start-0 end-0 bottom-0" style="top:16px;"></div>
+
+      <!-- Wedges + labels (clippés) -->
+      <div id="wheel-labels" class="position-absolute top-0 start-0 end-0 bottom-0" style="top:16px;"></div>
+
+      <!-- Moyeu -->
+      <div class="position-absolute top-0 start-0 end-0 bottom-0 d-flex align-items-center justify-content-center" style="top:16px;">
+        <div class="rounded-circle d-flex align-items-center justify-content-center border border-4 bg-black text-white shadow" style="width:80px;height:80px;border-color:#fff;">🎁</div>
+      </div>
+    </div>
+  </div>
+
+  {{ wheel_labels|json_script:"wheel-items" }}
+</section>
+
+
+  <!-- Formulaire -->
+  <section class="container pb-5" aria-labelledby="form-title" style="max-width:720px;">
+    <h2 id="form-title" class="h5 fw-semibold text-center mb-3" style="color: {{ company.primary_color }}">✍️ Inscris-toi comme parrain ici</h2>
+    <div class="bg-white p-4 shadow-sm frame-double">
+      {% if messages %}{% for m in messages %}<div class="alert {% if m.tags %}alert-{{ m.tags }}{% else %}alert-info{% endif %}">{{ m }}</div>{% endfor %}{% endif %}
+      {% if form.non_field_errors %}<div class="alert alert-danger mb-3" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <form method="post" action="{% url 'public:referrer_register' company.slug %}" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Nom *</label>{{ form.last_name }}{% if form.last_name.errors %}<div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>{% endif %}</div>
+          <div class="col-md-6"><label class="form-label">Prénom *</label>{{ form.first_name }}{% if form.first_name.errors %}<div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>{% endif %}</div>
+          <div class="col-md-6"><label class="form-label">Téléphone *</label>{{ form.phone }}{% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}</div>
+          <div class="col-md-6"><label class="form-label">Email (recommandé)</label>{{ form.email }}{% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}</div>
+        </div>
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="agree" name="agree" checked>
+          <label class="form-check-label" for="agree">J'accepte de recevoir un lien par SMS/email pour mes récompenses. <span class="text-muted"></span></label>
+        </div>
+        <button type="submit" class="btn w-100 mt-3" style="background: var(--c1); color:#fff;">✅ Je m'inscris comme parrain</button>
+        <p class="text-center text-muted small mt-1">* Champs obligatoires</p>
+      </form>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="container pb-5" aria-labelledby="faq-title">
+    <h2 id="faq-title" class="h5 fw-semibold text-center mb-3">Questions fréquentes</h2>
+    <div class="accordion frame-single" id="faq">
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="heading1">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1" aria-expanded="false" aria-controls="faq1">
+            Est-ce compliqué ?
+          </button>
+        </h2>
+        <div id="faq1" class="accordion-collapse collapse" aria-labelledby="heading1" data-bs-parent="#faq">
+          <div class="accordion-body">Non. Remplis ce formulaire une seule fois. Ensuite, tes amis n'ont qu'à dire ton prénom lors de leur première commande.</div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="heading2">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2" aria-expanded="false" aria-controls="faq2">
+            Comment je reçois mon cadeau ?
+          </button>
+        </h2>
+        <div id="faq2" class="accordion-collapse collapse" aria-labelledby="heading2" data-bs-parent="#faq">
+          <div class="accordion-body">Par SMS ou email, sous forme de lien. Aucune application à installer.</div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="heading3">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3" aria-expanded="false" aria-controls="faq3">
+            Dois-je venir avec mon ami ?
+          </button>
+        </h2>
+        <div id="faq3" class="accordion-collapse collapse" aria-labelledby="heading3" data-bs-parent="#faq">
+          <div class="accordion-body">Non, il peut venir quand il veut. Il suffit qu'il mentionne ton prénom pour activer vos récompenses.</div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="heading4">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4" aria-expanded="false" aria-controls="faq4">
+            Combien d'amis puis-je parrainer ?
+          </button>
+        </h2>
+        <div id="faq4" class="accordion-collapse collapse" aria-labelledby="heading4" data-bs-parent="#faq">
+          <div class="accordion-body">Autant que tu veux ! Chaque première commande d'un ami déclenche une récompense.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-top bg-black text-white py-3" role="contentinfo" style="border-color: {{ company.primary_color }}">
+    <div class="container text-center small opacity-75">Besoin d'aide ? Contactez l'accueil — on s'occupe de tout.</div>
+  </footer>
+</main>
+
+
+<script>
+(function(){
+  const dataEl = document.getElementById("wheel-items");
+  const fromCompany = dataEl ? JSON.parse(dataEl.textContent) : [];
+  const fallback = ["Repas offert","-50%","-20%","Boisson offerte","Repas chaud offert","-10%","Dessert offert","Café offert"];
+  const base = (fromCompany && fromCompany.length) ? fromCompany : fallback;
+
+  // 8 cases
+  const items = base.slice(0,8); while(items.length<8) items.push(...base); items.length = 8;
+
+  const disk   = document.getElementById("wheel-disk");
+  const labelsC= document.getElementById("wheel-labels");
+  const linesC = document.getElementById("wheel-lines");
+  if(!disk || !labelsC || !linesC) return;
+
+  const N = items.length;
+  const segment = 360 / N;
+  const segRad  = (segment*Math.PI/180);
+
+  /* Fond alterné rose/blanc */
+  disk.style.backgroundImage =
+    `conic-gradient(${items.map((_,i)=> (i%2===0?"rgba(252,231,243,1)":"rgba(255,255,255,1)") +
+      " " + (i*segment) + "deg " + ((i+1)*segment) + "deg").join(", ")})`;
+
+  /* Géo du disque (dans la boîte "inset:16px") */
+  const W = disk.clientWidth, H = disk.clientHeight, cx = W/2, cy = H/2;
+  const outerR   = W/2;
+  const rimPad   = 0;                 // marge extérieure
+  const baseR    = outerR - rimPad;   // rayon côté bord
+
+  // ► marge interne SUPPRIMÉE / réduite
+  const hubR     = 2;                 // rayon virtuel
+  const innerPad = 22;                // avant 35 — on colle davantage au centre
+  const apexR    = hubR + innerPad;
+
+  // centre du label plus vers l’extérieur (plus de largeur de corde)
+  const CENTER_BIAS = 0.60;                              // 68% de l’épaisseur
+  const rLabel      = apexR + (baseR - apexR) * CENTER_BIAS;
+
+  /* Utils */
+  const rad = d => d*Math.PI/180;
+  const xy  = (r,aDeg)=>({ x: cx + r*Math.sin(rad(aDeg)), y: cy - r*Math.cos(rad(aDeg)) });
+  const chordAt = (r)=> 2*r*Math.sin(segRad/2);
+
+  /* Séparateurs */
+  linesC.innerHTML = "";
+  for (let i=0;i<N;i++){
+    const l = document.createElement("div");
+    l.className = "wheel-line";
+    l.style.transform = `rotate(${i*segment}deg)`;
+    linesC.appendChild(l);
+  }
+
+  /* Fit texte dans un triangle (≤ 3 lignes) */
+  function fitLabel(el, maxW, maxH, maxLines=3) {
+    let fs = 15, minFS = 9, tries = 0;
+    el.style.fontSize = fs + "px";
+    el.style.width = Math.max(40,Math.floor(maxW)) + "px";
+    el.style.maxHeight = Math.max(30,Math.floor(maxH)) + "px";
+
+    while (tries++ < 24){
+      const lineH = Math.round(fs*1.15);
+      const lines = Math.max(1, Math.ceil(el.scrollHeight / lineH));
+      if (el.scrollHeight <= maxH && lines <= maxLines) break;
+      if (fs <= minFS) break;
+      fs -= 1; el.style.fontSize = fs + "px";
+    }
+  }
+
+  /* Triangles + labels (sans marge interne) */
+  labelsC.innerHTML = "";
+  const EDGE_MARGIN = 0;                                   // avant 18 — supprimé
+  const tangentialW = Math.max(40, chordAt(rLabel) - 2*EDGE_MARGIN);
+  const radialH     = (baseR - apexR);                     // avant -12 — supprimé
+
+  items.forEach((text, i) => {
+    const a0 = i*segment, a1 = (i+1)*segment, am = a0 + segment/2;
+
+    const pBase0 = xy(baseR, a0);
+    const pBase1 = xy(baseR, a1);
+    const pApex  = xy(apexR, am);
+
+    const wedge = document.createElement("div");
+    wedge.className = "wedge-clip";
+    wedge.style.clipPath = `polygon(${pBase0.x}px ${pBase0.y}px, ${pBase1.x}px ${pBase1.y}px, ${pApex.x}px ${pApex.y}px)`;
+
+    const lab = document.createElement("div");
+    lab.className = "wheel-label";
+    lab.textContent = text || "";
+
+    // pas de biais supplémentaire : on reste centré
+    const pCenter = xy(rLabel, am);
+    lab.style.left = pCenter.x + "px";
+    lab.style.top  = pCenter.y + "px";
+
+    fitLabel(lab, tangentialW, radialH, 3);
+
+    wedge.appendChild(lab);
+    labelsC.appendChild(wedge);
+  });
+})();
+</script>
+
+{% endblock %}

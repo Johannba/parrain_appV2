@@ -1,3 +1,4 @@
+# accounts/apps.py
 from django.apps import AppConfig
 
 class AccountsConfig(AppConfig):
@@ -5,7 +6,4 @@ class AccountsConfig(AppConfig):
     name = "accounts"
     verbose_name = "Comptes & Rôles"
 
-    
-    # def ready(self):
-        # Charge les signaux
-        # import rewards.signals  # noqa
+ 

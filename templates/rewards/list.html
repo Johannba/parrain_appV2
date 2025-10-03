@@ -41,4 +41,191 @@
     {% endfor %}
   </div>
 {% endif %}
+{# Données probabilistes — mêmes constantes que Reward #}
+{{ TEST_WHEEL|json_script:"wt-data" }}
+
+<style>
+#wheel-test .wheel{
+  --accent:#6c757d;
+  width:300px;height:300px;border-radius:50%;
+  border:8px solid var(--accent);position:relative;margin:0 auto;
+  box-shadow:0 0 0 4px rgba(0,0,0,.03), inset 0 0 30px rgba(0,0,0,.06);
+  transition: box-shadow .3s ease, border-color .3s ease;
+}
+#wheel-test .wheel.is-spinning{ box-shadow:0 0 0 4px rgba(0,0,0,.03), 0 0 46px var(--accent); }
+
+#wheel-test .needle{
+  position:absolute; top:-20px; left:50%; transform:translateX(-50%);
+  width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;
+  border-bottom:22px solid var(--accent); filter: drop-shadow(0 2px 0 rgba(0,0,0,.15));
+}
+
+/* 4 segments visuels (égaux) pour une belle animation ; le tirage, lui, respecte les vraies probas */
+#wheel-test .wheel__disk{
+  position:absolute; inset:16px; border-radius:50%;
+  background: conic-gradient(
+    rgba(25,135,84,.90) 0deg,   rgba(25,135,84,.90) 90deg,   /* SOUVENT  */
+    rgba(13,202,240,.90) 90deg, rgba(13,202,240,.90) 180deg, /* MOYEN    */
+    rgba(253,126,20,.92) 180deg,rgba(253,126,20,.92) 270deg, /* RARE     */
+    rgba(220,53,69,.92) 270deg, rgba(220,53,69,.92) 360deg   /* TRES_RARE */
+  );
+  transform-origin:50% 50%;
+}
+#wheel-test .spin-anim{ transition: transform 2.2s cubic-bezier(.17,.67,.13,1.02); }
+
+#wheel-test .wheel--success { --accent:#198754; }
+#wheel-test .wheel--info    { --accent:#0dcaf0; }
+#wheel-test .wheel--warning { --accent:#fd7e14; }
+#wheel-test .wheel--danger  { --accent:#dc3545; }
+#wheel-test .wheel--secondary{ --accent:#6c757d; }
+
+#wheel-test .result-card{ border-left:4px solid var(--accent); }
+</style>
+
+<section id="wheel-test" class="mt-4">
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>🎡 Roue de test (aléatoire, sans attribution)</span>
+      <span class="text-secondary small">Utilise les mêmes probas que Reward (1/100000 très rare + 980/19/1)</span>
+    </div>
+    <div class="card-body">
+      <form class="row g-2 align-items-end" onsubmit="return false;">
+        <div class="col-md-3">
+          <label class="form-label">Simuler N tirages (optionnel)</label>
+          <input id="wt-n" type="number" class="form-control" min="0" step="1" value="0">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Seed (optionnel)</label>
+          <input id="wt-seed" type="text" class="form-control" placeholder="ex: 42">
+        </div>
+        <div class="col-md-6 d-flex gap-2">
+          <button id="wt-draw" class="btn btn-primary" type="button">Tirer</button>
+          <button id="wt-reset" class="btn btn-outline-secondary" type="button">Reset</button>
+        </div>
+      </form>
+
+      <div class="mt-4 d-flex flex-column align-items-center">
+        <div id="wt-wheel" class="wheel wheel--secondary">
+          <div class="needle" aria-hidden="true"></div>
+          <div id="wt-disk" class="wheel__disk spin-anim"></div>
+        </div>
+
+        <div id="wt-result" class="mt-4 text-center result-card px-3 py-2 rounded">
+          <span id="wt-badge" class="badge text-bg-secondary me-2">—</span>
+          <strong id="wt-label">—</strong>
+        </div>
+      </div>
+
+      <div id="wt-sim" class="table-responsive mt-4 d-none">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Bucket</th><th>Occurences</th><th>% observé</th></tr></thead>
+          <tbody id="wt-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+  // --- Ordre d’affichage & UI (inchangé) ---
+  const ORDER = ["SOUVENT","MOYEN","RARE","TRES_RARE"];
+  const UI = {
+    SOUVENT:   { badge: "success",  label: "Souvent",   text: "-10 %" },
+    MOYEN:     { badge: "info",     label: "Moyen",     text: "-20 %" },
+    RARE:      { badge: "warning",  label: "Rare",      text: "Cadeau rare" },
+    TRES_RARE: { badge: "danger",   label: "Très rare", text: "Jackpot !" },
+  };
+
+  // ---- RNG seedable (xorshift32) — on garde tel quel ----
+  function hashSeed(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+  function rngFromSeed(seedStr){
+    if (!seedStr) return Math.random;
+    let x = (typeof seedStr==="number"?seedStr:hashSeed(String(seedStr))) || 1;
+    return function(){ x^=x<<13; x^=x>>>17; x^=x<<5; x>>>=0; return x/4294967296; };
+  }
+
+  // ---- Probabilités demandées (brutes) ----
+  // SOUVENT=80/100, MOYEN=19/100, RARE=0.99999/100, TRES_RARE=1/100000
+  const RAW = {
+    SOUVENT:   80/100,
+    MOYEN:     19/100,
+    RARE:      0.99999/100,
+    TRES_RARE: 1/100000
+  };
+
+  // Normalisation pour que la somme = 1 exactement
+  const MASS = Object.values(RAW).reduce((a,b)=>a+b,0);
+  const W = Object.fromEntries(ORDER.map(k => [k, RAW[k] / MASS]));
+
+  // ---- Tirage cumulatif sur les poids normalisés (une seule passe) ----
+  function drawOnce(rnd){
+    const x = rnd();
+    let acc = 0;
+    for (const k of ORDER){
+      acc += W[k];
+      if (x < acc) return k;
+    }
+    return ORDER[ORDER.length-1]; // sauvegarde (jamais atteinte en pratique)
+  }
+
+  // ---- UI helpers (inchangés) ----
+  const $ = (id)=>document.getElementById(id);
+  const disk  = $("wt-disk");
+  const wheel = $("wt-wheel");
+  const badge = $("wt-badge");
+  const label = $("wt-label");
+  const rows  = $("wt-rows");
+  const simBox= $("wt-sim");
+
+  function animateTo(bucket){
+    const ui = UI[bucket];
+    wheel.className = "wheel wheel--" + ui.badge + " is-spinning";
+    badge.className = "badge text-bg-" + ui.badge + " me-2";
+    badge.textContent = ui.label;
+    label.textContent = ui.text;
+
+    const segment = 360 / ORDER.length;
+    const idx = Math.max(0, ORDER.indexOf(bucket));
+    const target = 4*360 + Math.floor(idx * segment + segment/2);
+    requestAnimationFrame(()=>{ disk.style.transform = `rotate(${target}deg)`; });
+    disk.addEventListener("transitionend", ()=> wheel.classList.remove("is-spinning"), {once:true});
+  }
+
+  function simulate(n, rnd){
+    const buckets = ORDER.slice();
+    const counts = Object.fromEntries(buckets.map(b=>[b,0]));
+    for (let i=0;i<n;i++) counts[drawOnce(rnd)]++;
+    const tot = buckets.reduce((a,b)=>a+counts[b],0)||1;
+    rows.innerHTML = "";
+    buckets.forEach(k=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${k}</td><td>${counts[k]}</td><td>${(counts[k]*100/tot).toFixed(2)} %</td>`;
+      rows.appendChild(tr);
+    });
+    simBox.classList.toggle("d-none", n<=0);
+  }
+
+  // ---- Évènements (inchangés) ----
+  $("wt-draw").addEventListener("click", ()=>{
+    const N   = parseInt($("wt-n").value||"0",10);
+    const seed= $("wt-seed").value;
+    const rnd = rngFromSeed(seed);
+    const b = drawOnce(rnd);
+    animateTo(b);
+    if (N>0) simulate(N, rngFromSeed(seed));
+  });
+
+  $("wt-reset").addEventListener("click", ()=>{
+    $("wt-n").value = 0; $("wt-seed").value = "";
+    simBox.classList.add("d-none"); rows.innerHTML = "";
+    wheel.className = "wheel wheel--secondary";
+    badge.className = "badge text-bg-secondary me-2";
+    badge.textContent = "—"; label.textContent = "—";
+    disk.style.transform = "rotate(0deg)";
+  });
+})();
+</script>
+
+
 {% endblock %}

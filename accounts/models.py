@@ -3,23 +3,45 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
 
+# accounts/models.py
+from django.core.validators import RegexValidator
+from django.db import models
+from django.utils.text import slugify
+
+hex_color_validator = RegexValidator(
+    regex=r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$",
+    message="Couleur hex attendue, ex. #ec4899 ou #000",
+)
+
 class Company(models.Model):
     name = models.CharField(max_length=150, unique=True)
-    slug = models.SlugField(max_length=160, unique=True)
+    # Rendez le slug "blank=True" pour pouvoir le laisser vide en admin et le laisser s'auto-remplir
+    slug = models.SlugField(max_length=160, unique=True, blank=True)
     is_active = models.BooleanField(default=True)
-    
+
+    # --- Nouveaux champs (branding / présentation publique) ---
+    slogan = models.CharField(max_length=255, blank=True)
+    primary_color = models.CharField(
+        max_length=7, default="#ec4899", validators=[hex_color_validator]
+    )
+    secondary_color = models.CharField(
+        max_length=7, default="#000000", validators=[hex_color_validator]
+    )
+    logo = models.ImageField(upload_to="company_logos/", blank=True, null=True)
+    # (facultatif) domaine dédié si un jour tu veux multi-domaine :
+    # domain = models.CharField(max_length=255, blank=True, unique=True)
+
     def _build_unique_slug(self):
         base = slugify(self.name or "")
         slug = base or "entreprise"
         i = 1
-        # Évite les collisions (ex: chrono-pizza, chrono-pizza-1, etc.)
         while Company.objects.filter(slug=slug).exclude(pk=self.pk).exists():
             i += 1
             slug = f"{base}-{i}"
         return slug
 
     def save(self, *args, **kwargs):
-        # Remplit le slug uniquement s'il est vide (création ou si on l'efface volontairement)
+        # Auto-complète le slug s'il est vide (création ou slug effacé volontairement)
         if not self.slug:
             self.slug = self._build_unique_slug()
         super().save(*args, **kwargs)
@@ -30,6 +52,7 @@ class Company(models.Model):
 
     def __str__(self):
         return self.name
+
 
 
 class User(AbstractUser, PermissionsMixin):

@@ -5,6 +5,7 @@ from decimal import Decimal, getcontext
 from typing import Dict, List, Tuple, Set
 
 from django.db import transaction
+from django.shortcuts import render
 
 from accounts.models import Company
 from rewards.models import ProbabilityWheel, RewardTemplate
@@ -16,6 +17,7 @@ from rewards.probabilities import (
     ensure_wheel as _legacy_ensure_wheel,
     draw as _legacy_draw,
 )
+
 
 # Expose les symboles historiques
 WheelSpec = _LegacyWheelSpec
@@ -170,29 +172,54 @@ def tirer_recompense(company: Company, client) -> str:
 
     return _consume_one_eligible(base, allowed_base)
 
-# (Optionnel) pour afficher des % conditionnels dans l’UI
+# Ajoute ceci dans rewards/services/probabilities.py
+
+from decimal import Decimal, getcontext  # tu l'as déjà en haut du fichier
+getcontext().prec = 28  # pour éviter les erreurs d'arrondi
+
 def get_normalized_percentages(company: Company, client) -> Dict[str, Decimal]:
+    """
+    Calcule les pourcentages affichés côté UI en partant des probabilités
+    “canoniques” demandées (avant seuils) puis en RENORMALISANT pour que
+    la somme fasse exactement 100, en tenant compte de l'éligibilité.
+      - SOUVENT   = 80 / 100
+      - MOYEN     = 19 / 100
+      - RARE      = 0.99999 / 100
+      - TRES_RARE = 1 / 100000
+    """
     elig = _eligible_buckets_for(company, client)
 
+    # Poids de base (sur [0..1])
     p_base = {
-        SOUVENT: Decimal(980) / Decimal(1000),
-        MOYEN:   Decimal(19)  / Decimal(1000),
-        RARE:    Decimal(1)   / Decimal(1000),
+        SOUVENT: Decimal("80") / Decimal("100"),        # 0.80
+        MOYEN:   Decimal("19") / Decimal("100"),        # 0.19
+        RARE:    Decimal("0.99999") / Decimal("100"),   # 0.0099999
     }
-    p_vr = {TRES_RARE: Decimal(1) / Decimal(100000)}
+    p_tr = {TRES_RARE: Decimal(1) / Decimal(100000)}     # 0.00001
 
+    # Masse des catégories autorisées
     mass = Decimal(0)
     for b, p in p_base.items():
         if elig.get(b, False):
             mass += p
     if elig.get(TRES_RARE, False):
-        mass += p_vr[TRES_RARE]
+        mass += p_tr[TRES_RARE]
 
+    # Aucun bucket autorisé -> fallback lisible
     if mass == 0:
-        return {SOUVENT: Decimal(100), MOYEN: Decimal(0), RARE: Decimal(0), TRES_RARE: Decimal(0)}
+        return {
+            SOUVENT:   Decimal(100),
+            MOYEN:     Decimal(0),
+            RARE:      Decimal(0),
+            TRES_RARE: Decimal(0),
+        }
 
-    out = {}
-    for b, p in p_base.items():
-        out[b] = (p / mass) * Decimal(100) if elig.get(b, False) else Decimal(0)
-    out[TRES_RARE] = (p_vr[TRES_RARE] / mass) * Decimal(100) if elig.get(TRES_RARE, False) else Decimal(0)
-    return out
+    # Renormalisation -> la somme fait exactement 100
+    return {
+        SOUVENT:   (p_base[SOUVENT] / mass) * Decimal(100) if elig.get(SOUVENT, False)   else Decimal(0),
+        MOYEN:     (p_base[MOYEN]   / mass) * Decimal(100) if elig.get(MOYEN,   False)   else Decimal(0),
+        RARE:      (p_base[RARE]    / mass) * Decimal(100) if elig.get(RARE,    False)   else Decimal(0),
+        TRES_RARE: (p_tr[TRES_RARE] / mass) * Decimal(100) if elig.get(TRES_RARE, False) else Decimal(0),
+    }
+
+

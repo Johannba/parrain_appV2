@@ -7,3 +7,5 @@ from rewards.services.probabilities import ensure_wheels_for_company
 def init_probability_wheels(sender, instance: Company, created, **kwargs):
     if created:
         ensure_wheels_for_company(instance)
+
+

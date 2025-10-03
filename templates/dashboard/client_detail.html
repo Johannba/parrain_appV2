@@ -67,20 +67,6 @@
                     </div>
 
                     <div class="d-flex flex-column gap-1 align-items-end">
-                      {% if r.referrer_id == client.id %}
-                        {% if r.existing_reward_id %}
-                          <a class="btn btn-sm btn-outline-secondary"
-                             href="{% url 'rewards:spin' reward_id=r.existing_reward_id %}">
-                            Distribués
-                          </a>
-                        {% else %}
-                          <form method="post" action="{% url 'dashboard:validate_referral_and_award_referrer' referral_id=r.id %}">
-                            {% csrf_token %}
-                            <button class="btn btn-sm btn-primary">Attribuer</button>
-                          </form>
-                        {% endif %}
-                      {% endif %}
-
                       <form method="post"
                             action="{% url 'dashboard:referral_delete' r.id %}"
                             onsubmit="return confirm('Supprimer ce parrainage ?');">
@@ -209,12 +195,18 @@
                       Envoyer par e-mail
                     </a>
                   {% endif %}
+
+                  {# >>> Bouton WhatsApp ajouté, on ne retire rien d’autre <<< #}
                   {% if client.phone and claim_abs %}
-                    <a class="btn btn-sm btn-outline-secondary"
-                       href="sms:{{ client.phone }}?&body={{ claim_abs|urlencode }}">
-                      Envoyer par SMS
-                    </a>
+                  <form method="post" action="{% url 'rewards:reward_send_sms' pk=rw.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="back_client" value="{{ client.id }}">
+                      <button class="btn btn-sm btn-success" type="submit">
+                        Envoyer par SMS
+                      </button>
+                    </form>
                   {% endif %}
+
                   {% if claim_abs %}
                     <button class="btn btn-sm btn-outline-dark" type="button"
                             onclick="navigator.clipboard.writeText('{{ claim_abs|escapejs }}')">
@@ -292,6 +284,5 @@
         </div>
       {% endif %}
     </div>
-
 
 {% endblock %}
