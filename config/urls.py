@@ -19,16 +19,28 @@ from django.urls import path,include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+from django.db import connection
+from django.http import JsonResponse
 
+def healthz(request):
+    # ping DB pour un vrai "ready"
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1")
+    except Exception as e:
+        return JsonResponse({"status": "error", "db": str(e)}, status=503)
+    return JsonResponse({"status": "ok"}, status=200)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("", include("public.urls")),
-    path('dashboard', include(('dashboard.urls', 'dashboard'), namespace='dashboard')),
+    path('', include(('dashboard.urls', 'dashboard'), namespace='dashboard')),
     path('accounts/', include('accounts.urls')),
     path('entreprise/', include('entreprises.urls', namespace='entreprises')),
     path('rewards/', include(('rewards.urls',"rewards"), namespace='rewards')),
-    path("accounts/", include("django.contrib.auth.urls"))
+    path("accounts/", include("django.contrib.auth.urls")),
+    path("healthz", healthz, name="healthz"),
+    path("healthz/", healthz, name="healthz-slash"),
 ]
 
 

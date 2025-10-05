@@ -13,20 +13,31 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 import os
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# --- Charger .env AVANT toute lecture d'env ---
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env")  # <<< force le .env de la racine du projet
+except Exception:
+    pass
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
+# --- Helpers ---
+def env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9$2(4u3&9$4gq$^6_7i8o8ux^hh!8w^h9##ntz*oky!c(ny7@('
+# --- Flags & secrets ---
+# (Par défaut, on démarre en prod si DEBUG non défini dans .env)
+DEBUG = env_bool("DEBUG", False)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+SECRET_KEY = (os.getenv("SECRET_KEY") or "").strip()
+if not DEBUG and not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY manquant en production.")
 
-ALLOWED_HOSTS = []
+
+# Hôtes & CSRF
+ALLOWED_HOSTS = [h for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+CSRF_TRUSTED_ORIGINS = [u for u in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if u.strip()]
 
 
 # Application definition
@@ -78,15 +89,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
 
 
 # Password validation
@@ -190,4 +192,14 @@ LOGGING = {
     "loggers": {
         "rewards.services.smsmode": {"handlers": ["console"], "level": "INFO"},
     },
+}
+
+import dj_database_url
+
+DATABASES = {
+    "default": dj_database_url.parse(
+        os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+        conn_max_age=600,   # garde les connexions ouvertes (perf)
+        ssl_require=False,  # passe à True si tu utilises un Postgres managé imposant SSL
+    )
 }
