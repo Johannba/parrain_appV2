@@ -134,7 +134,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 
 LOGIN_URL = 'accounts:login'
-LOGIN_REDIRECT_URL = 'accounts:user_list'     # temporaire pour tester
+LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = 'accounts:login'
 
 
@@ -203,3 +203,7 @@ DATABASES = {
         ssl_require=False,  # passe à True si tu utilises un Postgres managé imposant SSL
     )
 }
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True

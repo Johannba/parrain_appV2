@@ -283,6 +283,7 @@ def referrer_register(request, slug: str):
         {"company": company, "form": form, "form_errors": True},
     )
 
-
-
-
+def root_view(request):
+    if request.user.is_authenticated:
+        return redirect("/dashboard/")  # ou une autre page interne
+    return render(request, "public/home.html")
