@@ -81,7 +81,8 @@ class User(AbstractUser, PermissionsMixin):
             raise ValidationError(_("Un superadmin ne doit pas être rattaché à une entreprise."))
 
     def is_superadmin(self) -> bool:
-        return self.profile == self.Profile.SUPERADMIN
+    # Superadmin métier OU superuser Django
+        return self.is_superuser or self.profile == self.Profile.SUPERADMIN
 
     def is_admin_entreprise(self) -> bool:
         return self.profile == self.Profile.ADMIN

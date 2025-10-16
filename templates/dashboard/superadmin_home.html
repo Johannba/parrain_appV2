@@ -73,14 +73,14 @@
       </div>
       <div class="card-body">
         <div class="row g-2">
-          <div class="col-6 d-grid">
+          {% comment %} <div class="col-6 d-grid">
             <a class="btn btn-outline-primary" href="{% url 'dashboard:referrer_create' %}">Inscrire un parrain</a>
           </div>
           <div class="col-6 d-grid">
             <a class="btn btn-outline-primary" href="{% url 'dashboard:referral_create' %}">Enregistrer un parrainé</a>
-          </div>
+          </div> {% endcomment %}
           <div class="col-6 d-grid">
-            <a class="btn btn-outline-primary" href="{% url 'dashboard:superadmin_rewards' %}">Gérer les récompenses</a>
+            <a class="btn btn-outline-primary" href="{% url 'dashboard:superadmin_rewards' %}">Gérer les récompense</a>
           </div>
           <div class="col-6 d-grid">
             <a class="btn btn-outline-primary" href="{% url 'dashboard:superadmin_stats' %}">Voir les statistiques</a>

@@ -26,7 +26,9 @@ from rewards.services import award_both_parties
 # Helpers (rôles & périmètre)
 # -------------------------------------------------------------
 def _is_superadmin(u) -> bool:
-    return hasattr(u, "is_superadmin") and u.is_superadmin()
+    # OK si superuser Django OU rôle métier "superadmin"
+    return getattr(u, "is_superuser", False) or (hasattr(u, "is_superadmin") and u.is_superadmin())
+
 
 def _is_company_admin(u) -> bool:
     return hasattr(u, "is_admin_entreprise") and u.is_admin_entreprise()

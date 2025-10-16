@@ -109,3 +109,55 @@ body{background-color:#f8f9fb}
 @media (min-width: 1400px){
   .client-page { min-height: calc(100vh - 140px); }
 }
+
+/* Surligne la zone tant qu'aucun parrain n'est choisi */
+#referrer-search-wrap.needs-selection .form-control{
+  border-color: var(--bs-warning);
+  box-shadow: 0 0 0 .2rem rgba(244, 4, 216, 0.975);
+}
+
+/* Cadre + fond de la liste de résultats */
+#referrer-results {
+  border: 2px solid var(--bs-warning);
+  border-top: none;
+  background: var(--bs-body-bg);
+  max-height: 280px;            /* évite une liste trop longue */
+  overflow-y: auto;
+}
+
+/* Survol/Focus d’un item */
+#referrer-results .list-group-item:hover,
+#referrer-results .list-group-item:focus {
+  background-color: var(--bs-warning-bg-subtle);
+}
+/* ---- Rose accent ---- */
+:root{
+  --rose:#d63384;            /* rose type Bootstrap */
+  --rose-soft:#fde6f1;       /* rose très clair */
+  --rose-shadow:rgba(214,51,132,.25);
+}
+
+/* Halo rose tant qu’aucun parrain n’est choisi */
+#referrer-search-wrap.needs-selection .form-control{
+  border-color: var(--rose);
+  box-shadow: 0 0 0 .2rem var(--rose-shadow);
+}
+
+/* Liste des résultats */
+#referrer-results{
+  border: 2px solid var(--rose);
+  border-top: none;
+  background: var(--bs-body-bg);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* Survol d’un item */
+#referrer-results .list-group-item:hover,
+#referrer-results .list-group-item:focus{
+  background-color: var(--rose-soft);
+}
+
+/* Petites utilitaires pour le bandeau d’aide */
+.bg-rose-subtle{ background-color: var(--rose-soft)!important; }
+.text-rose-emphasis{ color: var(--rose)!important; }

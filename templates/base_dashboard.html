@@ -82,9 +82,9 @@
                 {{ request.user.get_username|default:"Compte" }}
               </button>
               <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="#">Profil</a></li>
-                <li><a class="dropdown-item" href="#">Paramètres</a></li>
-                <li><hr class="dropdown-divider"></li>
+                {% comment %} <li><a class="dropdown-item" href="#">Profil</a></li>
+                <li><a class="dropdown-item" href="#">Paramètres</a></li> {% endcomment %}
+
                 <li><a class="dropdown-item" href="{% url 'accounts:logout' %}">Déconnexion</a></li>
               </ul>
             </div>

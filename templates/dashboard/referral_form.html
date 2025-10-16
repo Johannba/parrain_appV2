@@ -71,7 +71,7 @@
               <div class="border rounded p-3">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                   <strong>Filleul — Informations</strong>
-                  <span class="text-secondary small">Il sera créé dans la même entreprise que le parrain.</span>
+                  {% comment %} <span class="text-secondary small">Il sera créé dans la même entreprise que le parrain.</span> {% endcomment %}
                 </div>
 
                 <!-- ✅ fieldset désactivé par défaut ; on l’active en JS quand un parrain est choisi -->
@@ -91,7 +91,7 @@
                       <label class="form-label">Email</label>
                       {% render_field ref_form.email class+="form-control" placeholder="email@exemple.com" %}
                       {% if ref_form.email.errors %}<div class="invalid-feedback d-block">{{ ref_form.email.errors|striptags }}</div>{% endif %}
-                      <div class="form-text">S’il existe déjà un client avec cet email dans l’entreprise, il sera réutilisé.</div>
+                      {% comment %} <div class="form-text">S’il existe déjà un client avec cet email dans l’entreprise, il sera réutilisé.</div> {% endcomment %}
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">Téléphone</label>
@@ -154,6 +154,13 @@
 
   function showResults(items) {
     results.innerHTML = "";
+
+    // Bandeau d'aide (jaune) en haut de la liste
+    const hint = document.createElement('div');
+    hint.className = 'list-group-item bg-warning-subtle text-warning-emphasis small';
+    hint.innerHTML = 'Sélectionnez <strong>un parrain</strong> dans la liste ci-dessous';
+    results.appendChild(hint);
+
     items.forEach(item => {
       const a = document.createElement('a');
       a.href = '#';
@@ -162,14 +169,28 @@
       a.dataset.id = item.id;
       a.addEventListener('click', (e) => {
         e.preventDefault();
-        hidden.value = item.id;          // ✅ parrain fixé
+        hidden.value = item.id;               // ✅ parrain fixé
         input.value = item.label;
-        setRefereeEnabled(true);         // ✅ déverrouille le bloc Filleul
+        wrap.classList.remove('needs-selection'); // ✅ on enlève le surlignage
+        setRefereeEnabled(true);
         clearResults();
       });
       results.appendChild(a);
     });
     results.style.display = items.length ? "block" : "none";
+  }
+
+  // Quand on retape, on “perd” le parrain choisi → on réactive le surlignage
+  input.addEventListener('input', () => {
+    hidden.value = "";
+    wrap.classList.add('needs-selection');     // 🔶 montrer qu’il faut choisir
+    setRefereeEnabled(false);
+    // ... debounce + fetch comme avant ...
+  });
+
+  // État initial au chargement
+  if (!hidden.value) {
+    wrap.classList.add('needs-selection');
   }
 
   function searchNow(q) {
