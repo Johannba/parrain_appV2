@@ -1,71 +1,158 @@
-{# templates/rewards/stats.html — remplace TOUT le fichier par ceci #}
+{# templates/rewards/stats.html #}
 {% extends "base_dashboard.html" %}
-{% block title %}Statistiques • {{ company.name }}{% endblock %}
+{% load static %}
+{% block title %}Statistiques • Récompenses{% endblock %}
 {% block body_data_page %}stats{% endblock %}
+{% block nav_rewards_active %}active{% endblock %}
 
 {% block content %}
 <header class="mb-4">
-  <h1 class="h4 section-title mb-1">Statistiques</h1>
-  <div class="text-secondary">Aperçu simple : parrainages par mois & cadeaux obtenus.</div>
+  {% if company %}
+    <h1 class="h4 section-title mb-1">Statistiques — {{ company.name }}</h1>
+    <div class="text-secondary">Vue des récompenses pour cette entreprise.</div>
+  {% elif is_superadmin %}
+    <h1 class="h4 section-title mb-1">Statistiques — Global (Superadmin)</h1>
+    <div class="text-secondary">Vue d’ensemble sur l’ensemble des entreprises.</div>
+  {% else %}
+    <h1 class="h4 section-title mb-1">Statistiques</h1>
+  {% endif %}
 </header>
 
-<div class="row g-3">
-  {# ---- Parrainages par mois (aperçu) ---- #}
-  <div class="col-xl-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header">Parrainages par mois (aperçu)</div>
-      <div class="card-body vstack gap-2">
+{# ===== KPI globaux (uniquement si global_kpi est fourni) ===== #}
+{% if global_kpi %}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Parrainages (mois)</div>
+      <div class="stat-num">{{ global_kpi.referrals_month|default:0 }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Cadeaux distribués</div>
+      <div class="stat-num">{{ global_kpi.rewards_sent|default:0 }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Cadeaux en attente</div>
+      <div class="stat-num">{{ global_kpi.rewards_pending|default:0 }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Base clients</div>
+      <div class="stat-num">{{ global_kpi.clients|default:0 }}</div>
+    </div></div>
+  </div>
+</div>
+{% endif %}
+
+{# ===== 2 visuels communs (mensuel + top cadeaux) ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-lg-7">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="fw-semibold">Récompenses créées — 4 derniers mois</div>
+        <small class="text-secondary">Volume par mois</small>
+      </div>
+      <div class="card-body">
         {% if monthly_rows %}
-          {% for r in monthly_rows %}
-            <div>
-              <div class="d-flex justify-content-between">
-                <small>{{ r.month|date:"F" }}</small>
-                <small>{{ r.n }}</small>
+          <ul class="list-group list-group-flush">
+            {% for r in monthly_rows %}
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between mb-1">
+                <span class="small text-secondary">{{ r.month|date:"M Y" }}</span>
+                <span class="small">{{ r.n }}</span>
               </div>
-              <div class="progress">
+              <div class="progress" role="progressbar" aria-valuenow="{{ r.pct }}" aria-valuemin="0" aria-valuemax="100">
                 <div class="progress-bar" style="width: {{ r.pct }}%"></div>
               </div>
-            </div>
-          {% endfor %}
+            </li>
+            {% endfor %}
+          </ul>
         {% else %}
-          <div class="text-secondary small">Aucune donnée.</div>
+          <div class="text-secondary">Pas encore de données.</div>
         {% endif %}
       </div>
     </div>
   </div>
 
-  {# ---- Cadeaux obtenus (Top) ---- #}
-  <div class="col-xl-6">
-    <div class="card shadow-sm h-100">
+  <div class="col-lg-5">
+    <div class="card h-100 shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Cadeaux obtenus (Top)</span>
-        <small class="text-secondary">Top 4</small>
+        <div class="fw-semibold">Top cadeaux</div>
+        <small class="text-secondary">Part en %</small>
       </div>
-      <div class="table-responsive">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
-            <tr><th>Cadeau</th><th>Compteur</th><th>Part</th></tr>
-          </thead>
-          <tbody>
-            {% if top_gifts %}
-              {% for g in top_gifts %}
-                <tr>
-                  <td>{{ g.label }}</td>
-                  <td>{{ g.n }}</td>
-                  <td style="width:220px">
-                    <div class="progress" style="height:6px">
-                      <div class="progress-bar" style="width: {{ g.pct }}%"></div>
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
-            {% else %}
-              <tr><td colspan="3" class="text-secondary small">Aucune donnée.</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
+      <div class="card-body">
+        {% if top_gifts %}
+          <ul class="list-group list-group-flush">
+            {% for g in top_gifts %}
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between mb-1">
+                <span class="small">{{ g.label }}</span>
+                <span class="small">{{ g.n }} — {{ g.pct }}%</span>
+              </div>
+              <div class="progress" role="progressbar" aria-valuenow="{{ g.pct }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar" style="width: {{ g.pct }}%"></div>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="text-secondary">Pas de cadeaux enregistrés.</div>
+        {% endif %}
       </div>
     </div>
   </div>
 </div>
+
+{# ===== Détail par entreprise (uniquement en mode global Superadmin) ===== #}
+{% comment %} {% if global_rows %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="fw-semibold">Détail par entreprise</div>
+    <small class="text-secondary">Parrainages du mois, cadeaux et base clients</small>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Entreprise</th>
+            <th class="text-end">Parrainages (mois)</th>
+            <th class="text-end">Cadeaux distribués</th>
+            <th class="text-end">Cadeaux en attente</th>
+            <th class="text-end">Base clients</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in global_rows %}
+          <tr>
+            <td class="fw-semibold">{{ r.company.name }}</td>
+            <td class="text-end">{{ r.referrals_month }}</td>
+            <td class="text-end"><span class="badge text-bg-success">{{ r.rewards_sent }}</span></td>
+            <td class="text-end"><span class="badge text-bg-warning">{{ r.rewards_pending }}</span></td>
+            <td class="text-end">{{ r.clients }}</td>
+            <td class="text-end">
+              <div class="d-inline-flex flex-wrap gap-2">
+                <a class="btn btn-sm btn-outline-primary"
+                   href="{% url 'dashboard:company_home' %}?company={{ r.company.id }}">Tableau</a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% url 'rewards:history_company' %}?company={{ r.company.id }}">Historique</a>
+                <a class="btn btn-sm btn-outline-dark"
+                   href="{% url 'rewards:stats' %}?company={{ r.company.id }}">Stats</a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-secondary p-3">Aucune entreprise.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %} {% endcomment %}
 {% endblock %}

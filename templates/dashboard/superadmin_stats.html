@@ -1,0 +1,91 @@
+{# templates/dashboard/superadmin_stats.html #}
+{% extends "base_dashboard.html" %}
+{% block title %}Statistiques (Superadmin) • ParrainApp{% endblock %}
+{% block body_data_page %}stats{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
+
+{% block content %}
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Statistiques — Superadmin</h1>
+  <div class="text-secondary">Vue d’ensemble multi-entreprises.</div>
+</header>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Parrainages (mois)</div>
+      <div class="stat-num">{{ kpi.referrals_month|default:0 }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Cadeaux distribués</div>
+      <div class="stat-num">{{ kpi.rewards_sent|default:0 }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Cadeaux en attente</div>
+      <div class="stat-num">{{ kpi.rewards_pending|default:0 }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100 shadow-sm"><div class="card-body">
+      <div class="text-secondary small">Base clients</div>
+      <div class="stat-num">{{ kpi.clients|default:0 }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="fw-semibold">Détail par entreprise</div>
+    <small class="text-secondary">KPIs mensuels & volume clients</small>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Entreprise</th>
+            <th class="text-end">Parrainages (mois)</th>
+            <th class="text-end">Δ vs N-1</th>
+            <th class="text-end">Cadeaux distribués</th>
+            <th class="text-end">Cadeaux en attente</th>
+            <th class="text-end">Base clients</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="fw-semibold">{{ r.company.name }}</td>
+            <td class="text-end">{{ r.referrals_month }}</td>
+            <td class="text-end">
+              <span class="badge badge-soft">
+                {% if r.referrals_delta_pct > 0 %}+{% endif %}{{ r.referrals_delta_pct|default:0 }}%
+              </span>
+            </td>
+            <td class="text-end"><span class="badge text-bg-success">{{ r.rewards_sent }}</span></td>
+            <td class="text-end"><span class="badge text-bg-warning">{{ r.rewards_pending }}</span></td>
+            <td class="text-end">{{ r.clients }}</td>
+            <td class="text-end">
+              <div class="d-inline-flex flex-wrap gap-2">
+                <a class="btn btn-sm btn-outline-primary"
+                   href="{% url 'dashboard:company_home' %}?company={{ r.company.id }}">Tableau</a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% url 'rewards:list' %}?company={{ r.company.id }}">Récompenses</a>
+                <a class="btn btn-sm btn-outline-dark"
+                   href="{% url 'rewards:stats' %}?company={{ r.company.id }}">Stats</a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-secondary p-3">Aucune entreprise.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

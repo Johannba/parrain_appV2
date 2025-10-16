@@ -20,9 +20,13 @@ def logout_view(request):
 
 
 # --- Auth ---
+from django.urls import reverse
 class SignInView(LoginView):
     template_name = "accounts/login.html"
     authentication_form = LoginForm
+    def get_success_url(self):
+        return reverse("dashboard:root")
+
 
 class SignOutView(LogoutView):
     next_page = reverse_lazy("accounts:login")

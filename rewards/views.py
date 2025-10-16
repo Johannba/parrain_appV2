@@ -2,24 +2,29 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
+import random
 import secrets
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q, Count
+from django.db.models.functions import TruncMonth
+from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from django.db.models.functions import TruncMonth
 
 from accounts.models import Company
 from dashboard.models import Referral
 from .models import RewardTemplate, Reward, ProbabilityWheel
 from .forms import RewardTemplateForm
 from rewards.services.probabilities import BASE_COUNTS, VR_COUNTS, BASE_SIZE, VR_SIZE
+from .services.smsmode import SMSPayload, send_sms, build_reward_sms_text, normalize_msisdn
 
 
 # ----------------------------- UI Dictionaries -----------------------------
@@ -41,27 +46,57 @@ STATE_UI = {
 
 # ----------------------------- Helpers généraux -----------------------------
 
-def _current_company(request):
+def _is_superadmin(u) -> bool:
+    return hasattr(u, "is_superadmin") and u.is_superadmin()
+
+def _company_for(u):
+    return getattr(u, "company", None)
+
+def _current_company(request, *, allow_default_for_superadmin: bool = True) -> Company | None:
     """
-    Admin d’entreprise = user.company ; Superadmin peut cibler via ?company=<id>
+    Admin/Opérateur : user.company
+    Superadmin :
+      - si ?company=… fourni → utilise cet id (string possible)
+      - sinon id mémorisé en session (souvent un int)
+      - sinon (si allow_default_for_superadmin) → 1ʳᵉ entreprise
     """
     user = request.user
-    company = getattr(user, "company", None)
-    cid = (request.GET.get("company") or "").strip()
-    if getattr(user, "is_superadmin", lambda: False)() and cid:
-        company = get_object_or_404(Company, pk=cid)
-    return company
+
+    # Cas Admin/Opérateur : on retourne simplement son entreprise
+    if not _is_superadmin(user):
+        return getattr(user, "company", None)
+
+    # ---- Superadmin : on lit d'abord le GET (string) puis la session (int) ----
+    raw_cid = request.GET.get("company")
+    if isinstance(raw_cid, str):
+        raw_cid = raw_cid.strip()
+    if not raw_cid:
+        raw_cid = request.session.get("dash_company_id")  # peut être un int
+
+    # On résout l'entreprise (Django accepte int/str pour pk)
+    company = Company.objects.filter(pk=raw_cid).first() if raw_cid else None
+    if company:
+        request.session["dash_company_id"] = company.id  # on stocke proprement l'int
+        return company
+
+    # Fallback : 1ʳᵉ entreprise (si autorisé)
+    if allow_default_for_superadmin:
+        company = Company.objects.order_by("name").first()
+        if company:
+            request.session["dash_company_id"] = company.id
+        return company
+
+    return None
 
 
 def _can_manage_company(user, company) -> bool:
-    return (hasattr(user, "is_superadmin") and user.is_superadmin()) or (
-        hasattr(user, "company") and user.company_id == company.id
-    )
+    return _is_superadmin(user) or (getattr(user, "company_id", None) == company.id)
 
 
-def ensure_reward_templates(company):
+def ensure_reward_templates(company: Company):
     """
     Crée les 4 templates si manquants, avec probas affichées figées.
+    (Utilisé pour un écran mono-entreprise : liste/édition des templates)
     """
     defaults_map = {
         "SOUVENT":   {"label": "- 10 % de remise", "cooldown_months": 1},
@@ -116,7 +151,7 @@ def _remaining_counts(pool, idx, tokens):
     return out
 
 
-def _wheels_snapshot(company):
+def _wheels_snapshot(company: Company):
     """
     Renvoie un dict:
     {
@@ -178,11 +213,19 @@ def _wheels_snapshot(company):
 
 @login_required
 def reward_list(request):
-    company = _current_company(request)
+    """
+    Écran de gestion des templates de récompenses.
+    - Admin/Opérateur : sur son entreprise.
+    - Superadmin : PAS de choix requis → on prend automatiquement la 1ʳᵉ entreprise
+      (ou celle passée en ?company=... si présent).
+    """
+    company = _current_company(request, allow_default_for_superadmin=True)
     if not company:
-        messages.error(request, "Aucune entreprise sélectionnée.")
-        return redirect("dashboard:root")
+        # Cas extrême : aucune entreprise en base
+        messages.info(request, "Aucune entreprise disponible.")
+        return render(request, "rewards/list.html", {"items": [], "TEST_WHEEL": None, "company": None})
 
+    # S’assure que les 4 templates existent pour cette entreprise (mono-contexte)
     ensure_reward_templates(company)
 
     # 1) Récupérer les templates
@@ -202,15 +245,16 @@ def reward_list(request):
     }
 
     return render(request, "rewards/list.html", {
+        "company": company,
         "items": items,
         "TEST_WHEEL": test_wheel,
+        "is_superadmin": _is_superadmin(request.user),
     })
-
 
 
 @login_required
 def reward_update(request, pk):
-    company = _current_company(request)
+    company = _current_company(request, allow_default_for_superadmin=True)
     r = get_object_or_404(RewardTemplate, pk=pk, company=company)
     if request.method == "POST":
         form = RewardTemplateForm(request.POST, instance=r)
@@ -220,29 +264,40 @@ def reward_update(request, pk):
             return redirect("rewards:list")
     else:
         form = RewardTemplateForm(instance=r)
-    return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket]})
+    return render(request, "rewards/form.html", {"form": form, "tpl": r, "ui": BUCKET_UI[r.bucket], "company": company})
 
 
-# ------------------------------ Historique (entreprise) ------------------------------
+# ------------------------------ Historique (entreprise / global) ------------------------------
 
 @login_required
 def rewards_history_company(request):
     """
-    Historique de TOUTES les récompenses d'une entreprise.
-    Pour Superadmin, passez ?company=<id>; sinon, l’entreprise = user.company.
+    Historique des récompenses.
+    - Superadmin SANS ?company=… : historique GLOBAL (toutes entreprises).
+    - Sinon : historique filtré par entreprise.
     """
-    company = _current_company(request)
-    if not company:
-        messages.error(request, "Aucune entreprise sélectionnée.")
-        return redirect("dashboard:root")
+    user = request.user
 
-    qs = (
+    base_qs = (
         Reward.objects
-        .select_related("client", "referral", "referral__referrer", "referral__referee")
-        .filter(company=company)
+        .select_related("company", "client", "referral", "referral__referrer", "referral__referee")
         .order_by("-created_at", "-id")
     )
 
+    # ---- Global si Superadmin sans paramètre ----
+    if _is_superadmin(user) and not request.GET.get("company"):
+        qs = base_qs
+        company = None
+        scope_label = "GLOBAL"
+    else:
+        company = _current_company(request)  # comportement existant conservé
+        if not company:
+            messages.error(request, "Aucune entreprise sélectionnée.")
+            return redirect("dashboard:root")
+        qs = base_qs.filter(company=company)
+        scope_label = company.name
+
+    # Filtres UI
     bucket = (request.GET.get("bucket") or "").strip().upper()
     state  = (request.GET.get("state") or "").strip().upper()
     q      = (request.GET.get("q") or "").strip()
@@ -262,7 +317,8 @@ def rewards_history_company(request):
     page = Paginator(qs, 20).get_page(request.GET.get("p"))
 
     return render(request, "rewards/history.html", {
-        "company": company,
+        "company": company,                # None en mode global
+        "scope_label": scope_label,        # "GLOBAL" ou nom d’entreprise
         "page": page,
         "bucket": bucket,
         "state": state,
@@ -271,8 +327,8 @@ def rewards_history_company(request):
         "STATE_UI": STATE_UI,
         "buckets": [(k, v["label"]) for k, v in BUCKET_UI.items()],
         "states": [(k, v["label"]) for k, v in STATE_UI.items()],
+        "is_superadmin": _is_superadmin(user),
     })
-
 
 # ------------------------------ Spin (animation) ------------------------------
 
@@ -362,18 +418,86 @@ def referral_delete(request, pk: int):
 @login_required
 def rewards_stats(request):
     """
-    Page stats ultra-simple : 2 visuels
-    - Parrainages par mois (aperçu des 4 derniers mois)
-    - Cadeaux obtenus (Top) avec part en %
+    Superadmin sans ?company=... => stats GLOBAL (toutes entreprises)
+    Sinon => stats bornées à l’entreprise courante.
     """
-    company = _current_company(request)
+    user = request.user
+
+    # ---- Superadmin GLOBAL (on n'utilise pas _current_company ici) ----
+    if _is_superadmin(user) and not request.GET.get("company"):
+        # Période (4 derniers mois)
+        def _last_n_month_starts(today, n):
+            y, m = today.year, today.month
+            out = []
+            for i in range(n - 1, -1, -1):
+                yy, mm = y, m - i
+                while mm <= 0:
+                    mm += 12
+                    yy -= 1
+                out.append(date(yy, mm, 1))
+            return out
+
+        today = timezone.now().date().replace(day=1)
+        months = _last_n_month_starts(today, 4)
+
+        qs_all = Reward.objects.all()
+
+        monthly_raw = (
+            qs_all.annotate(m=TruncMonth("created_at"))
+                  .values("m").annotate(n=Count("id")).order_by("m")
+        )
+        monthly_map = {row["m"].date(): row["n"] for row in monthly_raw if row["m"]}
+        monthly_rows = [{"month": m, "n": monthly_map.get(m, 0)} for m in months]
+        max_n = max([r["n"] for r in monthly_rows] or [1])
+        for r in monthly_rows:
+            r["pct"] = int((r["n"] / max_n) * 100) if max_n else 0
+
+        gifts_raw = list(qs_all.values("label").annotate(n=Count("id")).order_by("-n")[:4])
+        total_gifts = sum(g["n"] for g in gifts_raw) or 1
+        top_gifts = [
+            {"label": g["label"] or "—", "n": g["n"], "pct": int((g["n"] / total_gifts) * 100)}
+            for g in gifts_raw
+        ]
+
+        # KPI + tableau par entreprise
+        rows = []
+        totals = {"rewards_sent": 0, "rewards_pending": 0, "clients": 0, "referrals_month": 0}
+        month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        for c in Company.objects.all().order_by("name"):
+            r_sent = Reward.objects.filter(company=c, state="SENT").count()
+            r_pend = Reward.objects.filter(company=c, state="PENDING").count()
+            n_clients = c.client_set.count() if hasattr(c, "client_set") else 0
+            n_ref_month = Referral.objects.filter(company=c, created_at__gte=month_start).count()
+            rows.append({
+                "company": c,
+                "rewards_sent": r_sent,
+                "rewards_pending": r_pend,
+                "clients": n_clients,
+                "referrals_month": n_ref_month,
+            })
+            totals["rewards_sent"] += r_sent
+            totals["rewards_pending"] += r_pend
+            totals["clients"] += n_clients
+            totals["referrals_month"] += n_ref_month
+
+        return render(request, "rewards/stats.html", {
+            "company": None,              # important : pas d’entreprise sélectionnée
+            "is_superadmin": True,
+            "monthly_rows": monthly_rows,
+            "top_gifts": top_gifts,
+            "global_rows": rows,          # tableau par entreprise
+            "global_kpi": totals,         # totaux globaux
+        })
+
+    # ---- Entreprise (Admin/Opérateur OU Superadmin avec ?company=...) ----
+    company = _current_company(request)  # comportement existant conservé
     if not company:
         messages.error(request, "Aucune entreprise sélectionnée.")
         return redirect("dashboard:root")
 
     qs = Reward.objects.filter(company=company)
 
-    # ---- 4 derniers mois (mois 1er) ----
+    # 4 derniers mois
     def _last_n_month_starts(today, n):
         y, m = today.year, today.month
         out = []
@@ -390,9 +514,7 @@ def rewards_stats(request):
 
     monthly_raw = (
         qs.annotate(m=TruncMonth("created_at"))
-          .values("m")
-          .annotate(n=Count("id"))
-          .order_by("m")
+          .values("m").annotate(n=Count("id")).order_by("m")
     )
     monthly_map = {row["m"].date(): row["n"] for row in monthly_raw if row["m"]}
     monthly_rows = [{"month": m, "n": monthly_map.get(m, 0)} for m in months]
@@ -400,7 +522,6 @@ def rewards_stats(request):
     for r in monthly_rows:
         r["pct"] = int((r["n"] / max_n) * 100) if max_n else 0
 
-    # ---- Top cadeaux (par libellé) ----
     gifts_raw = list(qs.values("label").annotate(n=Count("id")).order_by("-n")[:4])
     total_gifts = sum(g["n"] for g in gifts_raw) or 1
     top_gifts = [
@@ -408,19 +529,15 @@ def rewards_stats(request):
         for g in gifts_raw
     ]
 
-    context = {
+    return render(request, "rewards/stats.html", {
         "company": company,
-        "monthly_rows": monthly_rows,   # [{month: date(YYYY,MM,1), n: int, pct: int}]
-        "top_gifts": top_gifts,         # [{label,str,n,int,pct,int}]
-    }
-    return render(request, "rewards/stats.html", context)
+        "is_superadmin": _is_superadmin(user),
+        "monthly_rows": monthly_rows,
+        "top_gifts": top_gifts,
+    })
 
 
-# rewards/views.py
-import random
-from decimal import Decimal
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
+# ------------------------------ Roue de test (sans attribution) ------------------------------
 
 @login_required
 def test_wheel(request):
@@ -542,10 +659,7 @@ def test_wheel(request):
     })
 
 
-# rewards/views.py (ajouts)
-from django.views.decorators.http import require_POST
-from django.http import Http404
-from .services.smsmode import SMSPayload, send_sms, build_reward_sms_text, normalize_msisdn
+# ------------------------------ Envoi SMS lien de récompense ------------------------------
 
 @login_required
 @require_POST
@@ -558,7 +672,7 @@ def reward_send_sms(request, pk: int):
 
     # --- Permissions (mêmes règles que distribute_reward) ---
     user = request.user
-    if hasattr(user, "is_superadmin") and callable(user.is_superadmin) and user.is_superadmin():
+    if _is_superadmin(user):
         pass
     elif getattr(user, "company_id", None) and reward.company_id == user.company_id:
         pass

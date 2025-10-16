@@ -729,3 +729,65 @@ def validate_referral_and_award_referrer(request, referral_id: int):
         f"et Filleul « {reward_filleul.label} ».",
     )
     return redirect("dashboard:client_detail", pk=referral.referrer_id)
+
+# --- AJOUTER EN BAS DU FICHIER (ou près des vues superadmin) ---
+
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from django.shortcuts import redirect, render
+from django.urls import reverse
+
+# ...
+
+@login_required
+def superadmin_rewards(request):
+    """
+    Porte d’entrée Superadmin vers la gestion des récompenses.
+    - Si ?company=<id> est fourni, redirige vers rewards:list avec ce périmètre.
+    - Sinon, affiche une liste d’entreprises à choisir.
+    """
+    if not _is_superadmin(request.user):
+        raise PermissionDenied("Réservé au Superadmin.")
+
+    cid = (request.GET.get("company") or "").strip()
+    if cid:
+        # Redirige vers la liste des récompenses du module rewards, en conservant le périmètre entreprise
+        url = reverse("rewards:list")
+        return redirect(f"{url}?company={cid}")
+
+    companies = Company.objects.all().order_by("name")
+    return render(request, "dashboard/superadmin_rewards_entry.html", {"companies": companies})
+
+
+@login_required
+def superadmin_stats(request):
+    """
+    Statistiques globales (toutes entreprises) pour le Superadmin.
+    Affiche les KPI par entreprise + totaux agrégés.
+    """
+    if not _is_superadmin(request.user):
+        raise PermissionDenied("Réservé au Superadmin.")
+
+    companies = Company.objects.all().order_by("name")
+
+    totals = {"referrals_month": 0, "rewards_sent": 0, "rewards_pending": 0, "clients": 0}
+    rows = []
+    for c in companies:
+        k = _kpis_for_company(c)
+        rows.append({
+            "company": c,
+            "referrals_month": k["referrals_month"],
+            "rewards_sent": k["rewards_sent"],
+            "rewards_pending": k["rewards_pending"],
+            "clients": k["clients"],
+        })
+        totals["referrals_month"] += k["referrals_month"]
+        totals["rewards_sent"] += k["rewards_sent"]
+        totals["rewards_pending"] += k["rewards_pending"]
+        totals["clients"] += k["clients"]
+
+    return render(
+        request,
+        "dashboard/superadmin_stats.html",
+        {"kpi": totals, "rows": rows},
+    )

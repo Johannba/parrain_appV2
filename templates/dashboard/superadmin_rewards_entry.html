@@ -1,0 +1,47 @@
+{% extends "base_dashboard.html" %}
+{% block title %}Récompenses — Superadmin • ParrainApp{% endblock %}
+{% block body_data_page %}rewards-superadmin{% endblock %}
+{% block content %}
+
+<header class="mb-4">
+  <h1 class="h4 section-title mb-1">Récompenses — Superadmin</h1>
+  <div class="text-secondary">Choisissez une entreprise pour ouvrir la gestion des récompenses.</div>
+</header>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Entreprise</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in companies %}
+          <tr>
+            <td class="fw-semibold">{{ c.name }}</td>
+            <td class="text-end">
+              <div class="d-inline-flex gap-2">
+                <a class="btn btn-sm btn-primary"
+                   href="{% url 'dashboard:superadmin_rewards' %}?company={{ c.id }}">
+                  Ouvrir la gestion
+                </a>
+                {# Optionnel : un accès direct à l’historique #}
+                {% if perms.rewards.view_reward %}
+                  <a class="btn btn-sm btn-outline-secondary"
+                     href="{% url 'rewards:history_company' %}?company={{ c.id }}">
+                    Historique
+                  </a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="2" class="text-secondary p-3">Aucune entreprise.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
