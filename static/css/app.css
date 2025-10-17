@@ -157,7 +157,3 @@ body{background-color:#f8f9fb}
 #referrer-results .list-group-item:focus{
   background-color: var(--rose-soft);
 }
-
-/* Petites utilitaires pour le bandeau d’aide */
-.bg-rose-subtle{ background-color: var(--rose-soft)!important; }
-.text-rose-emphasis{ color: var(--rose)!important; }

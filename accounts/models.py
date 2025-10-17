@@ -7,6 +7,9 @@ from django.utils.text import slugify
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils.text import slugify
+from django.contrib.auth.models import UserManager as DjangoUserManager
+from django.db.models.functions import Lower
+
 
 hex_color_validator = RegexValidator(
     regex=r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$",
@@ -53,6 +56,22 @@ class Company(models.Model):
     def __str__(self):
         return self.name
 
+class UserManager(DjangoUserManager):
+    """Ajoute la gestion du champ 'profile' lors de la création."""
+
+    def create_user(self, username, email=None, password=None, **extra_fields):
+        # Par défaut, un utilisateur "normal" = CLIENT (comme aujourd'hui)
+        extra_fields.setdefault("profile", User.Profile.CLIENT)
+        return super().create_user(username, email, password, **extra_fields)
+
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        # Force les flags Django + rôle métier Superadmin + pas d'entreprise
+        extra_fields["is_staff"] = True
+        extra_fields["is_superuser"] = True
+        extra_fields["profile"] = User.Profile.SUPERADMIN
+        extra_fields["company"] = None
+        # Laisse Django faire ses vérifs (is_staff/is_superuser) et créer l’utilisateur
+        return super().create_superuser(username, email, password, **extra_fields)
 
 
 class User(AbstractUser, PermissionsMixin):
@@ -73,7 +92,7 @@ class User(AbstractUser, PermissionsMixin):
     company = models.ForeignKey(
         Company, on_delete=models.SET_NULL, null=True, blank=True, related_name="users"
     )
-
+    objects = UserManager() 
     # Contrainte business simple (optionnelle)
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -92,3 +111,11 @@ class User(AbstractUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.username} • {self.get_profile_display()}"
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("username"),
+                name="unique_username_ci",
+            ),
+        ]

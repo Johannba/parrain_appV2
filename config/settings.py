@@ -207,3 +207,22 @@ DATABASES = {
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
+
+# --- Password reset ---
+# Durée de validité du lien (en secondes). Optionnel (par défaut ~3 jours).
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))  # 2 jours
+
+# En DEV : on n'envoie pas d'email réel, on affiche dans la console
+if DEBUG:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Sécurité cookies : OK en prod, souples en dev pour éviter les 403/CSRF en HTTP
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
+
+# config/settings.py
+AUTHENTICATION_BACKENDS = [
+    "accounts.backends.CaseInsensitiveModelBackend",  # <- notre backend
+    # (hérite de ModelBackend, donc permissions & groupes OK)
+]

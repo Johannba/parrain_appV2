@@ -188,9 +188,17 @@ def company_home(request):
 # -------------------------------------------------------------
 @login_required
 def clients_list(request):
+    """
+    Liste des PARRAINS (clients is_referrer=True) de l'entreprise courante
+    (ou de toutes si superadmin). Affiche une popup d'award si présente
+    dans la session (après création d’un parrainage).
+    """
     _require_company_staff(request.user)
-    u = request.user
 
+    # Récupère et consomme la popup éventuelle (parrainage créé)
+    award_popup = request.session.pop("award_popup", None)
+
+    u = request.user
     qs = Client.objects.filter(is_referrer=True)
     if not _is_superadmin(u):
         qs = qs.filter(company=u.company)
@@ -198,17 +206,24 @@ def clients_list(request):
     q = (request.GET.get("q") or "").strip()
     if q:
         qs = qs.filter(
-            Q(last_name__icontains=q)
-            | Q(first_name__icontains=q)
-            | Q(email__icontains=q)
+            Q(last_name__icontains=q) |
+            Q(first_name__icontains=q) |
+            Q(email__icontains=q)
         )
 
     qs = qs.order_by("last_name", "first_name")
+
     return render(
         request,
         "dashboard/clients_list.html",
-        {"clients": qs, "filter_type": "parrains", "current_q": q},
+        {
+            "clients": qs,
+            "filter_type": "parrains",
+            "current_q": q,
+            "award_popup": award_popup,  # <-- important
+        },
     )
+
 
 @login_required
 def client_detail(request, pk: int):
@@ -471,7 +486,8 @@ def referral_create(request, company_id=None):
     """
     1) Sélection d’un parrain via autocomplete,
     2) Saisie/repérage du filleul (création si besoin dans l’entreprise du parrain),
-    3) Création du parrainage + 2 récompenses PENDING (parrain & filleul),
+    3) Création du parrainage + 2 récompenses (parrain & filleul),
+       -> la récompense du PARRAIN est immédiatement marquée 'SENT' (distribuée),
        puis envoi automatique du lien au parrain si possible.
     """
     # ---- Contexte entreprise pour l’autocomplete ----
@@ -506,8 +522,7 @@ def referral_create(request, company_id=None):
             email = (ref_form.cleaned_data.get("email") or "").strip().lower()
             referee = (
                 Client.objects.filter(company=company, email__iexact=email).first()
-                if email
-                else None
+                if email else None
             )
             if referee is None:
                 referee = ref_form.save_with_company(company)
@@ -529,17 +544,34 @@ def referral_create(request, company_id=None):
                     # Crée les 2 récompenses (parrain & filleul) — idempotent par (company, client, referral)
                     reward_parrain, reward_filleul = award_both_parties(referral=referral)
 
+                    # ✅ Mettre la récompense du PARRAIN en 'SENT' (distribuée) immédiatement
+                    if getattr(reward_parrain, "state", None) != "SENT":
+                        reward_parrain.state = "SENT"
+                        update_fields = ["state"]
+                        if hasattr(reward_parrain, "sent_at") and not reward_parrain.sent_at:
+                            reward_parrain.sent_at = timezone.now()
+                            update_fields.append("sent_at")
+                        reward_parrain.save(update_fields=update_fields)
+
+                    # ✅ Alimente la popup (affichée à l'arrivée sur clients_list)
+                    request.session["award_popup"] = {
+                        "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
+                        "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
+                        "referrer_label": getattr(reward_parrain, "label", "—"),
+                        "referee_label": getattr(reward_filleul, "label", "—"),
+                    }
+
                     messages.success(
                         request,
                         f"Parrainage créé : {referrer} → {referee}. "
-                        f"Récompenses : Parrain « {reward_parrain.label} » et Filleul « {reward_filleul.label} ».",
+                        f"Récompenses : Parrain « {reward_parrain.label} » (envoyée) "
+                        f"et Filleul « {reward_filleul.label} » (en attente).",
                     )
 
                     # Envoi du lien au parrain si on a un téléphone et un lien
                     claim_abs = (
                         request.build_absolute_uri(reward_parrain.claim_path)
-                        if reward_parrain.claim_path
-                        else ""
+                        if getattr(reward_parrain, "claim_path", "") else ""
                     )
 
                     if referrer.phone and claim_abs:
@@ -553,7 +585,9 @@ def referral_create(request, company_id=None):
                                 sender = getenv("TWILIO_SMS_FROM")
                                 if sid and token and sender:
                                     TwilioClient(sid, token).messages.create(
-                                        to=referrer.phone, from_=sender, body=f"{referrer.first_name or referrer.last_name}, voici votre lien cadeau : {claim_abs}"
+                                        to=referrer.phone,
+                                        from_=sender,
+                                        body=f"{referrer.first_name or referrer.last_name}, voici votre lien cadeau : {claim_abs}"
                                     )
                                     messages.success(request, "Lien de récompense envoyé au parrain par SMS.")
                                 else:
@@ -578,6 +612,8 @@ def referral_create(request, company_id=None):
         "dashboard/referral_form.html",
         {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
     )
+
+
 
 # -------------------------------------------------------------
 # Parrainage : édition / suppression

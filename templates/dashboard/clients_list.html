@@ -20,6 +20,105 @@
     </a>
   </div>
 </div>
+{% if award_popup %}
+  <!-- ✅ Modal Bootstrap : annonce des cadeaux -->
+  <div class="modal fade" id="awardModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header border-0">
+          <h5 class="modal-title">🎉 Félicitations !</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3">Le parrainage a bien été créé. Voici les cadeaux gagnés :</p>
+
+          <div class="vstack gap-2">
+            <div class="alert alert-success mb-0">
+              <strong>Parrain :</strong> {{ award_popup.referrer_name }}<br>
+              <span class="text-secondary">Cadeau :</span> <strong>{{ award_popup.referrer_label }}</strong>
+            </div>
+            <div class="alert alert-info mb-0">
+              <strong>Filleul :</strong> {{ award_popup.referee_name }}<br>
+              <span class="text-secondary">Cadeau :</span> <strong>{{ award_popup.referee_label }}</strong>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Canvas confettis -->
+  <canvas id="confettiCanvas" style="position:fixed;inset:0;pointer-events:none;z-index: 1080; display:none;"></canvas>
+
+  <script>
+(function () {
+  function openWhenReady() {
+    // Attendre que Bootstrap soit chargé
+    if (!window.bootstrap || !window.bootstrap.Modal) {
+      return setTimeout(openWhenReady, 50);
+    }
+
+    // 1) Ouvre la modale
+    const m = new bootstrap.Modal(document.getElementById('awardModal'));
+    m.show();
+
+    // 2) Confettis (vanilla)
+    const canvas = document.getElementById('confettiCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, pieces = [], running = true;
+
+    function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    function rand(a,b){ return Math.random()*(b-a)+a; }
+    function spawn(n){
+      for(let i=0;i<n;i++){
+        pieces.push({
+          x: rand(0, W),
+          y: rand(-H*0.2, 0),
+          w: rand(6, 12),
+          h: rand(8, 16),
+          vx: rand(-1, 1),
+          vy: rand(2, 4),
+          rot: rand(0, Math.PI*2),
+          vr: rand(-0.1, 0.1),
+          c: ['#E1007A','#7c3aed','#22c55e','#f59e0b','#3b82f6'][Math.floor(rand(0,5))]
+        });
+      }
+    }
+    function draw(){
+      if(!running) return;
+      ctx.clearRect(0,0,W,H);
+      for(const p of pieces){
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.c;
+        ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+        ctx.restore();
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        if (p.y > H + 20) { p.y = -10; p.x = rand(0, W); }
+      }
+      requestAnimationFrame(draw);
+    }
+
+    resize(); window.addEventListener('resize', resize);
+    canvas.style.display = 'block';
+    spawn(180);
+    draw();
+
+    // Stop après 3s
+    setTimeout(() => { running = false; canvas.style.display = 'none'; pieces = []; }, 3000);
+  }
+
+  // Attendre que tout soit chargé (JS Bootstrap compris)
+  if (document.readyState === 'complete') openWhenReady();
+  else window.addEventListener('load', openWhenReady);
+})();
+</script>
+
+{% endif %}
 
   {# tableau des parrains #}
   {% include "partials/_clients_table.html" %}

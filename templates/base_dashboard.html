@@ -4,6 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% include "partials/_favicons.html" %}
+  
   <title>{% block title %}Chuchote{% endblock %}</title>
 
   <!-- Bootstrap + thème local -->
@@ -25,7 +27,7 @@
             <span class="fw-bold">ChuChote</span>
           </a>
 
-          <!-- Recherche -->
+          {% comment %} <!-- Recherche -->
           <form class="d-none d-md-flex" role="search" method="get" action="" style="min-width: 480px;">
             <div class="input-group input-group-sm">
               <span class="input-group-text">🔎</span>
@@ -65,17 +67,20 @@
 
               <button class="btn btn-outline-light" type="submit">Filtrer</button>
             </div>
-          </form>
+          </form> {% endcomment %}
 
           <!-- Actions à droite -->
           <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
+            {# Afficher le bouton Créer un utilisateur seulement pour superadmin ou admin #}
+            {% comment %} {% if request.user.profile == 'superadmin' or request.user.profile == 'admin' %}
+              <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
+            {% endif %}
 
             {% if request.user.profile == 'superadmin' %}
               <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:company_list' %}">
                 Entreprises
               </a>
-            {% endif %}
+            {% endif %} {% endcomment %}
 
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
@@ -98,23 +103,29 @@
     <div class="topbar-nav bg-white">
       <div class="container">
         <ul class="nav nav-pills gap-1 py-2" id="mainNav">
-          <li class="nav-item">
-            <a class="nav-link {% block nav_dashboard_active %}{% endblock %}"
+          <li class="nav-item  me-2 ">
+            <a class="nav-link border border-2 rounded-3 {% block nav_dashboard_active %}{% endblock %}"
+               style="--bs-border-color:#220f4c"
                href="{% url 'dashboard:root' %}">
               Tableau de bord
             </a>
           </li>
 
-          <li class="nav-item">
-            <a class="nav-link {% block nav_users_active %}{% endblock %}"
-               href="{% url 'accounts:user_list' %}">
-              Utilisateurs
-            </a>
-          </li>
+          {# Onglet Utilisateurs visible uniquement pour superadmin ou admin #}
+          {% if request.user.profile == 'superadmin' or request.user.profile == 'admin' %}
+            <li class="nav-item  me-2">
+               <a class="nav-link border border-2 rounded-3 {% block nav_users_active %}{% endblock %}"
+                style="--bs-border-color:#220f4c"
+                 href="{% url 'accounts:user_list' %}">
+                Utilisateurs
+              </a>
+            </li>
+          {% endif %}
 
           {% if request.user.profile == 'superadmin' %}
-            <li class="nav-item">
-              <a class="nav-link {% block nav_companies_active %}{% endblock %}"
+            <li class="nav-item me-2">
+              <a class="nav-link border border-2 rounded-3 {% block nav_companies_active %}{% endblock %}"
+                style="--bs-border-color:#220f4c"
                  href="{% url 'accounts:company_list' %}">
                 Entreprises
               </a>
@@ -122,25 +133,45 @@
           {% endif %}
 
           <!-- nav métiers -->
-          <li class="nav-item">
-            <a class="nav-link {% block nav_clients_active %}{% endblock %}"
+          <li class="nav-item me-2">
+             <a class="nav-link border border-2 rounded-3 {% block nav_clients_active %}{% endblock %}"
+                style="--bs-border-color:#220f4c"
                href="{% url 'dashboard:clients_list' %}">
               Récompenses Parrains
             </a>
           </li>
 
-          <li class="nav-item">
-            <a class="nav-link {% block nav_rewards_active %}{% endblock %}"
-               href="{% url 'rewards:list' %}">
-              Gestion des Récompenses
-            </a>
-          </li>
+         {# --- Gestion des Récompenses : visible seulement pour admin & superadmin --- #}
+          {% if request.user.profile == 'superadmin' or request.user.profile == 'admin' %}
+            <li class="nav-item me-2">
+              <a class="nav-link border border-2 rounded-3 {% block nav_rewards_active %}{% endblock %}"
+                style="--bs-border-color:#220f4c"
+                href="{% url 'rewards:list' %}">
+                Gestion des Récompenses
+              </a>
+            </li>
+          {% endif %}
 
-          <li class="nav-item">
-            <a class="nav-link {% block nav_stats_active %}{% endblock %}" href="{% url 'rewards:stats' %}">
+
+          <li class="nav-item me-2">
+            <a class="nav-link border border-2 rounded-3 {% block nav_stats_active %}{% endblock %}"
+              style="--bs-border-color:#220f4c" 
+              href="{% url 'rewards:stats' %}">
               Statistiques
             </a>
           </li>
+          {% if request.user.profile == 'admin' or request.user.profile == 'operateur' %}
+            {% if request.user.company %}
+              <li class="nav-item me-2">
+                <a class="nav-link border border-2 rounded-3"
+                  style="--bs-border-color:#220f4c"
+                  href="{% url 'public:company_presentation' slug=request.user.company.slug %}">
+                  chuchote/{{ request.user.company.slug }}
+                </a>
+              </li>
+            {% endif %}
+          {% endif %}
+
         </ul>
       </div>
     </div>

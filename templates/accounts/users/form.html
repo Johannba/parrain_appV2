@@ -58,17 +58,26 @@
         {% render_field form.last_name class+="form-control" %}
       </div>
 
-      {# --- Passwords visibles seulement en création (UserCreateForm expose password1/2) --- #}
       {% if form.password1 %}
-      <div class="col-md-6">
-        <label class="form-label">Mot de passe</label>
-        {% render_field form.password1 class+="form-control" autocomplete="new-password" %}
-        <div class="form-text">{{ form.password1.help_text }}</div>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Confirmation</label>
-        {% render_field form.password2 class+="form-control" autocomplete="new-password" %}
-      </div>
+        <div class="col-md-6">
+          <label class="form-label">Mot de passe</label>
+          {% render_field form.password1 class+="form-control" autocomplete="new-password" %}
+          {% if form.password1.help_text %}<div class="form-text">{{ form.password1.help_text }}</div>{% endif %}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Confirmation</label>
+          {% render_field form.password2 class+="form-control" autocomplete="new-password" %}
+        </div>
+      {% elif form.new_password1 %}
+        <div class="col-md-6">
+          <label class="form-label">Nouveau mot de passe</label>
+          {% render_field form.new_password1 class+="form-control" autocomplete="new-password" %}
+          <div class="form-text">Laissez vide pour ne pas changer.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Confirmation</label>
+          {% render_field form.new_password2 class+="form-control" autocomplete="new-password" %}
+        </div>
       {% endif %}
 
       {# --- Rôle --- #}
@@ -81,16 +90,20 @@
         {% endif %}
       </div>
 
-      {# --- Company --- #}
-      <div class="col-md-6">
-        <label class="form-label">Entreprise</label>
-        {% if form.company.field.widget.input_type == "select" %}
-          {% render_field form.company class+="form-select" %}
-        {% else %}
-          {% render_field form.company class+="form-control" %}
-        {% endif %}
-        <div class="form-text">Obligatoire pour Admin / Opérateur. Laisser vide pour Superadmin.</div>
-      </div>
+      {# --- Company (si hidden on ne montre pas le bloc visuel) --- #}
+      {% if form.company.field.widget.input_type != "hidden" %}
+        <div class="col-md-6">
+          <label class="form-label">Entreprise</label>
+          {% if form.company.field.widget.input_type == "select" %}
+            {% render_field form.company class+="form-select" %}
+          {% else %}
+            {% render_field form.company class+="form-control" %}
+          {% endif %}
+          <div class="form-text">Obligatoire pour Admin / Opérateur. Laisser vide pour Superadmin.</div>
+        </div>
+      {% else %}
+        {{ form.company }}
+      {% endif %}
 
       {# --- Actif (présent en édition) --- #}
       {% if form.is_active %}

@@ -63,7 +63,7 @@ def root_view(request):
     
 urlpatterns = [
     path("", root_view, name="root"),
-    path("", include("public.urls")),
+    path("chuchote/", include("public.urls")),
     path("dashboard/", include("dashboard.urls")),   # <— simple et robuste
     path("accounts/", include("accounts.urls")),
     path("entreprise/", include(("entreprises.urls", "entreprises"), namespace="entreprises")),

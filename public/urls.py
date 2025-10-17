@@ -6,6 +6,6 @@ app_name = "public"
 
 urlpatterns = [
    
-    path("p/<slug:slug>/", views.company_presentation, name="company_presentation"),
-    path("p/<slug:slug>/register/", views.referrer_register, name="referrer_register"),
+    path("<slug:slug>/", views.company_presentation, name="company_presentation"),
+    path("chuchote/<slug:slug>/register/", views.referrer_register, name="referrer_register"),
 ]
