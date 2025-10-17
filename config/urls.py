@@ -15,14 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.shortcuts import redirect
+from django.shortcuts import redirect,render
 from django.urls import path,include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.db import connection
 from django.http import JsonResponse
-from public.views import root_view
+
+
 
 def healthz(request):
     # ping DB pour un vrai "ready"
@@ -44,22 +45,25 @@ def healthz(request):
 #     path("healthz", healthz, name="healthz"),
 #     path("healthz/", healthz, name="healthz-slash"),
 # ]
-
-def healthz(request):
-    try:
-        with connection.cursor() as cur:
-            cur.execute("SELECT 1")
-    except Exception as e:
-        return JsonResponse({"status": "error", "db": str(e)}, status=503)
     return JsonResponse({"status": "ok"}, status=200)
 
 def root_view(request):
     if request.user.is_authenticated:
-        return redirect("dashboard:root")
+        u = request.user
+        # Oriente selon les rôles si tu veux
+        if hasattr(u, "is_superadmin") and u.is_superadmin():
+            return redirect("dashboard:superadmin_home")
+        if (hasattr(u, "is_admin_entreprise") and u.is_admin_entreprise()) or \
+           (hasattr(u, "is_operateur") and u.is_operateur()):
+            return redirect("dashboard:company_home")
+        # Fallback connecté
+        return redirect("/dashboard/")
+    # Anonyme → page publique ou login
+    return render(request, "public/home.html")   # ou: 
     
 urlpatterns = [
     path("", root_view, name="root"),
-
+    path("chuchote/", include("public.urls")),
     path("dashboard/", include("dashboard.urls")),   # <— simple et robuste
     path("accounts/", include("accounts.urls")),
     path("entreprise/", include(("entreprises.urls", "entreprises"), namespace="entreprises")),

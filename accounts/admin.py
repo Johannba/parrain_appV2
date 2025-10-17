@@ -21,7 +21,19 @@ class UserAdmin(DjangoUserAdmin):
     add_fieldsets = (
         (None, {'classes': ('wide',), 'fields': ('username', 'password1', 'password2', 'profile', 'company')}),
     )
-    list_display = ('username', 'email', 'profile', 'company', 'is_active', 'is_staff')
-    list_filter = ('profile', 'company', 'is_active', 'is_staff')
-    search_fields = ('username', 'email', 'first_name', 'last_name')
+
+    # 🔒 Empêche l’édition manuelle de la date
+    readonly_fields = ('last_login', 'date_joined')
+
+    # 👀 Colonne “Créé le” dans la liste + filtres & navigation par date
+    list_display = ('username', 'email', 'profile', 'company', 'is_active', 'is_staff', 'created_at')
+    list_filter  = ('profile', 'company', 'is_active', 'is_staff', 'date_joined')
+    date_hierarchy = 'date_joined'
     ordering = ('username',)
+
+    @admin.display(description="Créé le", ordering='date_joined')
+    def created_at(self, obj):
+        return obj.date_joined  # ou formatté si tu préfères
+        # from django.utils.timezone import localtime
+        # from django.utils.formats import date_format
+        # return date_format(localtime(obj.date_joined), "SHORT_DATETIME_FORMAT")
