@@ -46,26 +46,25 @@ def healthz(request):
 #     path("healthz/", healthz, name="healthz-slash"),
 # ]
     return JsonResponse({"status": "ok"}, status=200)
-
 def root_view(request):
     if request.user.is_authenticated:
         u = request.user
-        # Oriente selon les rôles si tu veux
+        # Dispatch par rôle
         if hasattr(u, "is_superadmin") and u.is_superadmin():
             return redirect("dashboard:superadmin_home")
         if (hasattr(u, "is_admin_entreprise") and u.is_admin_entreprise()) or \
            (hasattr(u, "is_operateur") and u.is_operateur()):
             return redirect("dashboard:company_home")
-        # Fallback connecté
         return redirect("/dashboard/")
-    # Anonyme → page publique ou login
-    return render(request, "public/home.html")   # ou: 
+
+    # Anonyme → aller direct au login (plus de page publique)
+    return redirect("accounts:login")  # ou redirect("/accounts/login/")   # ou: 
     
 urlpatterns = [
     path("", root_view, name="root"),
     path("chuchote/", include("public.urls")),
     path("dashboard/", include("dashboard.urls")),   # <— simple et robuste
-    path("accounts/", include("accounts.urls")),
+    path("accounts/", include(("accounts.urls", "accounts"), namespace="accounts")),
     path("entreprise/", include(("entreprises.urls", "entreprises"), namespace="entreprises")),
     path("rewards/", include(("rewards.urls", "rewards"), namespace="rewards")),
     path("admin/", admin.site.urls),

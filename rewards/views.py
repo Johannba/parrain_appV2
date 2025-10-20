@@ -358,11 +358,67 @@ def reward_spin(request, reward_id: int):
 # ------------------------------ Page publique (token) ------------------------------
 
 def use_reward(request, token):
-    reward = get_object_or_404(Reward, token=token)
+    """
+    Page publique d'une récompense (par token) avec un rendu "joli".
+    AUCUN changement de logique métier : on enrichit juste le contexte.
+    """
+    reward = get_object_or_404(
+        Reward.objects.select_related(
+            "company", "client", "referral", "referral__referrer", "referral__referee"
+        ),
+        token=token,
+    )
 
-    context = {"reward": reward}
+    # Message informatif si la récompense n'est plus en attente
     if reward.state != "PENDING":
-        messages.info(request, "Cette récompense n’est plus en attente (déjà distribuée ou inactive).")
+        messages.info(
+            request,
+            "Cette récompense n’est plus en attente (déjà distribuée ou inactive)."
+        )
+
+    # Données d'en-tête
+    company_name = (getattr(reward.company, "name", "") or "").strip()
+    client_name  = (reward.client.first_name or reward.client.last_name or "").strip()
+
+    # Si la récompense provient d'un parrainage, on personnalise :
+    is_ref = bool(reward.referral_id)
+    is_referrer = is_ref and reward.client_id == reward.referral.referrer_id
+    is_referee  = is_ref and reward.client_id == reward.referral.referee_id
+
+    referrer_name = ""
+    referee_name  = ""
+    if is_ref:
+        referrer_name = (reward.referral.referrer.first_name or reward.referral.referrer.last_name or "").strip()
+        referee_name  = (reward.referral.referee.first_name  or reward.referral.referee.last_name  or "").strip()
+
+    # Phrases d'accroche (comme sur la maquette)
+    if is_referrer:
+        headline  = f"Félicitations {client_name} !" if client_name else "Félicitations !"
+        celebrate = f"Tu as fait découvrir {company_name} à {referee_name}".strip()
+        subline   = "Voici ton cadeau 🎁"
+        ribbon    = f"Parrainage validé grâce à {referee_name}".strip()
+    elif is_referee:
+        headline  = f"Bienvenue {client_name} !" if client_name else "Bienvenue !"
+        celebrate = f"Parrainage validé grâce à {referrer_name}".strip()
+        subline   = "Voici ton cadeau 🎁"
+        ribbon    = "Ton cadeau"
+    else:
+        headline  = f"Félicitations {client_name} !" if client_name else "Félicitations !"
+        celebrate = company_name
+        subline   = "Voici ton cadeau 🎁"
+        ribbon    = "Ton cadeau"
+
+    claim_absolute = request.build_absolute_uri(reward.claim_path) if reward.claim_path else ""
+
+    context = {
+        "reward": reward,
+        "headline": headline,
+        "celebrate": celebrate,
+        "subline": subline,
+        "ribbon": ribbon,
+        "company_name": company_name,
+        "claim_absolute": claim_absolute,
+    }
     return render(request, "rewards/use_reward.html", context)
 
 

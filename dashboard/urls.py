@@ -19,7 +19,7 @@ urlpatterns = [
     path("clients/<int:pk>/edit/", views.client_update, name="client_update"),
     path("clients/<int:pk>/delete/", views.client_delete, name="client_delete"),
     
-  # ✅ Création d'un PARRAIN (écran séparé)
+  # # ✅ Création d'un PARRAIN (écran séparé)
     path("clients/referrers/new/", views.referrer_create, name="referrer_create"),
     
     # Parrainage : création via recherche du parrain + formulaire du filleul

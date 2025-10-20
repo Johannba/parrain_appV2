@@ -181,7 +181,6 @@
   }
   </style>
   
-
   <div class="d-flex justify-content-center">
     <div id="wheel" class="position-relative" style="width:320px;height:340px;">
       <div class="position-absolute start-50 translate-middle-x" style="top:-4px;">
@@ -208,29 +207,76 @@
 </section>
 
 
-  <!-- Formulaire -->
-  <section class="container pb-5" aria-labelledby="form-title" style="max-width:720px;">
-    <h2 id="form-title" class="h5 fw-semibold text-center mb-3" style="color: {{ company.primary_color }}">✍️ Inscris-toi comme parrain ici</h2>
-    <div class="bg-white p-4 shadow-sm frame-double">
-      {% if messages %}{% for m in messages %}<div class="alert {% if m.tags %}alert-{{ m.tags }}{% else %}alert-info{% endif %}">{{ m }}</div>{% endfor %}{% endif %}
-      {% if form.non_field_errors %}<div class="alert alert-danger mb-3" role="alert">{{ form.non_field_errors }}</div>{% endif %}
-      <form method="post" action="{% url 'public:referrer_register' company.slug %}" novalidate>
-        {% csrf_token %}
-        <div class="row g-3">
-          <div class="col-md-6"><label class="form-label">Nom *</label>{{ form.last_name }}{% if form.last_name.errors %}<div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>{% endif %}</div>
-          <div class="col-md-6"><label class="form-label">Prénom *</label>{{ form.first_name }}{% if form.first_name.errors %}<div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>{% endif %}</div>
-          <div class="col-md-6"><label class="form-label">Téléphone *</label>{{ form.phone }}{% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}</div>
-          <div class="col-md-6"><label class="form-label">Email (recommandé)</label>{{ form.email }}{% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}</div>
+ <!-- Formulaire -->
+<section class="container pb-5" aria-labelledby="form-title" style="max-width:720px;">
+  <h2 id="form-title" class="h5 fw-semibold text-center mb-3" style="color: {{ company.primary_color }}">✍️ Inscris-toi comme parrain ici</h2>
+
+  <div class="bg-white p-4 shadow-sm frame-double">
+
+    {# --- Messages: n'afficher QUE les erreurs --- #}
+    {% if messages %}
+      {% for m in messages %}
+        {% if 'error' in m.tags %}
+          <div class="alert alert-danger" role="alert">{{ m }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {# --- Erreurs globales du formulaire --- #}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger mb-3" role="alert">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <form method="post" action="{% url 'public:referrer_register' company.slug %}" novalidate>
+      {% csrf_token %}
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Nom *</label>
+          {{ form.last_name }}
+          {% if form.last_name.errors %}
+            <div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>
+          {% endif %}
         </div>
-        <div class="form-check mt-3">
-          <input class="form-check-input" type="checkbox" id="agree" name="agree" checked>
-          <label class="form-check-label" for="agree">J'accepte de recevoir un lien par SMS/email pour mes récompenses. <span class="text-muted"></span></label>
+
+        <div class="col-md-6">
+          <label class="form-label">Prénom *</label>
+          {{ form.first_name }}
+          {% if form.first_name.errors %}
+            <div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>
+          {% endif %}
         </div>
-        <button type="submit" class="btn w-100 mt-3" style="background: var(--c1); color:#fff;">✅ Je m'inscris comme parrain</button>
-        <p class="text-center text-muted small mt-1">* Champs obligatoires</p>
-      </form>
-    </div>
-  </section>
+
+        <div class="col-md-6">
+          <label class="form-label">Téléphone *</label>
+          {{ form.phone }}
+          {% if form.phone.errors %}
+            <div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Email</label>
+          {{ form.email }}
+          {% if form.email.errors %}
+            <div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" id="agree" name="agree" checked>
+        <label class="form-check-label" for="agree">
+          J'accepte de recevoir un lien par SMS/email pour mes récompenses.
+        </label>
+      </div>
+
+      <button type="submit" class="btn w-100 mt-3" style="background: var(--c1); color:#fff;">
+        ✅ Je m'inscris comme parrain
+      </button>
+      <p class="text-center text-muted small mt-1">* Champs obligatoires</p>
+    </form>
+  </div>
+</section>
 
   <!-- FAQ -->
   <section class="container pb-5" aria-labelledby="faq-title">

@@ -15,12 +15,21 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# --- Charger .env AVANT toute lecture d'env ---
-try:
-    from dotenv import load_dotenv
-    load_dotenv(BASE_DIR / ".env")  # <<< force le .env de la racine du projet
-except Exception:
-    pass
+from dotenv import load_dotenv
+
+# Charger les valeurs par défaut (prod-ish), PUIS les overrides locaux
+load_dotenv(BASE_DIR / ".env")                      # defaults
+load_dotenv(BASE_DIR / ".env.local", override=True) # local
+
+
+# # --- Charger .env AVANT toute lecture d'env ---
+# try:
+#     from dotenv import load_dotenv
+#     load_dotenv(BASE_DIR / ".env")  # <<< force le .env de la racine du projet
+# except Exception:
+#     pass
+
+
 
 # --- Helpers ---
 def env_bool(name: str, default: bool = False) -> bool:
@@ -47,7 +56,7 @@ INSTALLED_APPS = [
     "public",
    "rewards.apps.RewardsConfig",
     "entreprises",
-    "accounts",
+    "accounts.apps.AccountsConfig",
     'dashboard',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -138,38 +147,33 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = 'accounts:login'
 
 
-# settings.py
-import os
-
-# Activez ceci si vous utilisez un fichier .env (pip install python-dotenv)
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
-
-def _must(name: str) -> str:
-    v = os.getenv(name)
-    if not v:
-        raise RuntimeError(f"Variable d’environnement manquante : {name}")
-    return v
-
-
-import os
-
-def env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)   # 587 -> STARTTLS
-EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)  # False si 587 ; True uniquement si 465
+
+# Brevo: 587 = STARTTLS ; 465 = SSL
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", not EMAIL_USE_SSL)
+
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Johann Bacha <johannbacha@gmail.com>")
+# IMPORTANT: utiliser un expéditeur VALIDÉ dans Brevo (domaine ou sender)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@chuchote.com")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+# EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+# EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
+# EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+# EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)   # 587 -> STARTTLS
+# EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)  # False si 587 ; True uniquement si 465
+# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+# EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+
+# DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Johann Bacha <johannbacha@gmail.com>")
+# SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 # (utile en cas de réseau lent / blocage)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
