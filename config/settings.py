@@ -134,7 +134,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 
 LOGIN_URL = 'accounts:login'
-LOGIN_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = 'accounts:login'
 
 
@@ -199,27 +199,30 @@ import dj_database_url
 DATABASES = {
     "default": dj_database_url.parse(
         os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
-        conn_max_age=600,          # connexions réutilisées
-        ssl_require=False,         # True si Postgres managé impose SSL
+        conn_max_age=600,   # garde les connexions ouvertes (perf)
+        ssl_require=False,  # passe à True si tu utilises un Postgres managé imposant SSL
     )
 }
 
-# ----- Sécurité/proxy (Caddy en production) -----
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
 
-# Cookies sécurisés + redirection HTTPS
+# --- Password reset ---
+# Durée de validité du lien (en secondes). Optionnel (par défaut ~3 jours).
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))  # 2 jours
+
+# En DEV : on n'envoie pas d'email réel, on affiche dans la console
+if DEBUG:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Sécurité cookies : OK en prod, souples en dev pour éviter les 403/CSRF en HTTP
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
 
-# Lien de reset de mot de passe (2 jours par défaut)
-PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))
-
-# En DEV: afficher les mails dans la console
-if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-
-# Auth backend (insensibilité à la casse pour login)
+# config/settings.py
 AUTHENTICATION_BACKENDS = [
-    "accounts.backends.CaseInsensitiveModelBackend",  # hérite de ModelBackend
+    "accounts.backends.CaseInsensitiveModelBackend",  # <- notre backend
+    # (hérite de ModelBackend, donc permissions & groupes OK)
 ]
