@@ -15,12 +15,6 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# --- Charger .env AVANT toute lecture d'env ---
-try:
-    from dotenv import load_dotenv
-    load_dotenv(BASE_DIR / ".env")  # <<< force le .env de la racine du projet
-except Exception:
-    pass
 
 # --- Helpers ---
 def env_bool(name: str, default: bool = False) -> bool:
@@ -155,10 +149,6 @@ def _must(name: str) -> str:
     return v
 
 
-import os
-
-def env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
