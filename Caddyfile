@@ -2,7 +2,7 @@
   email ops@chuchote.com
 }
 
-chuchote.com,www.chuchote.com {
+chuchote.com www.chuchote.com {
   encode gzip
 
   header {
