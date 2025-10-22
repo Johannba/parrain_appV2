@@ -570,13 +570,6 @@ def referral_create(request, company_id=None):
                             update_fields.append("sent_at")
                         rw_referee.save(update_fields=update_fields)
 
-                    # ✅ Le FILLEUL devient automatiquement parrain (sans bloquer si contrainte)
-                    if not referee.is_referrer:
-                        try:
-                            referee.is_referrer = True
-                            referee.save(update_fields=["is_referrer"])
-                        except IntegrityError:
-                            pass
 
                     # ✅ Alimente la popup (affichée à l'arrivée sur clients_list)
                     request.session["award_popup"] = {

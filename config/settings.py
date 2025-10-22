@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "entreprises",
     "accounts.apps.AccountsConfig",
     'dashboard',
+    "django.contrib.sites",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -66,6 +67,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "widget_tweaks",
 ]
+
+SITE_ID = 1
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -158,7 +161,6 @@ EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", not EMAIL_USE_SSL)
 
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 
 # IMPORTANT: utiliser un expéditeur VALIDÉ dans Brevo (domaine ou sender)
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@chuchote.com")
@@ -212,16 +214,18 @@ DATABASES = {
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Cookies sécurisés + redirection HTTPS
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
+CSRF_TRUSTED_ORIGINS = ["https://chuchote.com", "https://www.chuchote.com"]
+SESSION_COOKIE_DOMAIN = ".chuchote.com"
+CSRF_COOKIE_DOMAIN    = ".chuchote.com"
+CSRF_TRUSTED_ORIGINS = ["https://chuchote.com", "https://www.chuchote.com"]
+
+
 
 # Lien de reset de mot de passe (2 jours par défaut)
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))
-
-# En DEV: afficher les mails dans la console
-if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Auth backend (insensibilité à la casse pour login)
 AUTHENTICATION_BACKENDS = [
