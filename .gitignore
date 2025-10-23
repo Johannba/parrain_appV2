@@ -34,3 +34,7 @@ package-lock.json
 .coverage
 htmlcov/
 .pytest_cache/
+
+# local only
+.env.local
+dev.sqlite3
