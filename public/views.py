@@ -20,57 +20,57 @@ from django.conf import settings
 # Helpers
 # ---------------------------
 
-def _ensure_referrer_user(*, email: str, company: Company, first_name: str = "", last_name: str = ""):
-    """
-    Assure qu'un accounts.User existe pour cet email :
-      - username = email
-      - profile = CLIENT (rôle neutre = “aucun rôle”)
-      - company = l’entreprise courante
-      - mot de passe utilisable aléatoire si absent/inutilisable
-    Retourne (user, created: bool)
-    """
-    User = get_user_model()
-    email = (email or "").strip()
-    if not email:
-        return None, False
+# def _ensure_referrer_user(*, email: str, company: Company, first_name: str = "", last_name: str = ""):
+#     """
+#     Assure qu'un accounts.User existe pour cet email :
+#       - username = email
+#       - profile = CLIENT (rôle neutre = “aucun rôle”)
+#       - company = l’entreprise courante
+#       - mot de passe utilisable aléatoire si absent/inutilisable
+#     Retourne (user, created: bool)
+#     """
+#     User = get_user_model()
+#     email = (email or "").strip()
+#     if not email:
+#         return None, False
 
-    u = User.objects.filter(email__iexact=email).first()
-    if u:
-        changed = False
-        # mot de passe utilisable (si jamais on avait un unusable)
-        if not u.has_usable_password():
-            u.set_password(get_random_string(32)); changed = True
-        # compléter les champs vides utiles
-        if first_name and not u.first_name:
-            u.first_name = first_name; changed = True
-        if last_name and not u.last_name:
-            u.last_name = last_name; changed = True
-        # rôle neutre + rattachement
-        if hasattr(u, "profile") and u.profile != User.Profile.CLIENT:
-            u.profile = User.Profile.CLIENT; changed = True
-        if hasattr(u, "company") and company and not u.company_id:
-            u.company = company; changed = True
-        if not u.is_active:
-            u.is_active = True; changed = True
-        if changed:
-            u.save()
-        return u, False
+#     u = User.objects.filter(email__iexact=email).first()
+#     if u:
+#         changed = False
+#         # mot de passe utilisable (si jamais on avait un unusable)
+#         if not u.has_usable_password():
+#             u.set_password(get_random_string(32)); changed = True
+#         # compléter les champs vides utiles
+#         if first_name and not u.first_name:
+#             u.first_name = first_name; changed = True
+#         if last_name and not u.last_name:
+#             u.last_name = last_name; changed = True
+#         # rôle neutre + rattachement
+#         if hasattr(u, "profile") and u.profile != User.Profile.CLIENT:
+#             u.profile = User.Profile.CLIENT; changed = True
+#         if hasattr(u, "company") and company and not u.company_id:
+#             u.company = company; changed = True
+#         if not u.is_active:
+#             u.is_active = True; changed = True
+#         if changed:
+#             u.save()
+#         return u, False
 
-    # création
-    u = User(
-        username=email,           # AbstractUser -> username requis
-        email=email,
-        first_name=first_name or "",
-        last_name=last_name or "",
-        is_active=True,
-    )
-    if hasattr(u, "profile"):
-        u.profile = User.Profile.CLIENT
-    if hasattr(u, "company") and company:
-        u.company = company
-    u.set_password(get_random_string(32))
-    u.save()
-    return u, True
+#     # création
+#     u = User(
+#         username=email,           # AbstractUser -> username requis
+#         email=email,
+#         first_name=first_name or "",
+#         last_name=last_name or "",
+#         is_active=True,
+#     )
+#     if hasattr(u, "profile"):
+#         u.profile = User.Profile.CLIENT
+#     if hasattr(u, "company") and company:
+#         u.company = company
+#     u.set_password(get_random_string(32))
+#     u.save()
+#     return u, True
 
 
 # ---------------------------
@@ -112,49 +112,69 @@ from dashboard.models import Client
 from .forms import ReferrerForm
 
 def _ensure_referrer_user(*, email, company, first_name="", last_name=""):
-    """Garantit un accounts.User avec mot de passe utilisable et profil 'CLIENT'."""
+    """
+    Ne crée rien.
+    Si un User avec cet email existe :
+      - assure un mot de passe utilisable (si absent)
+      - complète first_name / last_name s’ils sont vides
+      - force le profil CLIENT (si l’attribut 'profile' existe)
+      - rattache la company si absente (si l’attribut 'company' existe)
+      - réactive le compte si inactif
+    Retourne (user|None, created=False)
+    """
     User = get_user_model()
     email = (email or "").strip()
     if not email:
         return None, False
 
     u = User.objects.filter(email__iexact=email).first()
-    if u:
-        changed = False
-        if not u.has_usable_password():
-            u.set_password(get_random_string(32)); changed = True
-        if first_name and not u.first_name:
-            u.first_name = first_name; changed = True
-        if last_name and not u.last_name:
-            u.last_name = last_name; changed = True
-        if hasattr(u, "profile") and u.profile != User.Profile.CLIENT:
-            u.profile = User.Profile.CLIENT; changed = True
-        if hasattr(u, "company") and company and not u.company_id:
-            u.company = company; changed = True
-        if not u.is_active:
-            u.is_active = True; changed = True
-        if changed:
-            u.save()
-        return u, False
+    if not u:
+        # NE PAS créer d’utilisateur
+        return None, False
 
-    u = User(
-        username=email,
-        email=email,
-        first_name=first_name or "",
-        last_name=last_name or "",
-        is_active=True,
-    )
+    changed = False
+
+    # Mot de passe utilisable
+    if not u.has_usable_password():
+        u.set_password(get_random_string(32))
+        changed = True
+
+    # Compléter les champs vides
+    if first_name and not u.first_name:
+        u.first_name = first_name
+        changed = True
+    if last_name and not u.last_name:
+        u.last_name = last_name
+        changed = True
+
+    # Rôle neutre CLIENT (si l’attribut existe)
     if hasattr(u, "profile"):
-        u.profile = User.Profile.CLIENT
-    if hasattr(u, "company") and company:
+        try:
+            if u.profile != User.Profile.CLIENT:
+                u.profile = User.Profile.CLIENT
+                changed = True
+        except Exception:
+            # Si votre modèle n’a pas User.Profile.CLIENT, on ignore
+            pass
+
+    # Rattacher la company si non renseignée (si l’attribut existe)
+    if hasattr(u, "company") and company and not getattr(u, "company_id", None):
         u.company = company
-    u.set_password(get_random_string(32))
-    u.save()
-    return u, True
+        changed = True
+
+    # Réactiver si nécessaire
+    if not u.is_active:
+        u.is_active = True
+        changed = True
+
+    if changed:
+        u.save()
+
+    return u, False
+
 
 
 def _send_password_reset(request, email: str) -> bool:
-    """Envoie l'email de réinitialisation si un User existe (comportement standard)."""
     if not email:
         return False
     frm = PasswordResetForm(data={"email": email})
@@ -163,92 +183,82 @@ def _send_password_reset(request, email: str) -> bool:
     frm.save(
         request=request,
         use_https=request.is_secure(),
-   
-        subject_template_name="registration/password_reset_subject.txt",
-        email_template_name="registration/password_reset_email.txt",
-        html_email_template_name="registration/password_reset_email.html",
-        from_email=settings.DEFAULT_FROM_EMAIL
+        subject_template_name="accounts/emails/password_reset_subject.txt",
+        email_template_name="accounts/emails/password_reset_email.txt",
+        html_email_template_name="accounts/emails/password_reset_email.html",
+        from_email=settings.DEFAULT_FROM_EMAIL,
     )
     return True
 
 
+
 def referrer_register(request, slug: str):
     """
-    Inscription d'un parrain depuis la page publique de présentation d'une entreprise.
-
-    Règles métier :
-      - Si l'e-mail correspond déjà à un parrain de cette entreprise -> ne recrée pas, mais envoie un e-mail de (ré)initialisation.
-      - Si l'inscription est nouvelle -> crée le Client (parrain), puis crée/assure un accounts.User et envoie l'e-mail de (ré)initialisation.
-      - Si le formulaire est invalide mais qu'un e-mail est fourni -> tente quand même d'assurer le compte user et d'envoyer l'e-mail.
-      - En cas de race condition (IntegrityError) -> traite comme "déjà inscrit" et envoie l'e-mail.
-
-    UX :
-      - Succès (création) : message succès + info d'envoi e-mail -> redirect.
-      - Déjà inscrit / invalide avec email : message info + redirect (ou render si on veut ré-afficher les erreurs).
+    Inscription d'un parrain depuis la page publique.
+    - Affiche UNIQUEMENT des erreurs (email/phone déjà utilisés, form invalide).
+    - En cas de succès: création silencieuse + envoi reset password possible, puis redirect sans messages.
     """
     company = get_object_or_404(Company, slug=slug)
 
-    # GET → on renvoie vers la page de présentation (pas d'inscription en GET)
+    # helper local pour les libellés de la roue (nécessaires au template lors d'un render avec erreurs)
+    def _wheel_labels_for(_company: Company):
+        order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
+        tpls = {t.bucket: t for t in RewardTemplate.objects.filter(company=_company)}
+        base = []
+        for b in order:
+            lbl = (tpls.get(b).label or "").strip() if tpls.get(b) else ""
+            base.append(lbl or b.title())
+        return (base * ((8 + len(base) - 1) // len(base)))[:8]
+
     if request.method != "POST":
         return redirect("public:company_presentation", slug=slug)
 
     form = ReferrerForm(request.POST, company=company)
 
-    # Champs utiles (normalisés tôt)
     posted_email = (request.POST.get("email") or "").strip()
     posted_fn = (request.POST.get("first_name") or "").strip()
     posted_ln = (request.POST.get("last_name") or "").strip()
 
     if form.is_valid():
-        # Est-ce déjà un parrain par e-mail ?
+        # Email déjà parrain pour cette entreprise → erreur sur le champ email
         already_by_email = bool(
-            posted_email
-            and Client.objects.filter(
+            posted_email and Client.objects.filter(
                 company=company, email__iexact=posted_email, is_referrer=True
             ).exists()
         )
+        if already_by_email:
+            form.add_error("email", "Cet email est déjà utilisé par un parrain de cette entreprise.")
+            return render(request, "public/company_presentation.html", {
+                "company": company,
+                "form": form,
+                "wheel_labels": _wheel_labels_for(company),
+                "form_errors": True,
+            })
 
-        if not already_by_email:
-            # Tentative de création du parrain
-            ref = form.save(commit=False)
-            ref.company = company
-            ref.is_referrer = True
+        # Création du parrain
+        ref = form.save(commit=False)
+        ref.company = company
+        ref.is_referrer = True
+        try:
+            with transaction.atomic():
+                ref.save()
+        except IntegrityError as e:
+            # Doublons DB (unique phone/email, etc.) → map vers champs si possible
+            emsg = str(e).lower()
+            if "phone" in emsg or "téléphone" in emsg or "telephone" in emsg:
+                form.add_error("phone", "Ce numéro de téléphone est déjà utilisé.")
+            elif "email" in emsg:
+                form.add_error("email", "Cet email est déjà utilisé.")
+            else:
+                form.add_error(None, "Ce parrain existe déjà pour cette entreprise.")
+            return render(request, "public/company_presentation.html", {
+                "company": company,
+                "form": form,
+                "wheel_labels": _wheel_labels_for(company),
+                "form_errors": True,
+            })
 
-            try:
-                with transaction.atomic():
-                    ref.save()
-            except IntegrityError:
-                # Cas de concurrence/doublon : on bascule sur le flux "déjà inscrit"
-                if posted_email:
-                    _ensure_referrer_user(
-                        email=posted_email, company=company,
-                        first_name=posted_fn, last_name=posted_ln
-                    )
-                    _send_password_reset(request, posted_email)
-                    messages.info(
-                        request,
-                        "Tu es déjà inscrit comme parrain. "
-                        "Un e-mail de (ré)initialisation vient d’être envoyé s’il existe un compte."
-                    )
-                # On peut choisir de ré-afficher la page avec erreurs, mais le plus simple ici :
-                return redirect("public:company_presentation", slug=slug)
-
-            # Création OK → on assure le compte user puis on envoie le reset
-            if posted_email:
-                _ensure_referrer_user(
-                    email=posted_email, company=company,
-                    first_name=posted_fn, last_name=posted_ln
-                )
-                _send_password_reset(request, posted_email)
-
-            messages.success(
-                request,
-                "Inscription confirmée. "
-                "Un e-mail vient de t’être envoyé pour définir ton mot de passe."
-            )
-            return redirect("public:company_presentation", slug=slug)
-
-        # already_by_email == True → on n’essaie pas de recréer, on envoie juste l’e-mail
+        # Succès silencieux : on assure le compte et on envoie le reset SANS message
         if posted_email:
             _ensure_referrer_user(
                 email=posted_email, company=company,
@@ -256,31 +266,13 @@ def referrer_register(request, slug: str):
             )
             _send_password_reset(request, posted_email)
 
-        messages.info(
-            request,
-            "Tu es déjà inscrit comme parrain. "
-            "Un e-mail de (ré)initialisation vient d’être envoyé s’il existe un compte."
-        )
+        # Redirection propre, aucun message à afficher
         return redirect("public:company_presentation", slug=slug)
 
-    # Formulaire invalide : si un e-mail a été fourni, on déclenche quand même le reset
-    if posted_email:
-        _ensure_referrer_user(
-            email=posted_email, company=company,
-            first_name=posted_fn, last_name=posted_ln
-        )
-        _send_password_reset(request, posted_email)
-        messages.info(
-            request,
-            "Tu es déjà inscrit comme parrain (ou des informations sont invalides). "
-            "Un e-mail de (ré)initialisation vient d’être envoyé s’il existe un compte."
-        )
-
-    # On ré-affiche la page avec les erreurs du formulaire
-    return render(
-        request,
-        "public/company_presentation.html",
-        {"company": company, "form": form, "form_errors": True},
-    )
-
-
+    # Form invalide → réaffiche avec erreurs (aucun email envoyé ici)
+    return render(request, "public/company_presentation.html", {
+        "company": company,
+        "form": form,
+        "wheel_labels": _wheel_labels_for(company),
+        "form_errors": True,
+    })

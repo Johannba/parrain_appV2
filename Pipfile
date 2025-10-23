@@ -17,6 +17,7 @@ requests = ">=2.32.3"
 gunicorn = ">=21.2"
 redis = ">=5"
 dj-database-url = "*"
+dotenv = "*"
 
 [dev-packages]
 pytest = "*"

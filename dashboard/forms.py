@@ -60,24 +60,72 @@ class ReferrerClientForm(forms.ModelForm):
             )
             self.fields["company"].empty_label = None
 
+        # stockage interne pour "upsert"
+        self._existing_client = None
+
     def clean(self):
         cleaned = super().clean()
         company = cleaned.get("company")
+
+        # Normalisation douce
+        ln = (cleaned.get("last_name") or "").strip()
+        fn = (cleaned.get("first_name") or "").strip()
         email = (cleaned.get("email") or "").strip().lower()
+        cleaned["last_name"] = ln
+        cleaned["first_name"] = fn
+        cleaned["email"] = email
+
+        # 1) Si un PARRAIN existe déjà avec même email → erreur
         if company and email:
-            exists = Client.objects.filter(
-                company=company, email__iexact=email
+            existing_parrain_same_email = Client.objects.filter(
+                company=company, email__iexact=email, is_referrer=True
             ).exclude(pk=self.instance.pk or 0).exists()
-            if exists:
-                self.add_error("email", "Un client avec cet email existe déjà dans cette entreprise.")
+            if existing_parrain_same_email:
+                self.add_error("email", "Un parrain avec cet email existe déjà dans cette entreprise.")
+                return cleaned
+
+        # 2) Sinon on cherche un client existant à RÉUTILISER (email prioritaire)
+        existing = None
+        if company and email:
+            existing = Client.objects.filter(
+                company=company, email__iexact=email
+            ).exclude(pk=self.instance.pk or 0).first()
+
+        # 3) À défaut d’email, tentative par (nom, prénom) si fournis
+        if not existing and company and ln:
+            existing = Client.objects.filter(
+                company=company, last_name__iexact=ln, first_name__iexact=fn
+            ).exclude(pk=self.instance.pk or 0).first()
+
+        self._existing_client = existing  # pourra être None
         return cleaned
 
     def save(self, commit=True):
-        obj = super().save(commit=False)
-        obj.is_referrer = True
+        """
+        UP SERT :
+        - Si un client existe déjà (même entreprise par email ou par nom/prénom),
+          on le promeut en parrain + on met à jour ses champs.
+        - Sinon on crée un nouveau client en parrain.
+        """
+        data = self.cleaned_data
+        company = data.get("company")
+
+        obj = self._existing_client or self.instance
+        if not getattr(obj, "pk", None):
+            obj = Client()
+
+        # Remplit / met à jour
+        obj.company = company
+        obj.last_name = data.get("last_name", "") or obj.last_name
+        obj.first_name = data.get("first_name", "") or obj.first_name
+        obj.email = data.get("email") or obj.email
+        obj.phone = data.get("phone", "") or obj.phone
+        obj.is_referrer = True  # ✅ promotion en parrain
+
         if commit:
             obj.save()
         return obj
+
 
 
 class RefereeClientForm(forms.ModelForm):
@@ -86,56 +134,18 @@ class RefereeClientForm(forms.ModelForm):
     - Force is_referrer=False au save()
     - Même logique de restriction d’entreprise que ci-dessus
     """
-    class Meta:
-        model = Client
-        fields = ("company", "last_name", "first_name", "email", "phone")
-        widgets = {
-            "company": Select(attrs={"class": "form-select"}),
-            "last_name": TextInput(attrs={"class": "form-control", "placeholder": "Nom"}),
-            "first_name": TextInput(attrs={"class": "form-control", "placeholder": "Prénom"}),
-            "email": EmailInput(attrs={"class": "form-control", "placeholder": "email@exemple.com"}),
-            "phone": TextInput(attrs={"class": "form-control", "placeholder": "06 00 00 00 00"}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        request = kwargs.pop("request", None)
-        super().__init__(*args, **kwargs)
-        user = getattr(request, "user", None)
-        is_super = bool(user and hasattr(user, "is_superadmin") and user.is_superadmin())
-
-        if is_super:
-            self.fields["company"].queryset = Company.objects.order_by("name")
-        else:
-            self.fields["company"].queryset = Company.objects.filter(
-                pk=getattr(getattr(user, "company", None), "pk", None)
-            )
-            self.fields["company"].empty_label = None
-
     def clean(self):
         cleaned = super().clean()
         company = cleaned.get("company")
 
-        # Normalisation nom/prénom (trim + casse)
         ln = (cleaned.get("last_name") or "").strip()
         fn = (cleaned.get("first_name") or "").strip()
         email = (cleaned.get("email") or "").strip().lower()
 
-        # 1) Nom obligatoire pour un parrain
-        if not ln:
-            self.add_error("last_name", "Le nom est obligatoire pour créer un parrain.")
+        # libellé neutre (pas "parrain")
+        if not ln and not email:
+            self.add_error("last_name", "Le nom est obligatoire (ou renseignez un email).")
 
-        # 2) Unicité nom/prénom dans l’entreprise (insensible à la casse)
-        if company and ln:
-            exists_name = Client.objects.filter(
-                company=company,
-                is_referrer=True,
-                last_name__iexact=ln,
-                first_name__iexact=fn,
-            ).exclude(pk=self.instance.pk or 0).exists()
-            if exists_name:
-                self.add_error("last_name", "Un parrain portant ce nom et ce prénom existe déjà dans cette entreprise.")
-
-        # 3) (Optionnel) Unicité email dans l’entreprise si fourni
         if company and email:
             exists_email = Client.objects.filter(
                 company=company, email__iexact=email
@@ -143,11 +153,17 @@ class RefereeClientForm(forms.ModelForm):
             if exists_email:
                 self.add_error("email", "Un client avec cet email existe déjà dans cette entreprise.")
 
-        # Remet les valeurs normalisées
         cleaned["last_name"] = ln
         cleaned["first_name"] = fn
         cleaned["email"] = email
         return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.is_referrer = False  # ✅ filleul
+        if commit:
+            obj.save()
+        return obj
 
 
 class ReferralForm(forms.ModelForm):

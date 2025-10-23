@@ -24,52 +24,83 @@ class LoginForm(AuthenticationForm):
     def clean_username(self):
         return (self.cleaned_data.get("username") or "").strip()
 
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from accounts.models import User, Company  # adapte l'import si besoin
+
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from accounts.models import User, Company  # adapte l'import si besoin
+
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from accounts.models import User, Company  # adapte si besoin
+
+
 class UserCreateForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ("username", "email", "first_name", "last_name", "profile", "company")
 
+    # ---------- Helpers ----------
+    def _has_role(self, user, role_name: str) -> bool:
+        if not user:
+            return False
+        maybe = getattr(user, f"is_{role_name}", None)
+        if callable(maybe):
+            try:
+                return bool(maybe())
+            except TypeError:
+                pass
+        flag = getattr(user, f"is_{role_name}", None)
+        if isinstance(flag, bool):
+            return flag
+        return getattr(user, "profile", None) == role_name
+
+    def _allowed_profiles_for(self, user):
+        if not user or not user.is_authenticated:
+            return ()
+        if self._has_role(user, "superadmin"):
+            return ("superadmin", "admin", "operateur")
+        if self._has_role(user, "admin_entreprise"):
+            return ("admin", "operateur")
+        if self._has_role(user, "operateur"):
+            return ("operateur",)
+        return ()
+
+    # ---------- Init ----------
     def __init__(self, *args, **kwargs):
         self.request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
 
-        # (EXISTANT) Limitation du champ company
-        if self.request and hasattr(self.request, "user"):
-            u = self.request.user
-            if getattr(u, "is_superadmin", lambda: False)():
+        u = getattr(self.request, "user", None)
+
+        # Company selon créateur
+        if u and u.is_authenticated:
+            if self._has_role(u, "superadmin"):
                 self.fields["company"].queryset = Company.objects.all()
-            elif getattr(u, "is_admin_entreprise", lambda: False)():
+            elif self._has_role(u, "admin_entreprise") or self._has_role(u, "operateur"):
+                # Afficher le champ, mais bloqué sur l'entreprise de l'utilisateur
                 self.fields["company"].queryset = Company.objects.filter(pk=u.company_id)
-                self.fields["company"].initial = u.company
-                self.fields["company"].widget = forms.HiddenInput()
+                self.fields["company"].initial = getattr(u, "company", None)
+                self.fields["company"].disabled = True                     # <<< visible mais non modifiable
+                self.fields["company"].help_text = "Fixé à votre entreprise."
             else:
                 self.fields["company"].queryset = Company.objects.none()
 
-        # (NOUVEAU) Limitation des profils créables
-        allowed = self._allowed_profiles_for(getattr(self.request, "user", None))
+        # 1) Retirer carrément le choix "superadmin" si le créateur n'est pas superadmin
+        if not (u and self._has_role(u, "superadmin")):
+            self.fields["profile"].choices = [
+                (v, lbl) for (v, lbl) in self.fields["profile"].choices if v != "superadmin"
+            ]
+
+        # 2) Limiter aux rôles autorisés
+        allowed = self._allowed_profiles_for(u)
         self.fields["profile"].choices = [
             (v, lbl) for (v, lbl) in self.fields["profile"].choices if v in allowed
         ]
 
-    # (NOUVEAU) Règle centrale: qui peut créer quoi ?
-    def _allowed_profiles_for(self, user):
-        if not user or not user.is_authenticated:
-            return ()
-        if getattr(user, "is_superadmin", lambda: False)():
-            # Superadmin -> peut créer superadmin, admin, operateur
-            return ("superadmin", "admin", "operateur")
-        if getattr(user, "is_admin_entreprise", lambda: False)():
-            # Admin -> peut créer admin, operateur (pas superadmin, pas client)
-            return ("admin", "operateur")
-        # Opérateur -> peut créer uniquement operateur
-        is_op_meth = getattr(user, "is_operateur", None)
-        if callable(is_op_meth) and is_op_meth():
-            return ("operateur",)
-        if getattr(user, "profile", "") == "operateur":
-            return ("operateur",)
-        return ()
-
-    # (NOUVEAU) Anti-bypass via POST trafiqué
+    # ---------- Anti contournement ----------
     def clean_profile(self):
         value = self.cleaned_data.get("profile")
         u = getattr(self, "request", None).user if self.request else None
@@ -77,33 +108,32 @@ class UserCreateForm(UserCreationForm):
             raise forms.ValidationError("Vous n’êtes pas autorisé à créer ce type d’utilisateur.")
         return value
 
-    # (EXISTANT + AJOUT) Cohérence company/profil selon le créateur
+    # ---------- Cohérences métier ----------
     def clean(self):
         cleaned = super().clean()
         profile = cleaned.get("profile")
-        company = cleaned.get("company")
         u = getattr(self, "request", None).user if self.request else None
 
-        # Si Superadmin crée un Superadmin -> company doit être vide
-        if getattr(u, "is_superadmin", lambda: False)() and profile == "superadmin":
+        # Superadmin crée un Superadmin -> company vide
+        if self._has_role(u, "superadmin") and profile == "superadmin":
             cleaned["company"] = None
 
-        # Admin & Opérateur: forcer la company à la leur
-        is_admin = getattr(u, "is_admin_entreprise", lambda: False)()
-        is_op = (callable(getattr(u, "is_operateur", None)) and u.is_operateur()) or getattr(u, "profile", "") == "operateur"
-        if is_admin or is_op:
+        # Admin & Opérateur: forcer la company à la leur (au cas où le champ est disabled et donc non soumis)
+        if self._has_role(u, "admin_entreprise") or self._has_role(u, "operateur"):
             if not u or not getattr(u, "company", None):
                 self.add_error("company", "Vous devez être rattaché à une entreprise.")
             else:
                 cleaned["company"] = u.company
 
-        # (EXISTANT) Rappels de cohérence
+        # Rappels de cohérence
         if profile in ("admin", "operateur") and not cleaned.get("company"):
             self.add_error("company", "L’Admin/Opérateur doit être rattaché à une entreprise.")
         if profile == "superadmin" and cleaned.get("company"):
             self.add_error("company", "Le Superadmin ne doit pas être rattaché à une entreprise.")
 
         return cleaned
+
+
 
 
 class UserUpdateForm(UserChangeForm):

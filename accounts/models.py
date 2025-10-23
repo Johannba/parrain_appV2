@@ -59,10 +59,10 @@ class Company(models.Model):
 class UserManager(DjangoUserManager):
     """Ajoute la gestion du champ 'profile' lors de la création."""
 
-    def create_user(self, username, email=None, password=None, **extra_fields):
-        # Par défaut, un utilisateur "normal" = CLIENT (comme aujourd'hui)
-        extra_fields.setdefault("profile", User.Profile.CLIENT)
-        return super().create_user(username, email, password, **extra_fields)
+    # def create_user(self, username, email=None, password=None, **extra_fields):
+    #     # Par défaut, un utilisateur "normal" = CLIENT (comme aujourd'hui)
+    #     extra_fields.setdefault("profile", User.Profile.CLIENT)
+    #     return super().create_user(username, email, password, **extra_fields)
 
     def create_superuser(self, username, email=None, password=None, **extra_fields):
         # Force les flags Django + rôle métier Superadmin + pas d'entreprise
@@ -79,13 +79,13 @@ class User(AbstractUser, PermissionsMixin):
         SUPERADMIN = "superadmin", "Superadmin (plateforme)"
         ADMIN = "admin", "Admin d’entreprise"
         OPERATEUR = "operateur", "Opérateur"
-        CLIENT = "client", "Client (V1: non utilisable)"
+        # CLIENT = "client", "Client (V1: non utilisable)"
 
     # Rôle
     profile = models.CharField(
         max_length=20,
         choices=Profile.choices,
-        default=Profile.CLIENT,
+        # default=Profile.CLIENT,
     )
 
     # Rattachement éventuel à une entreprise (pas de company pour superadmin)

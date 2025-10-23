@@ -15,6 +15,12 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# --- Charger .env AVANT toute lecture d'env ---
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env")  # <<< force le .env de la racine du projet
+except Exception:
+    pass
 
 # --- Helpers ---
 def env_bool(name: str, default: bool = False) -> bool:
@@ -41,8 +47,9 @@ INSTALLED_APPS = [
     "public",
    "rewards.apps.RewardsConfig",
     "entreprises",
-    "accounts",
+    "accounts.apps.AccountsConfig",
     'dashboard',
+    "django.contrib.sites",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -51,6 +58,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "widget_tweaks",
 ]
+
+SITE_ID = 1
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -149,17 +158,36 @@ def _must(name: str) -> str:
     return v
 
 
+import os
+
+def env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)   # 587 -> STARTTLS
-EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)  # False si 587 ; True uniquement si 465
+
+# Brevo: 587 = STARTTLS ; 465 = SSL
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", not EMAIL_USE_SSL)
+
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Johann Bacha <johannbacha@gmail.com>")
+# IMPORTANT: utiliser un expéditeur VALIDÉ dans Brevo (domaine ou sender)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@chuchote.com")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+# EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+# EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
+# EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+# EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)   # 587 -> STARTTLS
+# EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)  # False si 587 ; True uniquement si 465
+# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+# EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+
+# DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Johann Bacha <johannbacha@gmail.com>")
+# SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 # (utile en cas de réseau lent / blocage)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
@@ -194,24 +222,28 @@ DATABASES = {
     )
 }
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+# ----- Sécurité/proxy (Caddy en production) -----
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-# --- Password reset ---
-# Durée de validité du lien (en secondes). Optionnel (par défaut ~3 jours).
-PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))  # 2 jours
-
-# En DEV : on n'envoie pas d'email réel, on affiche dans la console
-if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-
-# Sécurité cookies : OK en prod, souples en dev pour éviter les 403/CSRF en HTTP
+# Cookies sécurisés + redirection HTTPS
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
+CSRF_TRUSTED_ORIGINS = ["https://chuchote.com", "https://www.chuchote.com"]
+SESSION_COOKIE_DOMAIN = ".chuchote.com"
+CSRF_COOKIE_DOMAIN    = ".chuchote.com"
+CSRF_TRUSTED_ORIGINS = ["https://chuchote.com", "https://www.chuchote.com"]
 
-# config/settings.py
+
+
+# Lien de reset de mot de passe (2 jours par défaut)
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))
+
+# En DEV: afficher les mails dans la console
+if DEBUG:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Auth backend (insensibilité à la casse pour login)
 AUTHENTICATION_BACKENDS = [
     "accounts.backends.CaseInsensitiveModelBackend",  # <- notre backend
     # (hérite de ModelBackend, donc permissions & groupes OK)

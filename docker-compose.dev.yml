@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  web:
+    command: bash -lc "python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app              # hot-reload du code
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+      - .env.local          # override local
+    # Remplace le healthcheck PROD par un check simple SANS Host: chuchote.com
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6

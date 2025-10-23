@@ -13,6 +13,9 @@ from .permissions import require_superadmin, require_company_admin_or_superadmin
 from django.db.models import Q
 
 
+
+
+
 @require_http_methods(["GET", "POST"])
 def logout_view(request):
     logout(request)

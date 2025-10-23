@@ -1,33 +1,137 @@
-{# templates/rewards/use_reward.html #}
-{% extends "base_public.html" %}
-{% block title %}Utiliser votre récompense{% endblock %}
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ company_name|default:"Récompense" }}</title>
+  <style>
+    :root{
+      --g1:#ff4d6d; --g2:#7b2cbf;
+      --ink:#1e164b; --muted:#6b6b8a; --surface:#ffffff;
+      --shadow: 0 10px 30px rgba(24,17,62,.15);
+      --radius: 22px;
+    }
+    html,body{margin:0;padding:0;background:#f7f8fb;color:#1a1537;font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
+    .hero{
+      background: radial-gradient(1200px 400px at 10% -10%, rgba(255,255,255,.2), transparent),
+                  linear-gradient(135deg,var(--g1),var(--g2));
+      color:#fff; text-align:center; padding:56px 16px 72px;
+    }
+    .hero h1{margin:0 0 8px; font-weight:900; letter-spacing:.3px; font-size: clamp(26px, 4.2vw, 48px);}
+    .hero p{margin:0; opacity:.95; font-size: clamp(14px, 2.2vw, 20px);}
+    .card{
+      width:min(760px, calc(100% - 24px));
+      margin:-40px auto 40px; background:var(--surface); border-radius:var(--radius);
+      box-shadow:var(--shadow); overflow:hidden;
+    }
+    .card-head{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:18px 22px; background: linear-gradient(135deg, rgba(255,255,255,.6), rgba(255,255,255,.35));
+      backdrop-filter: blur(6px);
+    }
+    .badge{display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:13px;
+      padding:8px 12px; border-radius:999px; background:#0f1226; color:#fff;}
+    .badge-sec{background:#eef0f6; color:#2d2a48; font-weight:600;}
+    .card-body{padding:22px;}
+    h2{margin:6px 0 14px; font-size:32px; letter-spacing:.2px}
+    .muted{color:var(--muted); font-size:14px;}
+    .panel{
+      border:1px dashed #e5e6ef; padding:16px; border-radius:14px; background:#fbfbfe; color:#2a2942;
+    }
+    .row{display:flex; gap:14px; flex-wrap:wrap; margin-top:14px}
+    .row > *{flex:1 1 220px}
+    .codebox{display:flex; align-items:center; justify-content:space-between; gap:10px;
+      border:1px solid #ececf6; padding:12px 14px; border-radius:12px; background:#fff;}
+    .btn{
+      appearance:none; border:0; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer;
+      background:#0f1226; color:#fff; box-shadow:0 6px 16px rgba(15,18,38,.18);
+    }
+    .btn.secondary{background:#eef0f6; color:#1e1a3a; box-shadow:none;}
+    .footer{ text-align:center; color:#8b8aa7; font-size:14px; padding-bottom:32px;}
+    .link{color:#5843e3; text-decoration:none; font-weight:700}
+    @media (prefers-color-scheme: dark){
+      body{background:#0e0f17; color:#e9e8f3}
+      .hero{color:#fff}
+      .card{background:#131527}
+      .card-head{background:rgba(255,255,255,.05)}
+      .panel{background:#0f1020; border-color:#262842}
+      .codebox{background:#0f1020; border-color:#262842}
+      .btn.secondary{background:#1b1d37; color:#fff}
+      .footer{color:#a7a6c2}
+    }
+  </style>
+</head>
+<body>
 
-{% block content %}
-  <div class="container py-4">
-    <h1 class="h4 mb-3">Votre récompense</h1>
+  <section class="hero">
+    <div style="font-size:28px; line-height:1">🎉</div>
+    <h1>{{ headline }}</h1>
+    {% if celebrate %}<p>{{ celebrate }}</p>{% endif %}
+    {% if subline %}<p style="margin-top:8px; opacity:.85">{{ subline }}</p>{% endif %}
+  </section>
 
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div class="mb-2">
-          <strong>{{ reward.label }}</strong>
+  <main class="card" role="main" aria-labelledby="gift-title">
+    <div class="card-head">
+      <div class="badge">🎁 {{ ribbon|default:"Ton cadeau" }}</div>
+      <div class="badge badge-sec">Lien sécurisé</div>
+    </div>
+
+    <div class="card-body">
+      <div class="muted" style="margin-bottom:6px">{{ company_name }}</div>
+      <h2 id="gift-title">{{ reward.label }}</h2>
+
+      {% if reward.valid_until %}
+        <div class="muted" style="margin:8px 0 16px">
+          Date limite d’utilisation :
+          {{ reward.valid_until|date:"d F Y" }}
         </div>
+      {% endif %}
 
-        {% if reward.cooldown_days %}
-          <p class="text-secondary small mb-2">{{ reward.validity_sentence }}</p>
-        {% else %}
-          <p class="text-secondary small mb-2">Validité : illimité</p>
-        {% endif %}
-
-        {% if reward.state == "PENDING" %}
-          <p class="mb-0">
-            Présentez ce lien en caisse. Un membre de l’équipe validera la récompense.
-          </p>
-        {% else %}
-          <div class="alert alert-info mb-0">
-            Cette récompense n’est plus en attente (déjà distribuée ou inactive).
+      <div class="panel">
+        Présentez <strong>ce lien</strong> en caisse. Un membre de l’équipe validera la récompense.
+        {% comment %} <div class="row">
+          <div>
+            <div class="muted" style="margin:10px 0 6px">Code (optionnel)</div>
+            <div class="codebox"><span style="letter-spacing:.12em; font-weight:800">
+              {{ reward.token|default:"PARRAIN—REWARD" }}
+            </span></div>
+          </div> {% endcomment %}
+          <div>
+            <div class="muted" style="margin:10px 0 6px">Ton lien</div>
+            <div class="codebox" id="copybox">
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%">
+                {{ claim_absolute }}
+              </span>
+              <button class="btn" id="copyBtn" data-url="{{ claim_absolute }}">Copier le lien</button>
+            </div>
           </div>
-        {% endif %}
+        </div>
       </div>
     </div>
+  </main>
+
+  <div class="footer">
+    Merci pour la recommandation ❤️ — {{ company_name|default:"" }}
+    <div style="margin-top:6px">
+    </div>
   </div>
-{% endblock %}
+
+  <script>
+    (function(){
+      const btn = document.getElementById('copyBtn');
+      if(!btn) return;
+      btn.addEventListener('click', async function(){
+        try{
+          const url = btn.getAttribute('data-url') || location.href;
+          await navigator.clipboard.writeText(url);
+          btn.textContent = "Copié !";
+          setTimeout(()=> btn.textContent = "Copier le lien", 1600);
+        }catch(e){
+          alert("Lien: " + (btn.getAttribute('data-url') || location.href));
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
