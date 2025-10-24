@@ -27,3 +27,6 @@ USER appuser
 EXPOSE 8000
 
 CMD ["gunicorn", "config.wsgi:application", "--config", "/app/gunicorn.conf.py"]
+
+ARG GIT_SHA=unknown
+RUN echo "$GIT_SHA" > /app/.build_sha
