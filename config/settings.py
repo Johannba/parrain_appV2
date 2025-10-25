@@ -158,30 +158,7 @@ def _must(name: str) -> str:
     return v
 
 
-import os
 
-def env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
-
-# -- Email (Brevo) --
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND") or (
-    "django.core.mail.backends.console.EmailBackend" if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend"
-)
-
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-
-# Brevo: 587 = STARTTLS ; 465 = SSL
-EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", not EMAIL_USE_SSL)
-
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@chuchote.com")
-SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
-
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
 
 # EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 # EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
@@ -241,13 +218,41 @@ CSRF_TRUSTED_ORIGINS = ["https://chuchote.com", "https://www.chuchote.com"]
 
 
 
+import os
+
+def env_bool(name: str, default: bool = False) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip().lower() in {"1", "true", "yes", "on"}
+
+# --- Email (Brevo) ---
+# Si EMAIL_BACKEND est défini dans l'ENV, on le respecte.
+# Sinon: console en DEBUG, SMTP en PROD.
+_email_backend_env = os.getenv("EMAIL_BACKEND")
+EMAIL_BACKEND = _email_backend_env or (
+    "django.core.mail.backends.console.EmailBackend" if DEBUG
+    else "django.core.mail.backends.smtp.EmailBackend"
+)
+
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
+
+# SSL/TLS: si SSL=1 => port par défaut 465 ; sinon STARTTLS => 587
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", not EMAIL_USE_SSL)
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "465" if EMAIL_USE_SSL else "587"))
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+
+# Utilise un expéditeur VALIDÉ chez Brevo (domaines/senders)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@chuchote.com")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
+
 # Lien de reset de mot de passe (2 jours par défaut)
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24 * 2)))
-
-# En DEV: afficher les mails dans la consoleEMAIL_HOST=smtp-relay.brevo.com
-
-if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Auth backend (insensibilité à la casse pour login)
 AUTHENTICATION_BACKENDS = [
