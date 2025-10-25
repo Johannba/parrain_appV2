@@ -28,5 +28,8 @@ EXPOSE 8000
 
 CMD ["gunicorn", "config.wsgi:application", "--config", "/app/gunicorn.conf.py"]
 
-ARG GIT_SHA=unknown
+
+# --- marquage de build ---
+ARG GIT_SHA=dev
 RUN echo "$GIT_SHA" > /app/.build_sha
+ENV APP_BUILD_SHA=$GIT_SHA
