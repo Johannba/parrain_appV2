@@ -35,9 +35,9 @@ def root_view(request):
         return redirect("/dashboard/")     # fallback simple
 
 urlpatterns = [
-    path("", root_view, name="root"),
+    # path("", root_view, name="root"),
+    path("", include("dashboard.urls")),
     path("chuchote/", include("public.urls")),
-    path("dashboard/", include("dashboard.urls")),
     path("accounts/", include(("accounts.urls", "accounts"), namespace="accounts")),
     path("entreprise/", include(("entreprises.urls", "entreprises"), namespace="entreprises")),
     path("rewards/", include(("rewards.urls", "rewards"), namespace="rewards")),

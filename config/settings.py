@@ -59,7 +59,9 @@ INSTALLED_APPS = [
     "widget_tweaks",
 ]
 
-SITE_ID = 1
+# settings.py
+SITE_ID = int(os.getenv("SITE_ID", "1"))
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -116,8 +118,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
-LANGUAGE_CODE = 'fr-fr'
-TIME_ZONE = 'Europe/Paris'  # ou Africa/Cairo selon ton serveur
+LANGUAGE_CODE = "fr-fr"
+TIME_ZONE = os.getenv("TIME_ZONE", "Europe/Paris")  
 USE_I18N = True
 USE_TZ = True
 
@@ -170,10 +172,6 @@ def _must(name: str) -> str:
 
 # DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Johann Bacha <johannbacha@gmail.com>")
 # SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
-
-# (utile en cas de réseau lent / blocage)
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
-
 
 
 SMSMODE = {
