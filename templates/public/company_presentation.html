@@ -331,7 +331,7 @@
         depuis votre boîte mail (comme “mot de passe oublié”).
       </div>
       <div class="modal-footer">
-        <form method="post" action="{% url 'public:referrer_reset_access' company.slug %}">
+        <form method="post" action="{% url 'public:referrer_reset_request' company.slug %}">
           {% csrf_token %}
           <input type="hidden" name="email" value="{{ suggest_reset_email }}">
           <input type="hidden" name="first_name" value="{{ suggest_reset_first_name|default_if_none:'' }}">

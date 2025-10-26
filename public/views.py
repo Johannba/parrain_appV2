@@ -1,81 +1,43 @@
-# public/views.py
 from __future__ import annotations
 
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-
+from django.urls import reverse
+from django.core import signing
+from django.core.mail import send_mail
+from django.conf import settings
+from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
-from django.utils.crypto import get_random_string
 
 from accounts.models import Company
 from dashboard.models import Client
-from .forms import ReferrerForm
+from .forms import ReferrerForm, ReferrerResetForm
 from rewards.models import RewardTemplate
-from django.contrib.auth.forms import PasswordResetForm
-from django.conf import settings
-
 
 # ---------------------------
-# Helpers
+# Constantes / helpers
 # ---------------------------
 
-# def _ensure_referrer_user(*, email: str, company: Company, first_name: str = "", last_name: str = ""):
-#     """
-#     Assure qu'un accounts.User existe pour cet email :
-#       - username = email
-#       - profile = CLIENT (rôle neutre = “aucun rôle”)
-#       - company = l’entreprise courante
-#       - mot de passe utilisable aléatoire si absent/inutilisable
-#     Retourne (user, created: bool)
-#     """
-#     User = get_user_model()
-#     email = (email or "").strip()
-#     if not email:
-#         return None, False
+REFERRER_RESET_SALT = "referrer-profile-reset"
+REFERRER_RESET_MAX_AGE = getattr(settings, "REFERRER_RESET_MAX_AGE", 3 * 24 * 3600)  # 3 jours
 
-#     u = User.objects.filter(email__iexact=email).first()
-#     if u:
-#         changed = False
-#         # mot de passe utilisable (si jamais on avait un unusable)
-#         if not u.has_usable_password():
-#             u.set_password(get_random_string(32)); changed = True
-#         # compléter les champs vides utiles
-#         if first_name and not u.first_name:
-#             u.first_name = first_name; changed = True
-#         if last_name and not u.last_name:
-#             u.last_name = last_name; changed = True
-#         # rôle neutre + rattachement
-#         if hasattr(u, "profile") and u.profile != User.Profile.CLIENT:
-#             u.profile = User.Profile.CLIENT; changed = True
-#         if hasattr(u, "company") and company and not u.company_id:
-#             u.company = company; changed = True
-#         if not u.is_active:
-#             u.is_active = True; changed = True
-#         if changed:
-#             u.save()
-#         return u, False
+def _build_reset_link(request, *, client: Client) -> str:
+    """
+    Génère un lien signé (token) pour éditer le profil parrain (nom/prénom/téléphone).
+    Le token embarque: cid, company_id, email — et expire côté verification.
+    """
+    payload = {
+        "cid": client.pk,
+        "company_id": client.company_id,
+        "email": (client.email or "").strip().lower(),
+    }
+    token = signing.dumps(payload, salt=REFERRER_RESET_SALT)
+    url = reverse("public:referrer_reset_edit", kwargs={"slug": client.company.slug, "token": token})
+    return request.build_absolute_uri(url)
 
-#     # création
-#     u = User(
-#         username=email,           # AbstractUser -> username requis
-#         email=email,
-#         first_name=first_name or "",
-#         last_name=last_name or "",
-#         is_active=True,
-#     )
-#     if hasattr(u, "profile"):
-#         u.profile = User.Profile.CLIENT
-#     if hasattr(u, "company") and company:
-#         u.company = company
-#     u.set_password(get_random_string(32))
-#     u.save()
-#     return u, True
-
-
-# ---------------------------
-# Vues publiques
-# ---------------------------
+def _loads_token(token: str) -> dict:
+    return signing.loads(token, max_age=REFERRER_RESET_MAX_AGE, salt=REFERRER_RESET_SALT)
 
 def company_presentation(request, slug: str):
     company = get_object_or_404(Company, slug=slug)
@@ -90,7 +52,7 @@ def company_presentation(request, slug: str):
         lbl = (tpls.get(b).label or "").strip() if tpls.get(b) else ""
         base_labels.append(lbl or b.title())
 
-    # 8 cases en répétant l’ordre (S, M, R, TR, S, M, R, TR)
+    # 8 cases
     wheel_labels = (base_labels * ((8 + len(base_labels) - 1) // len(base_labels)))[:8]
 
     return render(request, "public/company_presentation.html", {
@@ -99,110 +61,15 @@ def company_presentation(request, slug: str):
         "wheel_labels": wheel_labels,
     })
 
-# public/views.py (extrait)
-from django.shortcuts import get_object_or_404, render, redirect
-from django.contrib import messages
-from django.db import IntegrityError, transaction
-from django.contrib.auth.forms import PasswordResetForm
-from django.contrib.auth import get_user_model
-from django.utils.crypto import get_random_string
-
-from accounts.models import Company
-from dashboard.models import Client
-from .forms import ReferrerForm
-
-def _ensure_referrer_user(*, email, company, first_name="", last_name=""):
-    """
-    Ne crée rien.
-    Si un User avec cet email existe :
-      - assure un mot de passe utilisable (si absent)
-      - complète first_name / last_name s’ils sont vides
-      - force le profil CLIENT (si l’attribut 'profile' existe)
-      - rattache la company si absente (si l’attribut 'company' existe)
-      - réactive le compte si inactif
-    Retourne (user|None, created=False)
-    """
-    User = get_user_model()
-    email = (email or "").strip()
-    if not email:
-        return None, False
-
-    u = User.objects.filter(email__iexact=email).first()
-    if not u:
-        # NE PAS créer d’utilisateur
-        return None, False
-
-    changed = False
-
-    # Mot de passe utilisable
-    if not u.has_usable_password():
-        u.set_password(get_random_string(32))
-        changed = True
-
-    # Compléter les champs vides
-    if first_name and not u.first_name:
-        u.first_name = first_name
-        changed = True
-    if last_name and not u.last_name:
-        u.last_name = last_name
-        changed = True
-
-    # Rôle neutre CLIENT (si l’attribut existe)
-    if hasattr(u, "profile"):
-        try:
-            if u.profile != User.Profile.CLIENT:
-                u.profile = User.Profile.CLIENT
-                changed = True
-        except Exception:
-            # Si votre modèle n’a pas User.Profile.CLIENT, on ignore
-            pass
-
-    # Rattacher la company si non renseignée (si l’attribut existe)
-    if hasattr(u, "company") and company and not getattr(u, "company_id", None):
-        u.company = company
-        changed = True
-
-    # Réactiver si nécessaire
-    if not u.is_active:
-        u.is_active = True
-        changed = True
-
-    if changed:
-        u.save()
-
-    return u, False
-
-
-
-def _send_password_reset(request, email: str) -> bool:
-    if not email:
-        return False
-    frm = PasswordResetForm(data={"email": email})
-    if not frm.is_valid():
-        return False
-    frm.save(
-        request=request,
-        use_https=request.is_secure(),
-        subject_template_name="accounts/emails/password_reset_subject.txt",
-        email_template_name="accounts/emails/password_reset_email.txt",
-        html_email_template_name="accounts/emails/password_reset_email.html",
-        from_email=settings.DEFAULT_FROM_EMAIL,
-    )
-    return True
-
-
-
 def referrer_register(request, slug: str):
     """
     Inscription d'un parrain depuis la page publique.
-    - Affiche UNIQUEMENT des erreurs (email/phone déjà utilisés, form invalide).
-    - En cas de succès: création silencieuse + envoi reset password possible, puis redirect sans messages.
-    - Si l'email existe déjà comme parrain dans l'entreprise : on déclenche une modale
-      proposant l'envoi d'un lien de "réinitialisation" (mot de passe oublié).
+    - Si l'email est déjà utilisé par un parrain de l'entreprise :
+      on déclenche une modale proposant d'envoyer un LIEN DE RÉINITIALISATION DE PROFIL (pas mot de passe).
+    - Sinon : on crée le parrain et on redirige proprement.
     """
     company = get_object_or_404(Company, slug=slug)
 
-    # helper local pour les libellés de la roue (nécessaires au template lors d'un render avec erreurs)
     def _wheel_labels_for(_company: Company):
         order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
         tpls = {t.bucket: t for t in RewardTemplate.objects.filter(company=_company)}
@@ -222,7 +89,7 @@ def referrer_register(request, slug: str):
     posted_ln = (request.POST.get("last_name") or "").strip()
 
     if form.is_valid():
-        # Email déjà parrain pour cette entreprise → erreur sur le champ email + déclenchement du pop-up
+        # 1) Email déjà parrain pour cette entreprise ? -> erreur + ouverture du pop-up "réinit profil"
         already_by_email = bool(
             posted_email and Client.objects.filter(
                 company=company, email__iexact=posted_email, is_referrer=True
@@ -238,7 +105,7 @@ def referrer_register(request, slug: str):
                     "form": form,
                     "wheel_labels": _wheel_labels_for(company),
                     "form_errors": True,
-                    # 👇 Flags pour déclencher le pop-up de réinitialisation
+                    # Flags -> modale qui propose l'envoi du lien de RÉINITIALISATION DE PROFIL
                     "suggest_reset": True,
                     "suggest_reset_email": posted_email,
                     "suggest_reset_first_name": posted_fn,
@@ -246,7 +113,7 @@ def referrer_register(request, slug: str):
                 },
             )
 
-        # Création du parrain
+        # 2) Création du parrain
         ref = form.save(commit=False)
         ref.company = company
         ref.is_referrer = True
@@ -254,7 +121,6 @@ def referrer_register(request, slug: str):
             with transaction.atomic():
                 ref.save()
         except IntegrityError as e:
-            # Doublons DB (unique phone/email, etc.) → map vers champs si possible
             emsg = str(e).lower()
             if "phone" in emsg or "téléphone" in emsg or "telephone" in emsg:
                 form.add_error("phone", "Ce numéro de téléphone est déjà utilisé.")
@@ -273,18 +139,10 @@ def referrer_register(request, slug: str):
                 },
             )
 
-        # Succès silencieux : on assure le compte et on envoie le reset SANS message
-        if posted_email:
-            _ensure_referrer_user(
-                email=posted_email, company=company,
-                first_name=posted_fn, last_name=posted_ln
-            )
-            _send_password_reset(request, posted_email)
-
-        # Redirection propre, aucun message à afficher
+        # 3) Succès silencieux → redirect
         return redirect("public:company_presentation", slug=slug)
 
-    # Form invalide → réaffiche avec erreurs (aucun email envoyé ici)
+    # Form invalide → réaffiche avec erreurs
     return render(
         request,
         "public/company_presentation.html",
@@ -296,29 +154,113 @@ def referrer_register(request, slug: str):
         },
     )
 
-from django.views.decorators.http import require_POST
-
 @require_POST
-def referrer_reset_access(request, slug: str):
+def referrer_reset_request(request, slug: str):
     """
-    Depuis le pop-up : envoie un email de réinitialisation au parrain détecté.
-    Ne révèle pas si le compte existe (anti user-enumeration).
+    Action depuis la modale : envoie un email contenant un LIEN de réinitialisation de profil (nom/prénom/téléphone).
+    On ne parle PAS de mot de passe.
     """
     company = get_object_or_404(Company, slug=slug)
-    email = (request.POST.get("email") or "").strip()
+    email = (request.POST.get("email") or "").strip().lower()
 
-    # Rendre le compte "réinitialisable" s'il existe (sans créer)
-    _ensure_referrer_user(
-        email=email, company=company,
-        first_name=request.POST.get("first_name", "").strip(),
-        last_name=request.POST.get("last_name", "").strip(),
-    )
+    # On cherche le parrain existant pour CETTE entreprise
+    client = Client.objects.filter(company=company, is_referrer=True, email__iexact=email).first()
 
-    # Envoi du mail de reset (si le formulaire Django l'accepte)
-    _send_password_reset(request, email)
+    # Toujours message 'succès' pour ne pas divulguer l'existence, mais si on l'a trouvé on envoie réellement.
+    if client:
+        try:
+            link = _build_reset_link(request, client=client)
+            subject = f"Réinitialisez votre inscription parrain chez {company.name}"
+            body = (
+                f"Bonjour {client.first_name or client.last_name or ''},\n\n"
+                f"Vous pouvez remettre à jour votre profil parrain (nom, prénom, téléphone) en suivant ce lien :\n"
+                f"{link}\n\n"
+                f"Ce lien est valable {int(REFERRER_RESET_MAX_AGE/3600)} heures.\n"
+                f"— {company.name}"
+            )
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                recipient_list=[email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            messages.warning(request, f"Le lien de réinitialisation n'a pas pu être envoyé : {e}")
 
     messages.success(
         request,
-        "Si un compte existe pour cet email, un lien de réinitialisation vient de vous être envoyé."
+        "Si un compte existe pour cet email, un lien de réinitialisation de votre profil vient de vous être envoyé."
     )
     return redirect("public:company_presentation", slug=slug)
+
+def referrer_reset_edit(request, slug: str, token: str):
+    """
+    Page/traitement via lien signé :
+      - Affiche le formulaire pré-rempli (nom, prénom, téléphone) avec email en lecture seule.
+      - Met à jour le Client (parrain) de l'entreprise.
+    """
+    company = get_object_or_404(Company, slug=slug)
+    try:
+        data = _loads_token(token)
+    except signing.SignatureExpired:
+        messages.error(request, "Ce lien a expiré. Merci de redemander une réinitialisation.")
+        return redirect("public:company_presentation", slug=slug)
+    except signing.BadSignature:
+        messages.error(request, "Lien invalide.")
+        return redirect("public:company_presentation", slug=slug)
+
+    # Vérifications de cohérence
+    if data.get("company_id") != company.id:
+        messages.error(request, "Lien invalide pour cette entreprise.")
+        return redirect("public:company_presentation", slug=slug)
+
+    client = Client.objects.filter(
+        pk=data.get("cid"),
+        company=company,
+        is_referrer=True,
+        email__iexact=(data.get("email") or ""),
+    ).first()
+
+    if not client:
+        messages.error(request, "Impossible de trouver le profil à réinitialiser.")
+        return redirect("public:company_presentation", slug=slug)
+
+    if request.method == "POST":
+        form = ReferrerResetForm(request.POST, client=client, instance=client)
+        if form.is_valid():
+            with transaction.atomic():
+                form.save()
+
+                # (Optionnel) synchroniser les noms côté User s'il existe
+                try:
+                    User = get_user_model()
+                    u = User.objects.filter(email__iexact=client.email).first()
+                    if u:
+                        changed = False
+                        if u.first_name != client.first_name:
+                            u.first_name = client.first_name or ""
+                            changed = True
+                        if u.last_name != client.last_name:
+                            u.last_name = client.last_name or ""
+                            changed = True
+                        if changed:
+                            u.save(update_fields=["first_name", "last_name"])
+                except Exception:
+                    pass
+
+            messages.success(request, "Votre profil parrain a bien été mis à jour.")
+            return redirect("public:company_presentation", slug=slug)
+    else:
+        form = ReferrerResetForm(client=client, instance=client, initial={
+            "last_name": client.last_name,
+            "first_name": client.first_name,
+            "phone": client.phone,
+        })
+
+    # Réutilise le même layout public (tu peux aussi créer un template dédié)
+    return render(
+        request,
+        "public/referrer_reset_edit.html",  # crée un template simple avec {{ form }} et les couleurs de l'entreprise
+        {"company": company, "form": form, "client": client},
+    )
