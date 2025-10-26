@@ -2,6 +2,89 @@ from django import forms
 from django.forms import Select, TextInput, EmailInput
 from .models import Client, Company, Referral
 
+# --- Normalisation téléphone (sans jamais forcer +33) ---
+try:
+    import phonenumbers
+except Exception:
+    phonenumbers = None  # dégrade en no-op si lib absente
+
+# Préfixes DOM/TOM -> régions libphonenumber
+FR_DOM_PREFIX_MAP = {
+    "0590": "GP", "0690": "GP",  # Guadeloupe (+590)
+    "0594": "GF", "0694": "GF",  # Guyane (+594)
+    "0596": "MQ", "0696": "MQ",  # Martinique (+596)
+    "0262": "RE", "0692": "RE", "0693": "RE",  # Réunion (+262)
+    "0269": "YT", "0691": "YT",  # Mayotte (+262)
+}
+
+def _company_region_hint(company) -> str | None:
+    """Essaye de déduire l'ISO2 (GP, GF, MQ, RE, YT, FR, ...) depuis l'objet company."""
+    if not company:
+        return None
+    # attributs possibles selon tes modèles
+    for attr in ("country_code", "iso2", "country", "pays"):
+        val = getattr(company, attr, None)
+        if not val:
+            continue
+        code = str(val).strip().upper()
+        name_to_iso2 = {
+            "GUADELOUPE": "GP", "GP": "GP",
+            "MARTINIQUE": "MQ", "MQ": "MQ",
+            "GUYANE": "GF", "GUYANE FRANCAISE": "GF", "GUYANE FRANÇAISE": "GF", "GF": "GF",
+            "REUNION": "RE", "RÉUNION": "RE", "RE": "RE",
+            "MAYOTTE": "YT", "YT": "YT",
+            "SAINT-PIERRE-ET-MIQUELON": "PM", "PM": "PM",
+            "NOUVELLE-CALEDONIE": "NC", "NOUVELLE-CALÉDONIE": "NC", "NC": "NC",
+            "POLYNESIE FRANCAISE": "PF", "POLYNÉSIE FRANÇAISE": "PF", "PF": "PF",
+            "FRANCE": "FR", "FR": "FR",
+        }
+        if code in name_to_iso2:
+            return name_to_iso2[code]
+        if len(code) == 2:  # déjà un ISO2
+            return code
+    return None
+
+def _guess_region_from_number(raw: str) -> str | None:
+    """Si le numéro ressemble à un DOM (0590/0594/...), propose une région ISO2."""
+    s = "".join(ch for ch in str(raw) if ch.isdigit() or ch == "+")
+    if s.startswith("+"):
+        return None  # déjà avec code pays -> on ne force rien
+    for p, region in FR_DOM_PREFIX_MAP.items():
+        if s.startswith(p):
+            return region
+    return None  # pas d'hypothèse -> surtout ne pas forcer FR
+
+def normalize_phone(raw: str, company=None) -> str:
+    """
+    Normalise en E.164 si (et seulement si) on peut déterminer le pays.
+    - Si le numéro commence par + : on valide/normalise tel quel.
+    - Sinon, on cherche d'abord le pays depuis company, sinon via les préfixes DOM.
+    - Si on ne sait pas -> on retourne la saisie d'origine (pas de +33 sauvage).
+    """
+    raw = (raw or "").strip()
+    if not raw or phonenumbers is None:
+        return raw
+
+    # Déjà international -> on valide et normalise
+    if raw.startswith("+"):
+        try:
+            n = phonenumbers.parse(raw, None)
+            return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
+        except Exception:
+            return raw  # on ne casse pas
+
+    region = _company_region_hint(company) or _guess_region_from_number(raw)
+    if not region:
+        return raw  # pas d'hypothèse fiable -> on touche pas
+
+    try:
+        n = phonenumbers.parse(raw, region)
+        if not phonenumbers.is_valid_number(n):
+            return raw
+        return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
+    except Exception:
+        return raw
+
 # --------------------------
 # Utilitaire commun
 # --------------------------
@@ -74,6 +157,10 @@ class ReferrerClientForm(forms.ModelForm):
         cleaned["last_name"] = ln
         cleaned["first_name"] = fn
         cleaned["email"] = email
+        
+         # ✅ Normalisation téléphone SANS +33 forcé
+        phone = (cleaned.get("phone") or "").strip()
+        cleaned["phone"] = normalize_phone(phone, company)
 
         # 1) Si un PARRAIN existe déjà avec même email → erreur
         if company and email:
@@ -287,7 +374,12 @@ class RefereeInlineForm(forms.ModelForm):
         obj.first_name = self.cleaned_data.get("first_name", "")
         obj.email = self.cleaned_data.get("email", None)
         obj.phone = self.cleaned_data.get("phone", "")
+        
+        raw_phone = self.cleaned_data.get("phone", "")
+        obj.phone = normalize_phone(raw_phone, company)
+        
         obj.is_referrer = False
+        
         if commit:
             obj.save()
         return obj
