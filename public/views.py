@@ -197,6 +197,8 @@ def referrer_register(request, slug: str):
     Inscription d'un parrain depuis la page publique.
     - Affiche UNIQUEMENT des erreurs (email/phone déjà utilisés, form invalide).
     - En cas de succès: création silencieuse + envoi reset password possible, puis redirect sans messages.
+    - Si l'email existe déjà comme parrain dans l'entreprise : on déclenche une modale
+      proposant l'envoi d'un lien de "réinitialisation" (mot de passe oublié).
     """
     company = get_object_or_404(Company, slug=slug)
 
@@ -220,7 +222,7 @@ def referrer_register(request, slug: str):
     posted_ln = (request.POST.get("last_name") or "").strip()
 
     if form.is_valid():
-        # Email déjà parrain pour cette entreprise → erreur sur le champ email
+        # Email déjà parrain pour cette entreprise → erreur sur le champ email + déclenchement du pop-up
         already_by_email = bool(
             posted_email and Client.objects.filter(
                 company=company, email__iexact=posted_email, is_referrer=True
@@ -228,12 +230,21 @@ def referrer_register(request, slug: str):
         )
         if already_by_email:
             form.add_error("email", "Cet email est déjà utilisé par un parrain de cette entreprise.")
-            return render(request, "public/company_presentation.html", {
-                "company": company,
-                "form": form,
-                "wheel_labels": _wheel_labels_for(company),
-                "form_errors": True,
-            })
+            return render(
+                request,
+                "public/company_presentation.html",
+                {
+                    "company": company,
+                    "form": form,
+                    "wheel_labels": _wheel_labels_for(company),
+                    "form_errors": True,
+                    # 👇 Flags pour déclencher le pop-up de réinitialisation
+                    "suggest_reset": True,
+                    "suggest_reset_email": posted_email,
+                    "suggest_reset_first_name": posted_fn,
+                    "suggest_reset_last_name": posted_ln,
+                },
+            )
 
         # Création du parrain
         ref = form.save(commit=False)
@@ -251,12 +262,16 @@ def referrer_register(request, slug: str):
                 form.add_error("email", "Cet email est déjà utilisé.")
             else:
                 form.add_error(None, "Ce parrain existe déjà pour cette entreprise.")
-            return render(request, "public/company_presentation.html", {
-                "company": company,
-                "form": form,
-                "wheel_labels": _wheel_labels_for(company),
-                "form_errors": True,
-            })
+            return render(
+                request,
+                "public/company_presentation.html",
+                {
+                    "company": company,
+                    "form": form,
+                    "wheel_labels": _wheel_labels_for(company),
+                    "form_errors": True,
+                },
+            )
 
         # Succès silencieux : on assure le compte et on envoie le reset SANS message
         if posted_email:
@@ -270,9 +285,40 @@ def referrer_register(request, slug: str):
         return redirect("public:company_presentation", slug=slug)
 
     # Form invalide → réaffiche avec erreurs (aucun email envoyé ici)
-    return render(request, "public/company_presentation.html", {
-        "company": company,
-        "form": form,
-        "wheel_labels": _wheel_labels_for(company),
-        "form_errors": True,
-    })
+    return render(
+        request,
+        "public/company_presentation.html",
+        {
+            "company": company,
+            "form": form,
+            "wheel_labels": _wheel_labels_for(company),
+            "form_errors": True,
+        },
+    )
+
+from django.views.decorators.http import require_POST
+
+@require_POST
+def referrer_reset_access(request, slug: str):
+    """
+    Depuis le pop-up : envoie un email de réinitialisation au parrain détecté.
+    Ne révèle pas si le compte existe (anti user-enumeration).
+    """
+    company = get_object_or_404(Company, slug=slug)
+    email = (request.POST.get("email") or "").strip()
+
+    # Rendre le compte "réinitialisable" s'il existe (sans créer)
+    _ensure_referrer_user(
+        email=email, company=company,
+        first_name=request.POST.get("first_name", "").strip(),
+        last_name=request.POST.get("last_name", "").strip(),
+    )
+
+    # Envoi du mail de reset (si le formulaire Django l'accepte)
+    _send_password_reset(request, email)
+
+    messages.success(
+        request,
+        "Si un compte existe pour cet email, un lien de réinitialisation vient de vous être envoyé."
+    )
+    return redirect("public:company_presentation", slug=slug)

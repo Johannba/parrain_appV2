@@ -37,7 +37,7 @@
       word-break:break-word;
       overflow-wrap:anywhere;
       hyphens:auto;
-      overflow:hidden;           /* on réduit la taille jusqu’à tout faire tenir */
+      overflow:hidden;
       letter-spacing:.1px;
       line-height:1.05;
       font-weight:600;
@@ -123,154 +123,146 @@
     </div>
   </section>
 
-<!-- ======================= ROUE ======================= -->
-<section class="container py-4" aria-labelledby="rewards-title">
-  <h2 id="rewards-title" class="h5 fw-semibold text-center mb-2">Les récompenses mystère à gagner</h2>
-  <p class="small opacity-75 text-center mb-3">Tes proches gagnent, toi aussi : double dose de bonheur ✨</p>
+  <!-- ======================= ROUE ======================= -->
+  <section class="container py-4" aria-labelledby="rewards-title">
+    <h2 id="rewards-title" class="h5 fw-semibold text-center mb-2">Les récompenses mystère à gagner</h2>
+    <p class="small opacity-75 text-center mb-3">Tes proches gagnent, toi aussi : double dose de bonheur ✨</p>
 
-  <style>
-    /* Tout reste strictement dans le disque => plus de “croix”/débordements */
-    #wheel-disk, #wheel-labels, #wheel-lines { border-radius:50%; overflow:hidden; }
+    <style>
+      /* Tout reste strictement dans le disque => plus de “croix”/débordements */
+      #wheel-disk, #wheel-labels, #wheel-lines { border-radius:50%; overflow:hidden; }
+      /* Une “case” = un secteur annulaire qui clippe son contenu */
+      #wheel .wedge { position:absolute; inset:0; pointer-events:none; }
+      /* Slot qui porte le texte et se place au centre de la case */
+      #wheel .wheel-slot{
+        position:absolute; left:50%; top:50%;
+        transform-origin:center center;
+        display:flex; align-items:center; justify-content:center;
+        pointer-events:none;
+      }
+      /* Texte multi-lignes (1 → 3 lignes max), priorité à 1 ligne */
+      #wheel .wheel-label{
+        white-space:normal;
+        word-break:normal;
+        overflow-wrap:break-word;
+        hyphens:none;
+        text-align:center; line-height:1.12; letter-spacing:.1px;
+        font-weight:700;
+        transform-origin:center center;
+      }
+      /* Traits de séparation (8 cases) */
+      #wheel .wheel-line{
+        position:absolute; left:50%; top:50%;
+        width:1px; height:100%;
+        background:#ffffffcc; box-shadow:0 0 0 1px #0000000f;
+        transform-origin:50% 100%;
+        pointer-events:none;
+      }
+      /* Chaque triangle qui clippe son contenu */
+      #wheel .wedge-clip{ position:absolute; inset:0; pointer-events:none; }
+      /* Le libellé est centré sur (left, top) via translate */
+      #wheel .wheel-label{
+        position:absolute;
+        transform:translate(-50%,-50%);
+        text-align:center;
+        line-height:1.15;
+        font-weight:700;
+        white-space:normal;
+        word-break:normal;
+        overflow-wrap:break-word;
+        hyphens:none;
+        pointer-events:none;
+      }
+    </style>
 
-    /* Une “case” = un secteur annulaire qui clippe son contenu */
-    #wheel .wedge { position:absolute; inset:0; pointer-events:none; }
+    <div class="d-flex justify-content-center">
+      <div id="wheel" class="position-relative" style="width:320px;height:340px;">
+        <div class="position-absolute start-50 translate-middle-x" style="top:-4px;">
+          <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:8px solid #000;"></div>
+        </div>
 
-    /* Slot qui porte le texte et se place au centre de la case */
-    #wheel .wheel-slot{
-      position:absolute; left:50%; top:50%;
-      transform-origin:center center;
-      display:flex; align-items:center; justify-content:center;
-      pointer-events:none;
-    }
+        <!-- Disque -->
+        <div id="wheel-disk" class="position-absolute top-0 start-0 end-0 bottom-0 rounded-circle shadow border" style="top:16px;border-color: {{ company.primary_color }}"></div>
 
-    /* Texte multi-lignes (1 → 3 lignes max), priorité à 1 ligne */
-    #wheel .wheel-label{
-      white-space:normal;               /* plusieurs mots par ligne */
-      word-break:normal;                /* ne coupe pas au milieu d’un mot */
-      overflow-wrap:break-word;         /* coupe proprement si besoin */
-      hyphens:none;                     /* pas de césure type “-” */
-      text-align:center; line-height:1.12; letter-spacing:.1px;
-      font-weight:700;
-      transform-origin:center center;   /* on tournera le texte à -90° */
-    }
+        <!-- Séparateurs -->
+        <div id="wheel-lines"  class="position-absolute top-0 start-0 end-0 bottom-0" style="top:16px;"></div>
 
-    /* Traits de séparation (8 cases) */
-    #wheel .wheel-line{
-      position:absolute; left:50%; top:50%;
-      width:1px; height:100%;
-      background:#ffffffcc; box-shadow:0 0 0 1px #0000000f;
-      transform-origin:50% 100%;
-      pointer-events:none;
-    }
+        <!-- Wedges + labels (clippés) -->
+        <div id="wheel-labels" class="position-absolute top-0 start-0 end-0 bottom-0" style="top:16px;"></div>
 
-    /* Chaque triangle qui clippe son contenu */
-    #wheel .wedge-clip{ position:absolute; inset:0; pointer-events:none; }
-
-    /* Le libellé est centré sur (left, top) via translate */
-    #wheel .wheel-label{
-      position:absolute;
-      transform:translate(-50%,-50%);  /* centre le bloc sur ses coords */
-      text-align:center;
-      line-height:1.15;
-      font-weight:700;
-      white-space:normal;
-      word-break:normal;
-      overflow-wrap:break-word;
-      hyphens:none;
-      pointer-events:none;
-  }
-  </style>
-  
-  <div class="d-flex justify-content-center">
-    <div id="wheel" class="position-relative" style="width:320px;height:340px;">
-      <div class="position-absolute start-50 translate-middle-x" style="top:-4px;">
-        <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:8px solid #000;"></div>
-      </div>
-
-      <!-- Disque -->
-      <div id="wheel-disk" class="position-absolute top-0 start-0 end-0 bottom-0 rounded-circle shadow border" style="top:16px;border-color: {{ company.primary_color }}"></div>
-
-      <!-- Séparateurs -->
-      <div id="wheel-lines"  class="position-absolute top-0 start-0 end-0 bottom-0" style="top:16px;"></div>
-
-      <!-- Wedges + labels (clippés) -->
-      <div id="wheel-labels" class="position-absolute top-0 start-0 end-0 bottom-0" style="top:16px;"></div>
-
-      <!-- Moyeu -->
-      <div class="position-absolute top-0 start-0 end-0 bottom-0 d-flex align-items-center justify-content-center" style="top:16px;">
-        <div class="rounded-circle d-flex align-items-center justify-content-center border border-4 bg-black text-white shadow" style="width:80px;height:80px;border-color:#fff;">🎁</div>
+        <!-- Moyeu -->
+        <div class="position-absolute top-0 start-0 end-0 bottom-0 d-flex align-items-center justify-content-center" style="top:16px;">
+          <div class="rounded-circle d-flex align-items-center justify-content-center border border-4 bg-black text-white shadow" style="width:80px;height:80px;border-color:#fff;">🎁</div>
+        </div>
       </div>
     </div>
-  </div>
 
-  {{ wheel_labels|json_script:"wheel-items" }}
-</section>
+    {{ wheel_labels|json_script:"wheel-items" }}
+  </section>
 
+  <!-- Formulaire -->
+  <section class="container pb-5" aria-labelledby="form-title" style="max-width:720px;">
+    <h2 id="form-title" class="h5 fw-semibold text-center mb-3" style="color: {{ company.primary_color }}">✍️ Inscris-toi comme parrain ici</h2>
 
- <!-- Formulaire -->
-<section class="container pb-5" aria-labelledby="form-title" style="max-width:720px;">
-  <h2 id="form-title" class="h5 fw-semibold text-center mb-3" style="color: {{ company.primary_color }}">✍️ Inscris-toi comme parrain ici</h2>
-
-  <div class="bg-white p-4 shadow-sm frame-double">
-
-    {# --- Messages: n'afficher QUE les erreurs --- #}
-    {% if messages %}
-      {% for m in messages %}
-        {% if 'error' in m.tags %}
-          <div class="alert alert-danger" role="alert">{{ m }}</div>
-        {% endif %}
-      {% endfor %}
-    {% endif %}
-
-    {# --- Erreurs globales du formulaire --- #}
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger mb-3" role="alert">{{ form.non_field_errors }}</div>
-    {% endif %}
-
-    <form method="post" action="{% url 'public:referrer_register' company.slug %}" novalidate>
-      {% csrf_token %}
-      <div class="row g-3">
-        <div class="col-md-6">
-          <label class="form-label">Nom *</label>
-          {{ form.last_name }}
-          {% if form.last_name.errors %}
-            <div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>
+    <div class="bg-white p-4 shadow-sm frame-double">
+      {# --- Messages: n'afficher QUE les erreurs --- #}
+      {% if messages %}
+        {% for m in messages %}
+          {% if 'error' in m.tags %}
+            <div class="alert alert-danger" role="alert">{{ m }}</div>
           {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {# --- Erreurs globales du formulaire --- #}
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger mb-3" role="alert">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <form method="post" action="{% url 'public:referrer_register' company.slug %}" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Nom *</label>
+            {{ form.last_name }}
+            {% if form.last_name.errors %}
+              <div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Prénom *</label>
+            {{ form.first_name }}
+            {% if form.first_name.errors %}
+              <div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Téléphone *</label>
+            {{ form.phone }}
+            {% if form.phone.errors %}
+              <div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Email</label>
+            {{ form.email }}
+            {% if form.email.errors %}
+              <div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>
+            {% endif %}
+          </div>
         </div>
 
-        <div class="col-md-6">
-          <label class="form-label">Prénom *</label>
-          {{ form.first_name }}
-          {% if form.first_name.errors %}
-            <div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>
-          {% endif %}
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label">Téléphone *</label>
-          {{ form.phone }}
-          {% if form.phone.errors %}
-            <div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>
-          {% endif %}
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label">Email</label>
-          {{ form.email }}
-          {% if form.email.errors %}
-            <div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>
-          {% endif %}
-        </div>
-      </div>
-
-      <br>
-      <button type="submit" class="btn w-100 mt-3" style="background: var(--c1); color:#fff;">
-        ✅ Je m'inscris comme parrain
-      </button>
-      <p class="text-center text-muted small mt-1">* Champs obligatoires</p>
-    </form>
-  </div>
-</section>
+        <br>
+        <button type="submit" class="btn w-100 mt-3" style="background: var(--c1); color:#fff;">
+          ✅ Je m'inscris comme parrain
+        </button>
+        <p class="text-center text-muted small mt-1">* Champs obligatoires</p>
+      </form>
+    </div>
+  </section>
 
   <!-- FAQ -->
   <section class="container pb-5" aria-labelledby="faq-title">
@@ -324,6 +316,48 @@
   </footer>
 </main>
 
+{# =================== MODALE "email déjà utilisé → réinitialiser" =================== #}
+{% if suggest_reset %}
+<div class="modal fade" id="resetExistsModal" tabindex="-1" aria-labelledby="resetExistsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title" id="resetExistsModalLabel">Cet email existe déjà</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        Nous avons trouvé un compte pour <strong>{{ suggest_reset_email }}</strong>.<br>
+        Vous pouvez recevoir un <strong>lien de réinitialisation</strong> pour relancer votre inscription
+        depuis votre boîte mail (comme “mot de passe oublié”).
+      </div>
+      <div class="modal-footer">
+        <form method="post" action="{% url 'public:referrer_reset_access' company.slug %}">
+          {% csrf_token %}
+          <input type="hidden" name="email" value="{{ suggest_reset_email }}">
+          <input type="hidden" name="first_name" value="{{ suggest_reset_first_name|default_if_none:'' }}">
+          <input type="hidden" name="last_name" value="{{ suggest_reset_last_name|default_if_none:'' }}">
+          <button type="submit" class="btn btn-primary">M’envoyer le lien</button>
+        </form>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    try {
+      var el = document.getElementById("resetExistsModal");
+      if (el && window.bootstrap && bootstrap.Modal) {
+        new bootstrap.Modal(el, {backdrop: 'static'}).show();
+      } else if (el) {
+        // Fallback si JS Bootstrap non chargé
+        el.classList.add("show");
+        el.style.display = "block";
+      }
+    } catch(e) {}
+  });
+</script>
+{% endif %}
 
 <script>
 (function(){
@@ -352,19 +386,16 @@
   /* Géo du disque (dans la boîte "inset:16px") */
   const W = disk.clientWidth, H = disk.clientHeight, cx = W/2, cy = H/2;
   const outerR   = W/2;
-  const rimPad   = 0;                 // marge extérieure
-  const baseR    = outerR - rimPad;   // rayon côté bord
+  const rimPad   = 0;
+  const baseR    = outerR - rimPad;
 
-  // ► marge interne SUPPRIMÉE / réduite
-  const hubR     = 2;                 // rayon virtuel
-  const innerPad = 22;                // avant 35 — on colle davantage au centre
+  const hubR     = 2;
+  const innerPad = 22;
   const apexR    = hubR + innerPad;
 
-  // centre du label plus vers l’extérieur (plus de largeur de corde)
-  const CENTER_BIAS = 0.60;                              // 68% de l’épaisseur
+  const CENTER_BIAS = 0.60;
   const rLabel      = apexR + (baseR - apexR) * CENTER_BIAS;
 
-  /* Utils */
   const rad = d => d*Math.PI/180;
   const xy  = (r,aDeg)=>({ x: cx + r*Math.sin(rad(aDeg)), y: cy - r*Math.cos(rad(aDeg)) });
   const chordAt = (r)=> 2*r*Math.sin(segRad/2);
@@ -396,9 +427,9 @@
 
   /* Triangles + labels (sans marge interne) */
   labelsC.innerHTML = "";
-  const EDGE_MARGIN = 0;                                   // avant 18 — supprimé
+  const EDGE_MARGIN = 0;
   const tangentialW = Math.max(40, chordAt(rLabel) - 2*EDGE_MARGIN);
-  const radialH     = (baseR - apexR);                     // avant -12 — supprimé
+  const radialH     = (baseR - apexR);
 
   items.forEach((text, i) => {
     const a0 = i*segment, a1 = (i+1)*segment, am = a0 + segment/2;
@@ -415,7 +446,6 @@
     lab.className = "wheel-label";
     lab.textContent = text || "";
 
-    // pas de biais supplémentaire : on reste centré
     const pCenter = xy(rLabel, am);
     lab.style.left = pCenter.x + "px";
     lab.style.top  = pCenter.y + "px";
