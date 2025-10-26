@@ -1,84 +1,46 @@
-// {
-//   email ops@chuchote.com
-// }
-
-// chuchote.com www.chuchote.com {
-//   encode gzip
-
-//   header {
-//     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-//     X-Content-Type-Options "nosniff"
-//     X-Frame-Options "DENY"
-//     Referrer-Policy "strict-origin-when-cross-origin"
-//     X-XSS-Protection "1; mode=block"
-//   }
-
-//   handle_path /static/* {
-//     root * /srv/static
-//     file_server
-//   }
-
-//   handle_path /media/* {
-//     root * /srv/media
-//     file_server
-//   }
-
-//   reverse_proxy web:8000 {
-//     transport http {
-//       read_timeout 60s
-//       write_timeout 60s
-//       keepalive 30s
-//     }
-//   }
-
-//   @healthz path /healthz
-//   respond @healthz 200
-// }
 {
-  email ops@chuchote.com
+    email ops@chuchote.com
 }
 
-# 1) Rediriger tout le www → chuchote.com (308)
+# Redirection www -> domaine canonique
 www.chuchote.com {
-  @any path *
-  redir https://chuchote.com{uri} 308
+    redir https://chuchote.com{uri} 308
 }
 
-# 2) Site canonique
+# Site canonique
 chuchote.com {
-  encode gzip
+    encode gzip
 
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    X-XSS-Protection "1; mode=block"
-  }
-
-  # Empêcher l’indexation des zones privées (en attendant le middleware Django)
-  @private path /accounts/* /dashboard/* /admin/*
-  header @private X-Robots-Tag "noindex, nofollow"
-
-  handle_path /static/* {
-    root * /srv/static
-    file_server
-  }
-  handle_path /media/* {
-    root * /srv/media
-    file_server
-  }
-
-  @healthz path /healthz
-  respond @healthz 200
-
-  reverse_proxy web:8000 {
-    transport http {
-      read_timeout 60s
-      write_timeout 60s
-      keepalive 30s
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-XSS-Protection "1; mode=block"
     }
-    header_up Host {host}
-    header_up X-Forwarded-Proto {scheme}
-  }
+
+    @private path /accounts/* /dashboard/* /admin/*
+    header @private X-Robots-Tag "noindex, nofollow"
+
+    handle_path /static/* {
+        root * /srv/static
+        file_server
+    }
+    handle_path /media/* {
+        root * /srv/media
+        file_server
+    }
+
+    @healthz path /healthz
+    respond @healthz 200
+
+    reverse_proxy web:8000 {
+        transport http {
+            read_timeout 60s
+            write_timeout 60s
+            keepalive 30s
+        }
+        header_up Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
 }
