@@ -7,6 +7,7 @@ from django.conf.urls.static import static
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.db import connection
 from django.http import JsonResponse
+from django.urls import reverse
 
 def healthz(request):
     try:
@@ -15,6 +16,7 @@ def healthz(request):
     except Exception as e:
         return JsonResponse({"status": "error", "db": str(e)}, status=503)
     return JsonResponse({"status": "ok"}, status=200)
+
 
 def root_view(request):
     # Connecté → dispatch par rôle
@@ -27,12 +29,10 @@ def root_view(request):
             return redirect("dashboard:company_home")
         return redirect("dashboard:root")
 
-    # Anonyme → envoyer vers le dashboard ;
-    # le login_required du dashboard renverra vers /accounts/login/?next=/dashboard/
-    try:
-        return redirect("dashboard:root")  # si tu as un name de route pour la home dashboard
-    except Exception:
-        return redirect("/dashboard/")     # fallback simple
+    # Anonyme → montrer le login directement
+    login_url = reverse("accounts:login")
+    next_url = reverse("dashboard:root")
+    return redirect(f"{login_url}?next={next_url}")
 
 urlpatterns = [
     # path("", root_view, name="root"),
