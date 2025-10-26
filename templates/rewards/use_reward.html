@@ -13,6 +13,7 @@
       --radius: 22px;
       --brand: var(--c1, #6c5ce7);
     }
+    *{box-sizing:border-box}
     html,body{margin:0;padding:0;background:#f7f8fb;color:#1a1537;font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
     .hero{
       background:
@@ -30,7 +31,7 @@
       box-shadow:var(--shadow); overflow:hidden;
     }
 
-    /* Head badges — version mobile-first */
+    /* Head badges — mobile-first */
     .card-head{
       display:flex; align-items:center; justify-content:space-between;
       gap:.75rem; padding:18px 22px;
@@ -46,7 +47,6 @@
       max-width:100%;
       font-size:13px;
     }
-    /* Grosse pastille sombre (texte ellipsé) */
     .chip-primary{
       background:#0b1020; color:#fff; border-color:#0b1020;
       box-shadow:0 6px 16px rgba(11,16,32,.28), 0 0 0 2px color-mix(in oklab, var(--brand) 25%, #ffffff);
@@ -57,10 +57,7 @@
       max-width: min(78vw, 520px);
       font-size: clamp(12px, 3.4vw, 14px);
     }
-    /* Petite pastille claire “Lien sécurisé” */
-    .badge-sec{
-      background:#eef2f7; color:#111827; font-weight:600; border-color:#e6ebf1;
-    }
+    .badge-sec{ background:#eef2f7; color:#111827; font-weight:600; border-color:#e6ebf1; }
     .chip-secure::before{ content:"🔒"; margin-right:.35rem; }
 
     .card-body{padding:22px;}
@@ -73,10 +70,23 @@
     .row{display:flex; gap:14px; flex-wrap:wrap; margin-top:14px}
     .row > *{flex:1 1 220px}
 
+    /* Lien à copier : FIX mobile */
     .codebox{
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      display:flex; align-items:center; gap:10px;
       border:1px solid #ececf6; padding:12px 14px; border-radius:12px; background:#fff;
+      width:100%; overflow:hidden;
     }
+    .codebox .url{
+      flex:1 1 0;                 /* ← prend tout l'espace dispo */
+      min-width:0;                /* ← autorise l’ellipsis */
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .codebox .btn{
+      flex:0 0 auto;              /* ← le bouton ne se compresse pas */
+    }
+
     .btn{
       appearance:none; border:0; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer;
       background:#0f1226; color:#fff; box-shadow:0 6px 16px rgba(15,18,38,.18);
@@ -88,18 +98,14 @@
     /* Responsive chips */
     @media (max-width: 480px){
       .card-head{ flex-wrap:wrap; }
-      .chip-primary{
-        flex:1 1 100%; justify-content:center;
-        padding:.65rem 1rem;
-      }
-      .badge-sec{
-        margin-left:auto;
-        padding:.5rem .75rem;
-      }
+      .chip-primary{ flex:1 1 100%; justify-content:center; padding:.65rem 1rem; }
+      .badge-sec{ margin-left:auto; padding:.5rem .75rem; }
+      .btn{ padding:12px 14px; }
     }
     @media (max-width: 360px){
       .chip-text{ max-width: 72vw; }
       .badge-sec{ font-size:.92rem; }
+      .btn{ padding:10px 12px; font-size:13px; }
     }
 
     /* Dark mode */
@@ -154,9 +160,7 @@
           <div>
             <div class="muted" style="margin:10px 0 6px">Ton lien</div>
             <div class="codebox" id="copybox">
-              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%">
-                {{ claim_absolute }}
-              </span>
+              <span class="url">{{ claim_absolute }}</span>
               <button class="btn" id="copyBtn" data-url="{{ claim_absolute }}">Copier le lien</button>
             </div>
           </div>
