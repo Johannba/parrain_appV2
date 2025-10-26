@@ -1,4 +1,5 @@
 # dashboard/views.py
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -287,6 +288,9 @@ def client_detail(request, pk: int):
             "kpi_nonutils": rewards_unused.count(),
         },
     )
+    
+from django.conf import settings
+from django.core.mail import send_mail
 
 # -------------------------------------------------------------
 # Clients : création / édition / suppression
@@ -586,13 +590,59 @@ def referral_create(request, company_id=None):
                         f"et Filleul « {rw_referee.label} » (envoyée).",
                     )
 
-                    # Envoi du lien au FILLEUL si on a un téléphone et un lien
-                    claim_abs = (
-                        request.build_absolute_uri(rw_referee.claim_path)
-                        if getattr(rw_referee, "claim_path", "") else ""
+                    claim_referrer_abs = (
+                        request.build_absolute_uri(rw_referrer.claim_path)
+                        if getattr(rw_referrer, "claim_path", "")
+                        else ""
                     )
+                                        
+                    def _email_parrain_after_commit():
+                        try:
+                            to_email = (referrer.email or "").strip()
+                            if not to_email:
+                                return  # pas d'email, on n'envoie pas
 
-                    if referee.phone and claim_abs:
+                            company_name = getattr(company, "name", "Votre enseigne")
+                            label = getattr(rw_referrer, "label", "Votre récompense")
+                            state = getattr(rw_referrer, "state", "PENDING")
+
+                            subject = f"🎁 {label} — Merci pour votre parrainage"
+
+                            if state == "PENDING":
+                                body = (
+                                    f"Bonjour {referrer.first_name or referrer.last_name},\n\n"
+                                    f"Votre récompense « {label} » a été enregistrée chez {company_name}.\n"
+                                    f"Elle sera activée dès validation des conditions du parrainage.\n"
+                                )
+                                if claim_referrer_abs:
+                                    body += f"\nVous pourrez la récupérer via ce lien dès activation :\n{claim_referrer_abs}\n"
+                            else:
+                                body = (
+                                    f"Bonjour {referrer.first_name or referrer.last_name},\n\n"
+                                    f"Votre récompense « {label} » est prête !\n"
+                                )
+                                if claim_referrer_abs:
+                                    body += f"Récupérez-la ici : {claim_referrer_abs}\n"
+
+                            body += (
+                                "\nMerci pour votre parrainage.\n"
+                                f"— {company_name}"
+                            )
+
+                            send_mail(
+                                subject=subject,
+                                message=body,
+                                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                                recipient_list=[to_email],
+                                fail_silently=False,
+                            )
+                        except Exception as e:
+                            # on loggue au front sans casser le flux
+                            messages.warning(request, f"Parrainage OK, email au parrain non envoyé : {e}")
+
+                    # IMPORTANT : déclencher l'envoi APRÈS le commit de la transaction
+                    transaction.on_commit(_email_parrain_after_commit)
+                    if referee.phone and claim_referrer_abs:
                         # Envoi différé après commit (SMS via Twilio si configuré)
                         def _after_commit():
                             from os import getenv
@@ -605,7 +655,7 @@ def referral_create(request, company_id=None):
                                     TwilioClient(sid, token).messages.create(
                                         to=referee.phone,
                                         from_=sender,
-                                        body=f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_abs}"
+                                        body=f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referrer_abs}"
                                     )
                                     messages.success(request, "Lien de récompense envoyé au filleul par SMS.")
                                 else:
