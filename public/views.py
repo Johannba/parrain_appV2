@@ -142,17 +142,30 @@ def referrer_register(request, slug: str):
         # 3) Succès silencieux → redirect
         return redirect("public:company_presentation", slug=slug)
 
-    # Form invalide → réaffiche avec erreurs
-    return render(
-        request,
-        "public/company_presentation.html",
-        {
-            "company": company,
-            "form": form,
-            "wheel_labels": _wheel_labels_for(company),
-            "form_errors": True,
-        },
-    )
+    # --- Form invalide → réaffiche avec erreurs
+    # Si l'email posté correspond DÉJÀ à un parrain de l'entreprise,
+    # on déclenche AUSSI la modale ici (cas des erreurs nom/prénom par ex.)
+    suggest_reset = False
+    if posted_email:
+        suggest_reset = Client.objects.filter(
+            company=company, is_referrer=True, email__iexact=posted_email
+        ).exists()
+
+    ctx = {
+        "company": company,
+        "form": form,
+        "wheel_labels": _wheel_labels_for(company),
+        "form_errors": True,
+    }
+    if suggest_reset:
+        ctx.update({
+            "suggest_reset": True,
+            "suggest_reset_email": posted_email,
+            "suggest_reset_first_name": posted_fn,
+            "suggest_reset_last_name": posted_ln,
+        })
+    return render(request, "public/company_presentation.html", ctx)
+
 
 @require_POST
 def referrer_reset_request(request, slug: str):
