@@ -39,8 +39,6 @@ BUCKET_UI = {
 STATE_UI = {
     "PENDING":  {"label": "En attente",   "badge": "warning"},
     "SENT":     {"label": "Envoyée",      "badge": "success"},
-    "DISABLED": {"label": "Désactivée",   "badge": "secondary"},
-    "ARCHIVED": {"label": "Archivée",     "badge": "dark"},
 }
 
 
