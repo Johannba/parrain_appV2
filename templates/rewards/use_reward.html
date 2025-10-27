@@ -24,14 +24,12 @@
     .hero h1{margin:0 0 8px; font-weight:900; letter-spacing:.3px; font-size: clamp(26px, 4.2vw, 48px);}
     .hero p{margin:0; opacity:.95; font-size: clamp(14px, 2.2vw, 20px);}
 
-    /* Carte principale */
     .card{
       width:min(760px, calc(100% - 24px));
       margin:-40px auto 40px; background:var(--surface); border-radius:var(--radius);
       box-shadow:var(--shadow); overflow:hidden;
     }
 
-    /* Head badges — mobile-first */
     .card-head{
       display:flex; align-items:center; justify-content:space-between;
       gap:.75rem; padding:18px 22px;
@@ -70,22 +68,23 @@
     .row{display:flex; gap:14px; flex-wrap:wrap; margin-top:14px}
     .row > *{flex:1 1 220px}
 
-    /* Lien à copier : FIX mobile */
+    /* ---- LIEN A COPIER : tient toujours dans la carte ---- */
     .codebox{
       display:flex; align-items:center; gap:10px;
       border:1px solid #ececf6; padding:12px 14px; border-radius:12px; background:#fff;
       width:100%; overflow:hidden;
     }
     .codebox .url{
-      flex:1 1 0;                 /* ← prend tout l'espace dispo */
-      min-width:0;                /* ← autorise l’ellipsis */
+      display:block;            /* important pour ellipsis */
+      flex:1 1 auto;
+      min-width:0;              /* autorise la réduction dans le flex */
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
+      direction:ltr;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
     }
-    .codebox .btn{
-      flex:0 0 auto;              /* ← le bouton ne se compresse pas */
-    }
+    .codebox .btn{ flex:0 0 auto; }
 
     .btn{
       appearance:none; border:0; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer;
@@ -93,9 +92,7 @@
     }
     .btn.secondary{background:#eef0f6; color:#1e1a3a; box-shadow:none;}
     .footer{ text-align:center; color:#8b8aa7; font-size:14px; padding-bottom:32px;}
-    .link{color:#5843e3; text-decoration:none; font-weight:700}
 
-    /* Responsive chips */
     @media (max-width: 480px){
       .card-head{ flex-wrap:wrap; }
       .chip-primary{ flex:1 1 100%; justify-content:center; padding:.65rem 1rem; }
@@ -108,10 +105,8 @@
       .btn{ padding:10px 12px; font-size:13px; }
     }
 
-    /* Dark mode */
     @media (prefers-color-scheme: dark){
       body{background:#0e0f17; color:#e9e8f3}
-      .hero{color:#fff}
       .card{background:#131527}
       .card-head{background:rgba(255,255,255,.05)}
       .panel{background:#0f1020; border-color:#262842}
@@ -131,10 +126,7 @@
     {% if subline %}<p style="margin-top:8px; opacity:.85">{{ subline }}</p>{% endif %}
   </section>
 
-  <!-- Carte -->
   <main class="card" role="main" aria-labelledby="gift-title">
-
-    <!-- HEAD DESKTOP + MOBILE -->
     <div class="card-head" role="group" aria-label="statut du parrainage">
       <div class="badge chip-primary">
         <span class="chip-emoji" aria-hidden="true">🎁</span>
@@ -149,8 +141,7 @@
 
       {% if reward.valid_until %}
         <div class="muted" style="margin:8px 0 16px">
-          Date limite d’utilisation :
-          {{ reward.valid_until|date:"d F Y" }}
+          Date limite d’utilisation : {{ reward.valid_until|date:"d F Y" }}
         </div>
       {% endif %}
 
@@ -160,8 +151,9 @@
           <div>
             <div class="muted" style="margin:10px 0 6px">Ton lien</div>
             <div class="codebox" id="copybox">
-              <span class="url">{{ claim_absolute }}</span>
-              <button class="btn" id="copyBtn" data-url="{{ claim_absolute }}">Copier le lien</button>
+              <!-- Affichage raccourci mais copie = URL complète -->
+              <span class="url" id="copyUrl" data-full="{{ claim_absolute }}">{{ claim_absolute }}</span>
+              <button class="btn" id="copyBtn" data-url="{{ claim_absolute }}" aria-label="Copier le lien">Copier le lien</button>
             </div>
           </div>
         </div>
@@ -175,18 +167,50 @@
 
   <script>
     (function(){
+      // Copie du lien complet
       const btn = document.getElementById('copyBtn');
-      if(!btn) return;
-      btn.addEventListener('click', async function(){
-        try{
-          const url = btn.getAttribute('data-url') || location.href;
-          await navigator.clipboard.writeText(url);
-          btn.textContent = "Copié !";
-          setTimeout(()=> btn.textContent = "Copier le lien", 1600);
-        }catch(e){
-          alert("Lien: " + (btn.getAttribute('data-url') || location.href));
+      if (btn) {
+        btn.addEventListener('click', async function(){
+          try{
+            const url = btn.getAttribute('data-url') || location.href;
+            await navigator.clipboard.writeText(url);
+            btn.textContent = "Copié !";
+            setTimeout(()=> btn.textContent = "Copier le lien", 1600);
+          }catch(e){
+            alert("Lien: " + (btn.getAttribute('data-url') || location.href));
+          }
+        });
+      }
+
+      // Ellipsis AU MILIEU si nécessaire (le span tient toujours dans la carte)
+      const urlEl = document.getElementById('copyUrl');
+      function middleEllipsize(el){
+        if(!el) return;
+        const full = el.getAttribute('data-full') || el.textContent || "";
+        el.textContent = full; // reset
+
+        // si ça tient déjà, on sort
+        if (el.scrollWidth <= el.clientWidth) return;
+
+        // on garde un peu plus le début (domaine) que la fin
+        let left = Math.min(28, Math.ceil(full.length * 0.45));
+        let right = Math.min(18, Math.ceil(full.length * 0.3));
+
+        // boucle d'ajustement
+        for (let i=0; i<80; i++){
+          el.textContent = full.slice(0,left) + "…" + full.slice(-right);
+          if (el.scrollWidth <= el.clientWidth) return;
+          if (left > right) { left--; } else { right--; }
+          if (left < 6 && right < 6) break;
         }
-      });
+        // fallback mini
+        el.textContent = full.slice(0, Math.max(6,left)) + "…" + full.slice(-Math.max(6,right));
+      }
+      function fit(){ middleEllipsize(urlEl); }
+      window.addEventListener('load', fit);
+      window.addEventListener('resize', fit);
+      // sur certains navigateurs mobiles, le layout final n'arrive qu'après "pageshow"
+      window.addEventListener('pageshow', fit);
     })();
   </script>
 </body>
