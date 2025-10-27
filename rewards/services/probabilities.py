@@ -99,31 +99,27 @@ def reset_wheel(company: Company, key: str) -> None:
     wheel.save(update_fields=["idx"])
 
 def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
-    """
-    Détermine l'éligibilité par bucket pour un client, en fonction de son
-    nombre de parrainages (en tant que parrain).
-    """
-    referrals_count = Referral.objects.filter(
-        company=company, referrer=client
-    ).count()
+    # 1) Compter les parrainages du client (en tant que parrain)
+    referrals_count = Referral.objects.filter(company=company, referrer=client).count()
 
+    # 2) Charger les templates (avec min requis)
     tpls = {
         t.bucket: t
-        for t in RewardTemplate.objects.filter(company=company).only(
-            "bucket", "min_referrals_required"
-        )
+        for t in RewardTemplate.objects.filter(company=company).only("bucket", "min_referrals_required")
     }
 
     def is_ok(bucket: str) -> bool:
         tpl = tpls.get(bucket)
         if not tpl:
             return False
-        return referrals_count >= int(tpl.min_referrals_required or 0)
+        min_required = int(tpl.min_referrals_required or 0)
+        return referrals_count >= min_required
 
+    # 3) IMPORTANT : appliquer la règle à TOUS les buckets
     return {
-        SOUVENT: bool(tpls.get(SOUVENT)),
-        MOYEN:   bool(tpls.get(MOYEN)),
-        RARE:    is_ok(RARE),
+        SOUVENT:   is_ok(SOUVENT),
+        MOYEN:     is_ok(MOYEN),
+        RARE:      is_ok(RARE),
         TRES_RARE: is_ok(TRES_RARE),
     }
 
@@ -145,13 +141,7 @@ def _consume_one_eligible(wheel: ProbabilityWheel, allowed: Set[str]) -> str:
     # Rien d'autorisé trouvé sur un cycle complet
     wheel.save(update_fields=["idx"])
     return NO_HIT
-
 def tirer_recompense(company: Company, client) -> str:
-    """
-    Tirage “client-aware” :
-      1) very_rare : autorise TRES_RARE seulement si éligible (sinon NO_HIT).
-      2) base      : autorise SOUVENT/MOYEN/RARE selon éligibilité.
-    """
     elig = _eligible_buckets_for(company, client)
     base, very_rare = ensure_wheels(company)
 
@@ -167,10 +157,13 @@ def tirer_recompense(company: Company, client) -> str:
     if elig.get(SOUVENT, False): allowed_base.add(SOUVENT)
     if elig.get(MOYEN,   False): allowed_base.add(MOYEN)
     if elig.get(RARE,    False): allowed_base.add(RARE)
+
+    # ⬇️ Nouveau : si aucune catégorie base n'est éligible, on ne force pas SOUVENT
     if not allowed_base:
-        allowed_base = {SOUVENT}
+        return NO_HIT
 
     return _consume_one_eligible(base, allowed_base)
+
 
 # Ajoute ceci dans rewards/services/probabilities.py
 
