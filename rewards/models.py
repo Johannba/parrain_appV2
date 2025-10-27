@@ -81,9 +81,7 @@ class Reward(models.Model):
     )
     STATE_CHOICES = (
         ("PENDING", "En attente"),
-        ("SENT", "Envoyée"),
-        ("DISABLED", "Désactivée"),
-        ("ARCHIVED", "Archivée"),
+        ("SENT", "Distrubué"),
     )
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="rewards")
