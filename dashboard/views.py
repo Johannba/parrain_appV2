@@ -48,6 +48,18 @@ def _company_for(user):
     # Superadmin : à choisir via l’UI (ou None ici)
     return getattr(user, "company", None)
 
+
+def _promote_to_referrer(client: Client) -> bool:
+    """Passe un client en parrain si ce n'est pas déjà le cas."""
+    if not client or getattr(client, "is_referrer", None) is True:
+        return False
+    # update atomique et idempotent
+    updated = Client.objects.filter(pk=client.pk, is_referrer=False).update(is_referrer=True)
+    if updated:
+        client.is_referrer = True
+        return True
+    return False
+
 # -------------------------------------------------------------
 # KPI / activité pour tableaux de bord
 # -------------------------------------------------------------
@@ -573,6 +585,7 @@ def referral_create(request, company_id=None):
                             rw_referee.sent_at = timezone.now()
                             update_fields.append("sent_at")
                         rw_referee.save(update_fields=update_fields)
+                        _promote_to_referrer(referee)
 
 
                     # ✅ Alimente la popup (affichée à l'arrivée sur clients_list)
