@@ -44,15 +44,29 @@ def _company_region_hint(company) -> str | None:
             return code
     return None
 
+# --- Remplace intégralement cette fonction ---
 def _guess_region_from_number(raw: str) -> str | None:
-    """Si le numéro ressemble à un DOM (0590/0594/...), propose une région ISO2."""
+    """
+    Déduit une région depuis la forme du numéro (prioritaire sur company).
+    - DOM/TOM (0590/0594/0596/0262/0269/06xx DOM) -> GP/GF/MQ/RE/YT
+    - France métropolitaine : 10 chiffres commençant par 0 -> FR
+    - Sinon : None
+    """
     s = "".join(ch for ch in str(raw) if ch.isdigit() or ch == "+")
     if s.startswith("+"):
-        return None  # déjà avec code pays -> on ne force rien
+        return None  # déjà international
+
+    # DOM/TOM d'abord
     for p, region in FR_DOM_PREFIX_MAP.items():
         if s.startswith(p):
             return region
-    return None  # pas d'hypothèse -> surtout ne pas forcer FR
+
+    # France métropolitaine (fix) : 0 + 9 chiffres
+    if len(s) == 10 and s.startswith("0") and s[1].isdigit():
+        return "FR"
+
+    return None
+
 
 def normalize_phone(raw: str, company=None) -> str:
     """
