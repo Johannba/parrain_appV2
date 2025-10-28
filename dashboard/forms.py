@@ -56,26 +56,25 @@ def _guess_region_from_number(raw: str) -> str | None:
 
 def normalize_phone(raw: str, company=None) -> str:
     """
-    Normalise en E.164 si (et seulement si) on peut déterminer le pays.
-    - Si le numéro commence par + : on valide/normalise tel quel.
-    - Sinon, on cherche d'abord le pays depuis company, sinon via les préfixes DOM.
-    - Si on ne sait pas -> on retourne la saisie d'origine (pas de +33 sauvage).
+    Retourne un téléphone **uniformisé**.
+    - Si commence par '+', validation + E.164.
+    - Sinon, essaie region depuis company, DOM, puis motif FR (10 chiffres début '0').
+    - Si impossible/ambigu : on renvoie tel quel (pas de +33 forcé à l'aveugle).
     """
     raw = (raw or "").strip()
     if not raw or phonenumbers is None:
         return raw
 
-    # Déjà international -> on valide et normalise
     if raw.startswith("+"):
         try:
             n = phonenumbers.parse(raw, None)
             return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
         except Exception:
-            return raw  # on ne casse pas
+            return raw
 
     region = _company_region_hint(company) or _guess_region_from_number(raw)
     if not region:
-        return raw  # pas d'hypothèse fiable -> on touche pas
+        return raw
 
     try:
         n = phonenumbers.parse(raw, region)
@@ -228,6 +227,10 @@ class RefereeClientForm(forms.ModelForm):
         ln = (cleaned.get("last_name") or "").strip()
         fn = (cleaned.get("first_name") or "").strip()
         email = (cleaned.get("email") or "").strip().lower()
+        phone = (cleaned.get("phone") or "").strip()
+        
+          # ✨ Normalisation pour uniformiser avec le public et le parrain
+        cleaned["phone"] = normalize_phone(phone, company)
 
         # libellé neutre (pas "parrain")
         if not ln and not email:
