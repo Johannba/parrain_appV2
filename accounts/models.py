@@ -18,35 +18,54 @@ hex_color_validator = RegexValidator(
 
 class Company(models.Model):
     name = models.CharField(max_length=150, unique=True)
-    # Rendez le slug "blank=True" pour pouvoir le laisser vide en admin et le laisser s'auto-remplir
     slug = models.SlugField(max_length=160, unique=True, blank=True)
     is_active = models.BooleanField(default=True)
 
-    # --- Nouveaux champs (branding / présentation publique) ---
+    # Branding / présentation publique
     slogan = models.CharField(max_length=255, blank=True)
-    primary_color = models.CharField(
-        max_length=7, default="#ec4899", validators=[hex_color_validator]
-    )
-    secondary_color = models.CharField(
-        max_length=7, default="#000000", validators=[hex_color_validator]
-    )
+    primary_color = models.CharField(max_length=7, default="#ec4899", validators=[hex_color_validator])
+    secondary_color = models.CharField(max_length=7, default="#000000", validators=[hex_color_validator])
     logo = models.ImageField(upload_to="company_logos/", blank=True, null=True)
-    # (facultatif) domaine dédié si un jour tu veux multi-domaine :
-    # domain = models.CharField(max_length=255, blank=True, unique=True)
 
-    def _build_unique_slug(self):
-        base = slugify(self.name or "")
-        slug = base or "entreprise"
-        i = 1
-        while Company.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-            i += 1
+    def _build_unique_slug(self, base_name: str | None = None) -> str:
+        """
+        Slugifie le nom et garantit l'unicité en ajoutant -2, -3, ...
+        (exclut l'objet courant pour éviter les faux positifs).
+        """
+        base = slugify(base_name if base_name is not None else (self.name or "")) or "entreprise"
+        slug = base
+        i = 2
+        qs = Company.objects.all()
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        while qs.filter(slug__iexact=slug).exists():
             slug = f"{base}-{i}"
+            i += 1
         return slug
 
     def save(self, *args, **kwargs):
-        # Auto-complète le slug s'il est vide (création ou slug effacé volontairement)
-        if not self.slug:
-            self.slug = self._build_unique_slug()
+        """
+        Aligne TOUJOURS le slug sur le nom :
+        - à la création,
+        - à l'édition si le nom change,
+        - ou si le slug saisi manuellement ne correspond pas au nom.
+        """
+        desired = slugify(self.name or "") or "entreprise"
+
+        # a) création -> on alignera
+        name_changed = True
+        # b) édition : on vérifie si le nom a changé
+        if self.pk:
+            try:
+                old = Company.objects.only("name").get(pk=self.pk)
+                name_changed = (old.name or "") != (self.name or "")
+            except Company.DoesNotExist:
+                name_changed = True
+
+        if not self.slug or name_changed or self.slug != desired:
+            # Regénère un slug unique basé sur le (nouveau) nom
+            self.slug = self._build_unique_slug(desired)
+
         super().save(*args, **kwargs)
 
     class Meta:
