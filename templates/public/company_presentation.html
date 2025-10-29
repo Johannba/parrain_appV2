@@ -457,5 +457,17 @@
   });
 })();
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const closables = document.querySelectorAll('.alert-success, .alert-info, .alert-warning');
+  setTimeout(function(){
+    closables.forEach(function(a){
+      try{
+        if (window.bootstrap && bootstrap.Alert){ new bootstrap.Alert(a).close(); }
+      }catch(e){}
+    });
+  }, 8000);
+});
+</script>
 
 {% endblock %}

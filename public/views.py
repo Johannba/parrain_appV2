@@ -139,7 +139,12 @@ def referrer_register(request, slug: str):
                 },
             )
 
-        # 3) Succès silencieux → redirect
+        # 3) Succès → message + redirect
+        messages.success(
+                request,
+                "✅ Inscription validée ! Merci, vous êtes maintenant parrain. "
+                # "Dites simplement votre prénom à l’accueil lors de la première venue de vos amis pour activer vos récompenses."
+            )
         return redirect("public:company_presentation", slug=slug)
 
     # --- Form invalide → réaffiche avec erreurs
