@@ -204,6 +204,28 @@
   <section class="container pb-5" aria-labelledby="form-title" style="max-width:720px;">
     <h2 id="form-title" class="h5 fw-semibold text-center mb-3" style="color: {{ company.primary_color }}">✍️ Inscris-toi comme parrain ici</h2>
 
+    {# --- Messages positifs / neutres (hors erreurs) --- #}
+    {% if messages %}
+      {% for m in messages %}
+        {% if 'success' in m.tags %}
+          <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+            {{ m }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% elif 'warning' in m.tags %}
+          <div class="alert alert-warning alert-dismissible fade show shadow-sm" role="alert">
+            {{ m }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% elif 'info' in m.tags %}
+          <div class="alert alert-info alert-dismissible fade show shadow-sm" role="alert">
+            {{ m }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
     <div class="bg-white p-4 shadow-sm frame-double">
       {# --- Messages: n'afficher QUE les erreurs --- #}
       {% if messages %}
