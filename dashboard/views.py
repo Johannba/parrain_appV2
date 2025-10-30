@@ -673,29 +673,62 @@ def referral_create(request, company_id=None):
                     # IMPORTANT : déclencher l'envoi APRÈS le commit de la transaction
                     transaction.on_commit(_email_parrain_after_commit)
                     if referee.phone and claim_referrer_abs:
-                        # Envoi différé après commit (SMS via Twilio si configuré)
+                        # Envoi différé après commit (SMS via SMSMODE)
                         def _after_commit():
-                            from os import getenv
+                            import os, json
+                            import requests
+                            from django.conf import settings
+
                             try:
-                                from twilio.rest import Client as TwilioClient  # type: ignore
-                                sid = getenv("TWILIO_ACCOUNT_SID")
-                                token = getenv("TWILIO_AUTH_TOKEN")
-                                sender = getenv("TWILIO_SMS_FROM")
-                                if sid and token and sender:
-                                    TwilioClient(sid, token).messages.create(
-                                        to=referee.phone,
-                                        from_=sender,
-                                        body=f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referrer_abs}"
-                                    )
+                                conf = getattr(settings, "SMSMODE", {})
+                                api_key  = conf.get("API_KEY") or os.getenv("SMSMODE_API_KEY", "")
+                                base_url = (conf.get("BASE_URL") or "https://rest.smsmode.com").rstrip("/")
+                                sender   = (conf.get("SENDER") or "ParrainApp").strip()
+                                dry_run  = bool(conf.get("DRY_RUN"))
+                                timeout  = int(conf.get("TIMEOUT", 10))
+
+                                if not api_key:
+                                    messages.info(request, "Parrainage OK. SMS non envoyé (SMSMODE_API_KEY manquant).")
+                                    return
+
+                                # Normalise le numéro: garde chiffres et '+' puis retire le '+' (SMSMODE attend 336..., pas +336)
+                                raw = "".join(ch for ch in (referee.phone or "") if ch.isdigit() or ch == "+")
+                                to_number = raw.lstrip("+")
+
+                                text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referrer_abs}"
+
+                                payload = {
+                                    "recipient": {"to": to_number},
+                                    "body": {"text": text},
+                                    "from": sender,
+                                }
+                                headers = {
+                                    "X-Api-Key": api_key,
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                }
+                                url = f"{base_url}/sms/v1/messages"
+
+                                if dry_run:
+                                    messages.info(request, f"DRY_RUN SMSMODE → {to_number}: {text}")
+                                    return
+
+                                r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+
+                                if r.status_code in (200, 201, 202):
                                     messages.success(request, "Lien de récompense envoyé au filleul par SMS.")
                                 else:
-                                    messages.info(request, "Parrainage OK. SMS non envoyé (Twilio non configuré).")
+                                    messages.warning(
+                                        request,
+                                        f"Parrainage OK. SMS non envoyé ({r.status_code}) : {r.text[:300]}"
+                                    )
                             except Exception as e:
                                 messages.warning(request, f"Parrainage OK, SMS non envoyé : {e}")
 
                         transaction.on_commit(_after_commit)
                     else:
                         messages.info(request, "Parrainage OK. SMS non envoyé (numéro du filleul ou lien manquant).")
+
 
                     return redirect("dashboard:clients_list")
             else:
