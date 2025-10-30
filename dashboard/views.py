@@ -613,34 +613,45 @@ def referral_create(request, company_id=None):
                         try:
                             to_email = (referrer.email or "").strip()
                             if not to_email:
-                                return  # pas d'email, on n'envoie pas
+                                return  # pas d'email → on n'envoie pas
 
                             company_name = getattr(company, "name", "Votre enseigne")
-                            label = getattr(rw_referrer, "label", "Votre récompense")
-                            state = getattr(rw_referrer, "state", "PENDING")
+                            prenom = (referrer.first_name or referrer.last_name or str(referrer)).strip()
+                            filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
+                            lien_cadeau = (claim_referrer_abs or "").strip()
 
-                            subject = f"🎁 {label} — Merci pour votre parrainage"
+                            subject = f"{company_name} – parrainage validé 🎉"
 
-                            if state == "PENDING":
-                                body = (
-                                    f"Bonjour {referrer.first_name or referrer.last_name},\n\n"
-                                    f"Votre récompense « {label} » a été enregistrée chez {company_name}.\n"
-                                    f"Elle sera activée dès validation des conditions du parrainage.\n"
-                                )
-                                if claim_referrer_abs:
-                                    body += f"\nVous pourrez la récupérer via ce lien dès activation :\n{claim_referrer_abs}\n"
-                            else:
-                                body = (
-                                    f"Bonjour {referrer.first_name or referrer.last_name},\n\n"
-                                    f"Votre récompense « {label} » est prête !\n"
-                                )
-                                if claim_referrer_abs:
-                                    body += f"Récupérez-la ici : {claim_referrer_abs}\n"
+                            body_lines = [
+                                "⸻",
+                                "",
+                                f"Bonjour {prenom},",
+                                "",
+                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi 💛",
+                                "",
+                                f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
+                                "ton parrainage vient d’être validé 🎉",
+                                "",
+                                "En remerciement, tu remportes un cadeau 🎁",
+                            ]
+                            if lien_cadeau:
+                                body_lines += [f"Découvre-le en cliquant [ici]({lien_cadeau})."]
 
-                            body += (
-                                "\nMerci pour votre parrainage.\n"
-                                f"— {company_name}"
-                            )
+                            body_lines += [
+                                "",
+                                f"Merci encore d’avoir parlé de {company_name} autour de toi —",
+                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion 💛",
+                                "",
+                                "À très vite,",
+                                f"L’équipe {company_name}",
+                                "",
+                                "⸻",
+                                "",
+                                f"✉️ Ce message t’a été envoyé par {company_name} via Chuchote,",
+                                "le service qui facilite la gestion des parrainages clients.",
+                            ]
+
+                            body = "\n".join(body_lines)
 
                             send_mail(
                                 subject=subject,
