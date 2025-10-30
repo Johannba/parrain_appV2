@@ -2,6 +2,9 @@
 from __future__ import annotations
 from django.db import transaction
 from rewards.models import Reward, RewardTemplate
+# rewards/services/__init__.py
+from .award import award_both_parties  # noqa
+
 from rewards.services.probabilities import (
     tirer_recompense, NO_HIT, SOUVENT, MOYEN, RARE, TRES_RARE
 )

@@ -628,10 +628,10 @@ def referral_create(request, company_id=None):
                                 "",
                                 f"Bonjour {prenom},",
                                 "",
-                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi 💛",
+                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi",
                                 "",
                                 f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
-                                "ton parrainage vient d’être validé 🎉",
+                                "ton parrainage vient d’être validé,
                                 "",
                                 "En remerciement, tu remportes un cadeau 🎁",
                             ]
@@ -641,14 +641,14 @@ def referral_create(request, company_id=None):
                             body_lines += [
                                 "",
                                 f"Merci encore d’avoir parlé de {company_name} autour de toi —",
-                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion 💛",
+                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion",
                                 "",
                                 "À très vite,",
                                 f"L’équipe {company_name}",
                                 "",
                                 "⸻",
                                 "",
-                                f"✉️ Ce message t’a été envoyé par {company_name} via Chuchote,",
+                                f"Ce message t’a été envoyé par {company_name} via Chuchote,",
                                 "le service qui facilite la gestion des parrainages clients.",
                             ]
 
