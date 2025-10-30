@@ -168,7 +168,7 @@ SMSMODE = {
     "DRY_RUN": os.getenv("SMSMODE_DRY_RUN", "false").lower() == "true",
     "TIMEOUT": 10,
 }
-
+SMS_DEFAULT_REGION = os.getenv("SMS_DEFAULT_REGION", "FR")
 
 LOGGING = {
     "version": 1,

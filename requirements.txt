@@ -27,3 +27,4 @@ sqlparse==0.5.1; python_version >= '3.8'
 twilio==9.8.3; python_full_version >= '3.7.0'
 urllib3==2.5.0; python_version >= '3.9'
 yarl==1.20.1; python_version >= '3.9'
+phonenumberslite

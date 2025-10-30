@@ -675,9 +675,10 @@ def referral_create(request, company_id=None):
                     if referee.phone and claim_referrer_abs:
                         # Envoi différé après commit (SMS via SMSMODE)
                         def _after_commit():
-                            import os, json
+                            import os
                             import requests
                             from django.conf import settings
+                            from common.phone_utils import normalize_msisdn  # <<< helper
 
                             try:
                                 conf = getattr(settings, "SMSMODE", {})
@@ -691,23 +692,31 @@ def referral_create(request, company_id=None):
                                     messages.info(request, "Parrainage OK. SMS non envoyé (SMSMODE_API_KEY manquant).")
                                     return
 
-                                # Normalise le numéro: garde chiffres et '+' puis retire le '+' (SMSMODE attend 336..., pas +336)
-                                raw = "".join(ch for ch in (referee.phone or "") if ch.isdigit() or ch == "+")
-                                to_number = raw.lstrip("+")
+                                # Région par défaut (optionnelle) : settings.SMS_DEFAULT_REGION ou 'FR'
+                                default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
+
+                                # Normalisation universelle (FR/DOM-TOM/EG etc.)
+                                to_number, meta = normalize_msisdn(referee.phone, default_region=default_region)
+                                if not to_number:
+                                    messages.info(
+                                        request,
+                                        f"Parrainage OK. SMS non envoyé (numéro invalide: {meta.get('reason')})."
+                                    )
+                                    return
 
                                 text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referrer_abs}"
 
-                                payload = {
-                                    "recipient": {"to": to_number},
-                                    "body": {"text": text},
-                                    "from": sender,
-                                }
+                                url = f"{base_url}/sms/v1/messages"
                                 headers = {
                                     "X-Api-Key": api_key,
                                     "Content-Type": "application/json",
                                     "Accept": "application/json",
                                 }
-                                url = f"{base_url}/sms/v1/messages"
+                                payload = {
+                                    "recipient": {"to": to_number},
+                                    "body": {"text": text},
+                                    "from": sender,
+                                }
 
                                 if dry_run:
                                     messages.info(request, f"DRY_RUN SMSMODE → {to_number}: {text}")
