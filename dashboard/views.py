@@ -613,6 +613,7 @@ def referral_create(request, company_id=None):
                         try:
                             to_email = (referrer.email or "").strip()
                             if not to_email:
+                                messages.info(request, "Parrainage OK, mais e-mail du parrain introuvable — email non envoyé.")
                                 return  # pas d'email → on n'envoie pas
 
                             company_name = getattr(company, "name", "Votre enseigne")
@@ -653,16 +654,21 @@ def referral_create(request, company_id=None):
 
                             body = "\n".join(body_lines)
 
-                            send_mail(
+                            sent = send_mail(
                                 subject=subject,
                                 message=body,
                                 from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
                                 recipient_list=[to_email],
                                 fail_silently=False,
                             )
+                            if not sent:
+                                messages.warning(request, "Parrainage OK, mais l’e-mail n’a pas été accepté par le backend (send_mail=0).")
                         except Exception as e:
-                            # on loggue au front sans casser le flux
                             messages.warning(request, f"Parrainage OK, email au parrain non envoyé : {e}")
+
+                    # IMPORTANT : conserver cet appel APRÈS la définition
+                    transaction.on_commit(_email_parrain_after_commit)
+
 
                     # IMPORTANT : déclencher l'envoi APRÈS le commit de la transaction
                     transaction.on_commit(_email_parrain_after_commit)
