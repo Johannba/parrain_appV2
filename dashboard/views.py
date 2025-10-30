@@ -613,41 +613,34 @@ def referral_create(request, company_id=None):
                         try:
                             to_email = (referrer.email or "").strip()
                             if not to_email:
-                                return  # pas d'email → on n'envoie pas
+                                return  # pas d'email, on n'envoie pas
 
                             company_name = getattr(company, "name", "Votre enseigne")
-                            prenom = (referrer.first_name or referrer.last_name or str(referrer)).strip()
-                            filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
-                            lien_cadeau = (claim_referrer_abs or "").strip()
+                            label = getattr(rw_referrer, "label", "Votre récompense")
+                            state = getattr(rw_referrer, "state", "PENDING")
 
-                            subject = f"{company_name} – parrainage validé 🎉"
-                            body_lines = [
-                                f"Bonjour {prenom},",
-                                "",
-                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi 💛",
-                                "",
-                                f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
-                                "ton parrainage vient d’être validé 🎉",
-                                "",
-                                "En remerciement, tu remportes un cadeau 🎁",
-                            ]
-                            if lien_cadeau:
-                                body_lines += [f"Découvre-le en cliquant ici : {lien_cadeau}."]
+                            subject = f"🎁 {label} — Merci pour votre parrainage"
+
+                            if state == "PENDING":
+                                body = (
+                                    f"Bonjour {referrer.first_name or referrer.last_name},\n\n"
+                                    f"Votre récompense « {label} » a été enregistrée chez {company_name}.\n"
+                                    f"Elle sera activée dès validation des conditions du parrainage.\n"
+                                )
+                                if claim_referrer_abs:
+                                    body += f"\nVous pourrez la récupérer via ce lien dès activation :\n{claim_referrer_abs}\n"
                             else:
-                                body_lines += ["Découvre-le en cliquant sur ton lien cadeau (bientôt disponible)."]
-                            body_lines += [
-                                "",
-                                f"Merci encore d’avoir parlé de {company_name} autour de toi —",
-                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion 💛",
-                                "",
-                                "À très vite,",
-                                f"L’équipe {company_name}",
-                                "—",
-                                f"✉️ Ce message t’a été envoyé par {company_name} via Chuchote,",
-                                "le service qui facilite la gestion des parrainages clients.",
-                            ]
+                                body = (
+                                    f"Bonjour {referrer.first_name or referrer.last_name},\n\n"
+                                    f"Votre récompense « {label} » est prête !\n"
+                                )
+                                if claim_referrer_abs:
+                                    body += f"Récupérez-la ici : {claim_referrer_abs}\n"
 
-                            body = "\n".join(body_lines)
+                            body += (
+                                "\nMerci pour votre parrainage.\n"
+                                f"— {company_name}"
+                            )
 
                             send_mail(
                                 subject=subject,
@@ -657,8 +650,8 @@ def referral_create(request, company_id=None):
                                 fail_silently=False,
                             )
                         except Exception as e:
+                            # on loggue au front sans casser le flux
                             messages.warning(request, f"Parrainage OK, email au parrain non envoyé : {e}")
-
 
                     # IMPORTANT : déclencher l'envoi APRÈS le commit de la transaction
                     transaction.on_commit(_email_parrain_after_commit)
