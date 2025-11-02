@@ -621,7 +621,7 @@ def referral_create(request, company_id=None):
                             filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
                             lien_cadeau = (claim_referrer_abs or "").strip()
 
-                            subject = f"{company_name} – parrainage validé 🎉"
+                            subject = f"{company_name} – parrainage validé"
 
                             body_lines = [
                                 "⸻",
