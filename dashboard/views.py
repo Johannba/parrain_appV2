@@ -1,4 +1,5 @@
 # dashboard/views.py
+from __future__ import annotations
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -139,6 +140,7 @@ def dashboard_root(request):
     if _is_company_admin(u) or _is_operator(u):
         return redirect("dashboard:company_home")
     raise PermissionDenied("Accès réservé au personnel.")
+
 
 @login_required
 def superadmin_home(request):
@@ -508,7 +510,6 @@ def referrer_lookup(request):
 # -------------------------------------------------------------
 # Parrainage : création (recherche parrain + filleul inline)
 # -------------------------------------------------------------
-from __future__ import annotations
 
 from django.conf import settings
 from django.contrib import messages
