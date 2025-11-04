@@ -34925,7 +34925,7 @@ def referral_create(request, company_id=None):
                             filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
                             lien_cadeau = (claim_referrer_abs or "").strip()
 
-                            subject = f"{company_name} – parrainage validé 🎉"
+                            subject = f"{company_name} – parrainage validé"
 
                             body_lines = [
                                 "⸻",
@@ -34935,9 +34935,8 @@ def referral_create(request, company_id=None):
                                 f"{filleul_prenom} est venu découvrir {company_name} grâce à toi",
                                 "",
                                 f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
-                                "ton parrainage vient d’être validé,
-                                "",
-                                "En remerciement, tu remportes un cadeau 🎁",
+                                "ton parrainage vient d’être validé,"
+                                "En remerciement, tu remportes un cadeau 🎁"
                             ]
                             if lien_cadeau:
                                 body_lines += [f"Découvre-le en cliquant [ici]({lien_cadeau})."]

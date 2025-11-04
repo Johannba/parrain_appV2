@@ -98,15 +98,20 @@ def reset_wheel(company: Company, key: str) -> None:
     wheel.idx = 0
     wheel.save(update_fields=["idx"])
 
-def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
-    # 1) Compter les parrainages du client (en tant que parrain)
-    referrals_count = Referral.objects.filter(company=company, referrer=client).count()
+# rewards/services/probabilities.py
 
-    # 2) Charger les templates (avec min requis)
+def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
+    referrals_count = Referral.objects.filter(company=company, referrer=client).count()
     tpls = {
         t.bucket: t
-        for t in RewardTemplate.objects.filter(company=company).only("bucket", "min_referrals_required")
+        for t in RewardTemplate.objects.filter(company=company)
+                                       .only("bucket", "min_referrals_required")
     }
+
+    # ✅ NOUVEAU : si un minimum global existe (>0), on le fait respecter pour TOUT
+    global_min = max(int(t.min_referrals_required or 0) for t in tpls.values()) if tpls else 0
+    if global_min > 0 and referrals_count < global_min:
+        return {"SOUVENT": False, "MOYEN": False, "RARE": False, "TRES_RARE": False}
 
     def is_ok(bucket: str) -> bool:
         tpl = tpls.get(bucket)
@@ -115,12 +120,11 @@ def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
         min_required = int(tpl.min_referrals_required or 0)
         return referrals_count >= min_required
 
-    # 3) IMPORTANT : appliquer la règle à TOUS les buckets
     return {
-        SOUVENT:   is_ok(SOUVENT),
-        MOYEN:     is_ok(MOYEN),
-        RARE:      is_ok(RARE),
-        TRES_RARE: is_ok(TRES_RARE),
+        "SOUVENT":   is_ok("SOUVENT"),
+        "MOYEN":     is_ok("MOYEN"),
+        "RARE":      is_ok("RARE"),
+        "TRES_RARE": is_ok("TRES_RARE"),
     }
 
 def _consume_one_eligible(wheel: ProbabilityWheel, allowed: Set[str]) -> str:
@@ -201,7 +205,7 @@ def get_normalized_percentages(company: Company, client) -> Dict[str, Decimal]:
     # Aucun bucket autorisé -> fallback lisible
     if mass == 0:
         return {
-            SOUVENT:   Decimal(100),
+            SOUVENT:   Decimal(0),
             MOYEN:     Decimal(0),
             RARE:      Decimal(0),
             TRES_RARE: Decimal(0),

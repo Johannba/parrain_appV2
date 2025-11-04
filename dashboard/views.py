@@ -632,7 +632,7 @@ def referral_create(request, company_id=None):
                                 "",
                                 f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
                                 "ton parrainage vient d’être validé,"
-                                "En remerciement, tu remportes un cadeau 🎁"
+                                "En remerciement, tu remportes un cadeau"
                             ]
                             if lien_cadeau:
                                 body_lines += [f"Découvre-le en cliquant [ici]({lien_cadeau})."]
