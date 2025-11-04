@@ -23,6 +23,11 @@ from rewards.forms import RewardTemplateForm
 from rewards.models import Reward, RewardTemplate
 from rewards.services import award_both_parties
 from accounts.utils import skip_client_user_autocreate
+from django.db.models import Max
+from django.contrib import messages
+from rewards.services.probabilities import tirer_recompense, NO_HIT
+from rewards.models import RewardTemplate, Reward
+
 
 # -------------------------------------------------------------
 # Helpers (rôles & périmètre)
@@ -503,16 +508,37 @@ def referrer_lookup(request):
 # -------------------------------------------------------------
 # Parrainage : création (recherche parrain + filleul inline)
 # -------------------------------------------------------------
+from __future__ import annotations
+
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.mail import send_mail
+from django.db import transaction, IntegrityError
+from django.db.models import Max
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+
+from accounts.models import Company
+from dashboard.models import Client, Referral
+from .forms import RefereeInlineForm, ReferralForm
+from rewards.models import Reward, RewardTemplate
+from rewards.services.probabilities import tirer_recompense, NO_HIT
+
+# si tu as ce helper ailleurs :
+from common.phone_utils import normalize_msisdn
+
+
 @login_required
 @transaction.atomic
 def referral_create(request, company_id=None):
     """
     1) Sélection d’un parrain via autocomplete,
     2) Saisie/repérage du filleul (création si besoin dans l’entreprise du parrain),
-    3) Création du parrainage + 2 récompenses (parrain & filleul),
-       -> la récompense du FILLEUL est immédiatement marquée 'SENT' (distribuée),
-          celle du PARRAIN reste 'PENDING',
-       puis envoi automatique du lien au FILLEUL si possible.
+    3) Création du parrainage + cadeaux :
+       - le FILLEUL reçoit immédiatement une récompense (état SENT),
+       - le PARRAIN ne reçoit une récompense que si le minimum requis est atteint,
+         sinon message + redirection sans créer de reward parrain.
     """
     # ---- Contexte entreprise pour l’autocomplete ----
     if _is_superadmin(request.user) and company_id:
@@ -524,7 +550,7 @@ def referral_create(request, company_id=None):
     referrer_error = None
 
     if request.method == "POST":
-        # Parrain choisi (ID venant du champ caché)
+        # --- 1) Identifier le parrain ---
         raw_referrer_id = (request.POST.get("referrer") or "").strip()
 
         referrer_qs = Client.objects.filter(is_referrer=True).select_related("company")
@@ -540,10 +566,12 @@ def referral_create(request, company_id=None):
 
         if not referrer:
             referrer_error = "Sélectionnez un parrain valide dans la liste."
+
+        # --- 2) Valider / créer le filleul dans l'entreprise du parrain ---
         elif ref_form.is_valid():
-            # Créer / réutiliser le filleul dans l’entreprise du parrain
             company = referrer.company
             email = (ref_form.cleaned_data.get("email") or "").strip().lower()
+
             referee = (
                 Client.objects.filter(company=company, email__iexact=email).first()
                 if email else None
@@ -551,7 +579,7 @@ def referral_create(request, company_id=None):
             if referee is None:
                 referee = ref_form.save_with_company(company)
 
-            # Création du parrainage (valide les cohérences via ReferralForm)
+            # --- 3) Créer le parrainage ---
             rf = ReferralForm(
                 data={"referrer": referrer.pk, "referee": referee.pk},
                 request=request,
@@ -565,30 +593,184 @@ def referral_create(request, company_id=None):
                 except IntegrityError:
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
-                    # Crée les 2 récompenses — idempotent par (company, client, referral)
-                    reward_parrain, reward_filleul = award_both_parties(referral=referral)
+                    # ---------------------------------------------------------------------
+                    # 3.a) CADEAU FILLEUL : immédiatement SENT (toujours, sans minimum)
+                    # ---------------------------------------------------------------------
+                    # On prend la récompense "SOUVENT" comme base (ou fallback sur la 1ʳᵉ).
+                    tpl_referee = RewardTemplate.objects.filter(
+                        company=company, bucket="SOUVENT"
+                    ).first() or RewardTemplate.objects.filter(company=company).first()
 
-                    # --- Sécurise : identifie quelle reward appartient à qui ---
-                    rw_referrer = reward_parrain
-                    rw_referee = reward_filleul
-                    for rw in (reward_parrain, reward_filleul):
-                        if rw.client_id == referrer.id:
-                            rw_referrer = rw
-                        elif rw.client_id == referee.id:
-                            rw_referee = rw
-
-                    # ✅ Le FILLEUL reçoit immédiatement (SENT)
-                    if getattr(rw_referee, "state", None) != "SENT":
-                        rw_referee.state = "SENT"
-                        update_fields = ["state"]
+                    if tpl_referee:
+                        rw_referee = Reward.objects.create(
+                            company=company,
+                            client=referee,
+                            bucket=tpl_referee.bucket,
+                            label=tpl_referee.label or "Cadeau",
+                            state="SENT",
+                            referral=referral,
+                        )
+                        # Si le modèle possède un champ 'sent_at' / 'redeemed_at'
+                        update_fields = []
                         if hasattr(rw_referee, "sent_at") and not getattr(rw_referee, "sent_at", None):
                             rw_referee.sent_at = timezone.now()
                             update_fields.append("sent_at")
-                        rw_referee.save(update_fields=update_fields)
-                        _promote_to_referrer(referee)
+                        if hasattr(rw_referee, "redeemed_at") and not getattr(rw_referee, "redeemed_at", None):
+                            rw_referee.redeemed_at = timezone.now()
+                            update_fields.append("redeemed_at")
+                        if update_fields:
+                            rw_referee.save(update_fields=update_fields)
 
+                        # (optionnel selon ton app) : le filleul peut devenir parrain ensuite
+                        try:
+                            _promote_to_referrer(referee)
+                        except Exception:
+                            pass
 
-                    # ✅ Alimente la popup (affichée à l'arrivée sur clients_list)
+                        # Lien absolu pour SMS (si le modèle le génère)
+                        claim_referee_abs = (
+                            request.build_absolute_uri(rw_referee.claim_path)
+                            if getattr(rw_referee, "claim_path", "")
+                            else ""
+                        )
+                    else:
+                        rw_referee = None
+                        claim_referee_abs = ""
+
+                    # ---------------------------------------------------------------------
+                    # 3.b) CADEAU PARRAIN : tirage + respect du minimum requis
+                    # ---------------------------------------------------------------------
+                    bucket = tirer_recompense(company, referrer)
+
+                    if bucket == NO_HIT:
+                        # Aucun cadeau parrain éligible → message clair + redirection
+                        min_global = (
+                            RewardTemplate.objects
+                            .filter(company=company)
+                            .aggregate(Max("min_referrals_required"))["min_referrals_required__max"] or 0
+                        )
+                        current_refs = Referral.objects.filter(company=company, referrer=referrer).count()
+                        if min_global > 0 and current_refs < min_global:
+                            restant = max(min_global - current_refs, 0)
+                            messages.warning(
+                                request,
+                                f"Minimum requis non atteint pour offrir un cadeau parrain : "
+                                f"{current_refs}/{min_global} (encore {restant} parrainage(s) à valider)."
+                            )
+                        else:
+                            messages.info(request, "Aucun cadeau parrain éligible pour le moment.")
+
+                        # Popup d’info pour la liste (on met '—' côté parrain)
+                        request.session["award_popup"] = {
+                            "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
+                            "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
+                            "referrer_label": "—",
+                            "referee_label": getattr(rw_referee, "label", "—"),
+                        }
+
+                        # SMS au FILLEUL si possible (après commit)
+                        if referee.phone and claim_referee_abs:
+                            def _sms_after_commit():
+                                try:
+                                    conf = getattr(settings, "SMSMODE", {})
+                                    api_key  = conf.get("API_KEY") or ""
+                                    base_url = (conf.get("BASE_URL") or "https://rest.smsmode.com").rstrip("/")
+                                    sender   = (conf.get("SENDER") or "ParrainApp").strip()
+                                    dry_run  = bool(conf.get("DRY_RUN"))
+                                    timeout  = int(conf.get("TIMEOUT", 10))
+
+                                    if not api_key:
+                                        messages.info(request, "Parrainage OK. SMS non envoyé (SMSMODE_API_KEY manquant).")
+                                        return
+
+                                    default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
+                                    to_number, meta = normalize_msisdn(referee.phone, default_region=default_region)
+                                    if not to_number:
+                                        messages.info(request, f"Parrainage OK. SMS non envoyé (numéro invalide: {meta.get('reason')}).")
+                                        return
+
+                                    import requests
+                                    url = f"{base_url}/sms/v1/messages"
+                                    headers = {
+                                        "X-Api-Key": api_key,
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                    }
+                                    text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referee_abs}"
+                                    payload = {"recipient": {"to": to_number}, "body": {"text": text}, "from": sender}
+
+                                    if dry_run:
+                                        messages.info(request, f"DRY_RUN SMSMODE → {to_number}: {text}")
+                                        return
+
+                                    r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+                                    if r.status_code in (200, 201, 202):
+                                        messages.success(request, "Lien de récompense envoyé au filleul par SMS.")
+                                    else:
+                                        messages.warning(request, f"Parrainage OK. SMS non envoyé ({r.status_code}) : {r.text[:300]}")
+                                except Exception as e:
+                                    messages.warning(request, f"Parrainage OK, SMS non envoyé : {e}")
+
+                            transaction.on_commit(_sms_after_commit)
+                        else:
+                            messages.info(request, "Parrainage OK. SMS non envoyé (numéro du filleul ou lien manquant).")
+
+                        return redirect("dashboard:clients_list")
+
+                    # --- Ici : un bucket valide pour le PARRAIN (SOUVENT/MOYEN/RARE/TRES_RARE) ---
+                    tpl_referrer = RewardTemplate.objects.filter(company=company, bucket=bucket).first()
+                    if not tpl_referrer:
+                        messages.error(
+                            request,
+                            "Modèle de récompense introuvable pour le tirage parrain. Aucun cadeau créé."
+                        )
+
+                        # SMS filleul éventuellement
+                        if referee.phone and claim_referee_abs:
+                            def _sms_after_commit_only_referee():
+                                try:
+                                    conf = getattr(settings, "SMSMODE", {})
+                                    api_key  = conf.get("API_KEY") or ""
+                                    base_url = (conf.get("BASE_URL") or "https://rest.smsmode.com").rstrip("/")
+                                    sender   = (conf.get("SENDER") or "ParrainApp").strip()
+                                    dry_run  = bool(conf.get("DRY_RUN"))
+                                    timeout  = int(conf.get("TIMEOUT", 10))
+                                    if not api_key:
+                                        return
+                                    default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
+                                    to_number, _ = normalize_msisdn(referee.phone, default_region=default_region)
+                                    if not to_number:
+                                        return
+                                    import requests
+                                    url = f"{base_url}/sms/v1/messages"
+                                    headers = {"X-Api-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"}
+                                    text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referee_abs}"
+                                    payload = {"recipient": {"to": to_number}, "body": {"text": text}, "from": sender}
+                                    if not dry_run:
+                                        requests.post(url, headers=headers, json=payload, timeout=timeout)
+                                except Exception:
+                                    pass
+                            transaction.on_commit(_sms_after_commit_only_referee)
+
+                        return redirect("dashboard:clients_list")
+
+                    rw_referrer = Reward.objects.create(
+                        company=company,
+                        client=referrer,
+                        bucket=bucket,
+                        label=tpl_referrer.label or "Cadeau",
+                        state="PENDING",
+                        referral=referral,
+                    )
+
+                    # Lien absolu pour l’email (parrain)
+                    claim_referrer_abs = (
+                        request.build_absolute_uri(rw_referrer.claim_path)
+                        if getattr(rw_referrer, "claim_path", "")
+                        else ""
+                    )
+
+                    # Popup (affichée à l'arrivée sur clients_list)
                     request.session["award_popup"] = {
                         "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
                         "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
@@ -596,147 +778,101 @@ def referral_create(request, company_id=None):
                         "referee_label": getattr(rw_referee, "label", "—"),
                     }
 
+                    # Message principal
                     messages.success(
                         request,
                         f"Parrainage créé : {referrer} → {referee}. "
-                        f"Récompenses : Parrain « {rw_referrer.label} » (en attente) "
-                        f"et Filleul « {rw_referee.label} » (envoyée).",
+                        f"Récompenses : Parrain « {getattr(rw_referrer, 'label', '—')} » (en attente) "
+                        f"et Filleul « {getattr(rw_referee, 'label', '—')} » (envoyée).",
                     )
 
-                    claim_referrer_abs = (
-                        request.build_absolute_uri(rw_referrer.claim_path)
-                        if getattr(rw_referrer, "claim_path", "")
-                        else ""
-                    )
-                                        
+                    # Email au parrain (si adresse et lien dispo) — après commit
                     def _email_parrain_after_commit():
                         try:
                             to_email = (referrer.email or "").strip()
                             if not to_email:
-                                messages.info(request, "Parrainage OK, mais e-mail du parrain introuvable — email non envoyé.")
-                                return  # pas d'email → on n'envoie pas
+                                return
 
                             company_name = getattr(company, "name", "Votre enseigne")
                             prenom = (referrer.first_name or referrer.last_name or str(referrer)).strip()
                             filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
-                            lien_cadeau = (claim_referrer_abs or "").strip()
-
                             subject = f"{company_name} – parrainage validé"
 
-                            body_lines = [
+                            lines = [
                                 "⸻",
                                 "",
                                 f"Bonjour {prenom},",
                                 "",
-                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi",
+                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi.",
                                 "",
                                 f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
-                                "ton parrainage vient d’être validé,"
-                                "En remerciement, tu remportes un cadeau"
+                                "ton parrainage vient d’être validé.",
+                                "En remerciement, tu remportes un cadeau.",
                             ]
-                            if lien_cadeau:
-                                body_lines += [f"Découvre-le en cliquant [ici]({lien_cadeau})."]
+                            if claim_referrer_abs:
+                                lines.append(f"Découvre-le en cliquant sur le lien ci-dessous :\n{claim_referrer_abs}")
 
-                            body_lines += [
+                            lines += [
                                 "",
                                 f"Merci encore d’avoir parlé de {company_name} autour de toi —",
-                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion",
+                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion.",
                                 "",
                                 "À très vite,",
                                 f"L’équipe {company_name}",
                                 "",
                                 "⸻",
-                                "",
-                                f"Ce message t’a été envoyé par {company_name} via Chuchote,",
-                                "le service qui facilite la gestion des parrainages clients.",
+                                f"Message envoyé par {company_name} via Chuchote.",
                             ]
+                            body = "\n".join(lines)
 
-                            body = "\n".join(body_lines)
-
-                            sent = send_mail(
+                            send_mail(
                                 subject=subject,
                                 message=body,
                                 from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
                                 recipient_list=[to_email],
                                 fail_silently=False,
                             )
-                            if not sent:
-                                messages.warning(request, "Parrainage OK, mais l’e-mail n’a pas été accepté par le backend (send_mail=0).")
                         except Exception as e:
-                            messages.warning(request, f"Parrainage OK, email au parrain non envoyé : {e}")
+                            messages.warning(request, f"Email au parrain non envoyé : {e}")
 
-                    # IMPORTANT : conserver cet appel APRÈS la définition
                     transaction.on_commit(_email_parrain_after_commit)
 
-
-                    # IMPORTANT : déclencher l'envoi APRÈS le commit de la transaction
-                    transaction.on_commit(_email_parrain_after_commit)
-                    if referee.phone and claim_referrer_abs:
-                        # Envoi différé après commit (SMS via SMSMODE)
-                        def _after_commit():
-                            import os
-                            import requests
-                            from django.conf import settings
-                            from common.phone_utils import normalize_msisdn  # <<< helper
-
+                    # SMS au FILLEUL (si possible) — après commit
+                    if referee.phone and claim_referee_abs:
+                        def _sms_after_commit_ok():
                             try:
                                 conf = getattr(settings, "SMSMODE", {})
-                                api_key  = conf.get("API_KEY") or os.getenv("SMSMODE_API_KEY", "")
+                                api_key  = conf.get("API_KEY") or ""
                                 base_url = (conf.get("BASE_URL") or "https://rest.smsmode.com").rstrip("/")
                                 sender   = (conf.get("SENDER") or "ParrainApp").strip()
                                 dry_run  = bool(conf.get("DRY_RUN"))
                                 timeout  = int(conf.get("TIMEOUT", 10))
 
                                 if not api_key:
-                                    messages.info(request, "Parrainage OK. SMS non envoyé (SMSMODE_API_KEY manquant).")
                                     return
 
-                                # Région par défaut (optionnelle) : settings.SMS_DEFAULT_REGION ou 'FR'
                                 default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
-
-                                # Normalisation universelle (FR/DOM-TOM/EG etc.)
                                 to_number, meta = normalize_msisdn(referee.phone, default_region=default_region)
                                 if not to_number:
-                                    messages.info(
-                                        request,
-                                        f"Parrainage OK. SMS non envoyé (numéro invalide: {meta.get('reason')})."
-                                    )
                                     return
 
-                                text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referrer_abs}"
-
+                                import requests
                                 url = f"{base_url}/sms/v1/messages"
                                 headers = {
                                     "X-Api-Key": api_key,
                                     "Content-Type": "application/json",
                                     "Accept": "application/json",
                                 }
-                                payload = {
-                                    "recipient": {"to": to_number},
-                                    "body": {"text": text},
-                                    "from": sender,
-                                }
+                                text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referee_abs}"
+                                payload = {"recipient": {"to": to_number}, "body": {"text": text}, "from": sender}
 
-                                if dry_run:
-                                    messages.info(request, f"DRY_RUN SMSMODE → {to_number}: {text}")
-                                    return
-
-                                r = requests.post(url, headers=headers, json=payload, timeout=timeout)
-
-                                if r.status_code in (200, 201, 202):
-                                    messages.success(request, "Lien de récompense envoyé au filleul par SMS.")
-                                else:
-                                    messages.warning(
-                                        request,
-                                        f"Parrainage OK. SMS non envoyé ({r.status_code}) : {r.text[:300]}"
-                                    )
-                            except Exception as e:
-                                messages.warning(request, f"Parrainage OK, SMS non envoyé : {e}")
-
-                        transaction.on_commit(_after_commit)
+                                if not dry_run:
+                                    requests.post(url, headers=headers, json=payload, timeout=timeout)
+                            except Exception:
+                                pass
+                        transaction.on_commit(_sms_after_commit_ok)
                     else:
-                        messages.info(request, "Parrainage OK. SMS non envoyé (numéro du filleul ou lien manquant).")
-
+                        messages.info(request, "SMS non envoyé au filleul (numéro ou lien manquant).")
 
                     return redirect("dashboard:clients_list")
             else:
