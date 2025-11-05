@@ -31,6 +31,8 @@ from rewards.models import RewardTemplate, Reward
 
 import logging
 logger = logging.getLogger(__name__)
+
+
 # -------------------------------------------------------------
 # Helpers (rôles & périmètre)
 # -------------------------------------------------------------
@@ -550,6 +552,20 @@ def referral_create(request, company_id=None):
     else:
         company_ctx = getattr(request.user, "company", None)
 
+    # Helper local : construire une URL absolue sans jamais lever
+    def _safe_abs(request, obj, attr="claim_path"):
+        try:
+            val = getattr(obj, attr, "")
+            if callable(val):
+                val = val()
+            if not val:
+                return ""
+            return request.build_absolute_uri(val)
+        except Exception as e:
+            logger.warning("claim_path build failed for %s(id=%s): %s",
+                           obj.__class__.__name__, getattr(obj, "id", None), e)
+            return ""
+
     ref_form = RefereeInlineForm(request.POST or None)
     referrer_error = None
 
@@ -569,6 +585,7 @@ def referral_create(request, company_id=None):
 
         if not referrer:
             referrer_error = "Sélectionnez un parrain valide dans la liste."
+
         # --- 2) Filleul dans l'entreprise du parrain ---
         elif ref_form.is_valid():
             company = referrer.company
@@ -599,6 +616,7 @@ def referral_create(request, company_id=None):
                         RewardTemplate.objects.filter(company=company, bucket="SOUVENT").first()
                         or RewardTemplate.objects.filter(company=company).first()
                     )
+
                     if tpl_referee:
                         rw_referee = Reward.objects.create(
                             company=company,
@@ -615,35 +633,35 @@ def referral_create(request, company_id=None):
                             rw_referee.redeemed_at = timezone.now(); update_fields.append("redeemed_at")
                         if update_fields:
                             rw_referee.save(update_fields=update_fields)
+
+                        # facultatif : le filleul devient parrain
                         try:
                             _promote_to_referrer(referee)
                         except Exception:
                             pass
-                        claim_referee_abs = (
-                            request.build_absolute_uri(rw_referee.claim_path)
-                            if getattr(rw_referee, "claim_path", "")
-                            else ""
-                        )
+
+                        claim_referee_abs = _safe_abs(request, rw_referee)
                     else:
                         rw_referee = None
                         claim_referee_abs = ""
 
                     # ---------- 3.b) récompense PARRAIN ----------
                     bucket = tirer_recompense(company, referrer)
-                    logger.info("tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
-                                bucket, referrer.id, company.id)
+                    logger.info(
+                        "tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
+                        bucket, referrer.id, company.id
+                    )
 
-                    # Sait-on s'il existe au moins un min > 0 dans l'entreprise ?
+                    # Existe-t-il au moins un min > 0 dans l’entreprise ?
                     has_min = RewardTemplate.objects.filter(
                         company=company, min_referrals_required__gt=0
                     ).exists()
 
-                    # Si NO_HIT **et** aucun min n'existe, on force un bucket gagnant,
-                    # et si le bucket choisi n'existe pas on retombera sur le 1er template.
+                    # Si NO_HIT **et** aucun min : forcer un bucket gagnant
                     if bucket == NO_HIT and not has_min:
                         bucket = "SOUVENT"
 
-                    # Si NO_HIT persiste, c'est (normalement) que des min existent et ne sont pas atteints.
+                    # Si NO_HIT persiste, il y a des min non atteints → pas d’email parrain
                     if bucket == NO_HIT:
                         min_global = (
                             RewardTemplate.objects
@@ -668,7 +686,7 @@ def referral_create(request, company_id=None):
                             "referee_label": getattr(rw_referee, "label", "—"),
                         }
 
-                        # SMS filleul (optionnel)
+                        # SMS filleul (optionnel, après commit)
                         if referee.phone and claim_referee_abs:
                             def _sms_after_commit():
                                 try:
@@ -697,31 +715,26 @@ def referral_create(request, company_id=None):
                                     logger.warning("SMS filleul non envoyé: %s", e)
                             transaction.on_commit(_sms_after_commit)
 
-                        logger.info("NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)", current_refs, min_global)
+                        logger.info("NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)",
+                                    current_refs, min_global)
                         return redirect("dashboard:clients_list")
 
-                    # Ici: bucket valide (forcé ou tiré) → on cherche un template.
+                    # Ici : bucket valide (forcé ou tiré) → chercher un template
                     tpl_referrer = RewardTemplate.objects.filter(company=company, bucket=bucket).first()
 
-                    # --- FALLBACK CRITIQUE ---
-                    # Si le template du bucket choisi n'existe pas, on prend le premier template dispo
-                    # et on aligne le bucket dessus (pour créer la reward + envoyer l'email).
+                    # FALLBACK : si pas de template pour ce bucket, prendre le premier dispo
                     if not tpl_referrer:
-                        tpl_referrer = RewardTemplate.objects.filter(company=company).first()
-                        if tpl_referrer:
-                            logger.warning(
-                                "Template bucket=%s introuvable, fallback sur bucket=%s (id=%s)",
-                                bucket, tpl_referrer.bucket, tpl_referrer.id
+                        fallback = RewardTemplate.objects.filter(company=company).first()
+                        if not fallback:
+                            messages.error(
+                                request,
+                                "Aucun modèle de récompense défini pour cette entreprise. Créez un template avant."
                             )
-                            bucket = tpl_referrer.bucket
-
-                    if not tpl_referrer:
-                        # Il n'y a VRAIMENT aucun template dans l'entreprise → on sort.
-                        messages.error(
-                            request,
-                            "Aucun modèle de récompense défini pour cette entreprise. Créez un template avant."
-                        )
-                        return redirect("dashboard:clients_list")
+                            return redirect("dashboard:clients_list")
+                        logger.warning("Template bucket=%s introuvable, fallback -> %s (id=%s)",
+                                       bucket, fallback.bucket, fallback.id)
+                        bucket = fallback.bucket
+                        tpl_referrer = fallback
 
                     # Création reward PARRAIN
                     rw_referrer = Reward.objects.create(
@@ -733,19 +746,15 @@ def referral_create(request, company_id=None):
                         referral=referral,
                     )
 
-                    claim_referrer_abs = (
-                        request.build_absolute_uri(rw_referrer.claim_path)
-                        if getattr(rw_referrer, "claim_path", "")
-                        else ""
-                    )
+                    claim_referrer_abs = _safe_abs(request, rw_referrer)
 
+                    # Popup et message
                     request.session["award_popup"] = {
                         "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
                         "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
                         "referrer_label": getattr(rw_referrer, "label", "—"),
                         "referee_label": getattr(rw_referee, "label", "—"),
                     }
-
                     messages.success(
                         request,
                         f"Parrainage créé : {referrer} → {referee}. "
