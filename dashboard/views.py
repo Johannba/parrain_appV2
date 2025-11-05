@@ -23,7 +23,7 @@ from .forms import (
 from rewards.forms import RewardTemplateForm
 from rewards.models import Reward, RewardTemplate
 from rewards.services import award_both_parties
-from accounts.utils import skip_client_user_autocreate
+
 from django.db.models import Max
 from django.contrib import messages
 from rewards.services.probabilities import tirer_recompense, NO_HIT
@@ -31,6 +31,8 @@ from rewards.models import RewardTemplate, Reward
 
 import logging
 logger = logging.getLogger(__name__)
+from django.db import transaction
+
 
 
 # -------------------------------------------------------------
@@ -532,8 +534,6 @@ from rewards.services.probabilities import tirer_recompense, NO_HIT
 # si tu as ce helper ailleurs :
 from rewards.services.smsmode import normalize_msisdn
 
-import logging
-logger = logging.getLogger(__name__)
 
 @login_required
 @transaction.atomic
@@ -552,18 +552,20 @@ def referral_create(request, company_id=None):
     else:
         company_ctx = getattr(request.user, "company", None)
 
-    # Helper local : construire une URL absolue sans jamais lever
-    def _safe_abs(request, obj, attr="claim_path"):
+    # Helper local : construire une URL absolue sans lever
+    def _safe_abs(req, obj, attr="claim_path"):
         try:
             val = getattr(obj, attr, "")
             if callable(val):
                 val = val()
             if not val:
                 return ""
-            return request.build_absolute_uri(val)
+            return req.build_absolute_uri(val)
         except Exception as e:
-            logger.warning("claim_path build failed for %s(id=%s): %s",
-                           obj.__class__.__name__, getattr(obj, "id", None), e)
+            logger.warning(
+                "claim_path build failed for %s(id=%s): %s",
+                obj.__class__.__name__, getattr(obj, "id", None), e
+            )
             return ""
 
     ref_form = RefereeInlineForm(request.POST or None)
@@ -647,7 +649,8 @@ def referral_create(request, company_id=None):
 
                     # ---------- 3.b) récompense PARRAIN ----------
                     bucket = tirer_recompense(company, referrer)
-                    logger.info(
+                    # Utiliser WARNING pour apparaître par défaut dans les logs docker
+                    logger.warning(
                         "tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
                         bucket, referrer.id, company.id
                     )
@@ -697,12 +700,12 @@ def referral_create(request, company_id=None):
                                     dry_run  = bool(conf.get("DRY_RUN"))
                                     timeout  = int(conf.get("TIMEOUT", 10))
                                     if not api_key:
-                                        logger.info("SMSMODE: API_KEY manquant (no send).")
+                                        logger.warning("SMSMODE: API_KEY manquant (no send).")
                                         return
                                     default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
                                     to_number, meta = normalize_msisdn(referee.phone, default_region=default_region)
                                     if not to_number:
-                                        logger.info("SMSMODE: numéro invalide: %s", meta)
+                                        logger.warning("SMSMODE: numéro invalide: %s", meta)
                                         return
                                     import requests
                                     url = f"{base_url}/sms/v1/messages"
@@ -715,8 +718,10 @@ def referral_create(request, company_id=None):
                                     logger.warning("SMS filleul non envoyé: %s", e)
                             transaction.on_commit(_sms_after_commit)
 
-                        logger.info("NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)",
-                                    current_refs, min_global)
+                        logger.warning(
+                            "NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)",
+                            current_refs, min_global
+                        )
                         return redirect("dashboard:clients_list")
 
                     # Ici : bucket valide (forcé ou tiré) → chercher un template
@@ -731,8 +736,10 @@ def referral_create(request, company_id=None):
                                 "Aucun modèle de récompense défini pour cette entreprise. Créez un template avant."
                             )
                             return redirect("dashboard:clients_list")
-                        logger.warning("Template bucket=%s introuvable, fallback -> %s (id=%s)",
-                                       bucket, fallback.bucket, fallback.id)
+                        logger.warning(
+                            "Template bucket=%s introuvable, fallback -> %s (id=%s)",
+                            bucket, fallback.bucket, fallback.id
+                        )
                         bucket = fallback.bucket
                         tpl_referrer = fallback
 
@@ -762,12 +769,26 @@ def referral_create(request, company_id=None):
                         f"et Filleul « {getattr(rw_referee, 'label', '—')} » (envoyée).",
                     )
 
-                    # Email PARRAIN après commit
+                    # ---- DEBUG UI : montre la cible email et le bucket pour vérifier rapidement
+                    messages.info(
+                        request,
+                        f"[DEBUG] Bucket parrain={bucket} | Email cible={ (referrer.email or '').strip() or '—' }"
+                    )
+                    try:
+                        messages.info(
+                            request,
+                            f"[DEBUG] Email backend={getattr(settings, 'EMAIL_BACKEND', '—')} "
+                            f"| From={getattr(settings, 'DEFAULT_FROM_EMAIL', '—')}"
+                        )
+                    except Exception:
+                        pass
+
+                    # Email PARRAIN (après commit par défaut, immédiat si DEBUG_EMAIL_IMMEDIATE=True)
                     def _email_parrain_after_commit():
                         try:
                             to_email = (referrer.email or "").strip()
                             if not to_email:
-                                logger.info("EMAIL PARRAIN: email du parrain vide → skip.")
+                                logger.warning("EMAIL PARRAIN: email du parrain vide → skip.")
                                 return
 
                             company_name = getattr(company, "name", "Votre enseigne")
@@ -776,12 +797,9 @@ def referral_create(request, company_id=None):
                             subject = f"{company_name} – parrainage validé"
 
                             lines = [
-                                "⸻",
-                                "",
-                                f"Bonjour {prenom},",
-                                "",
-                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi.",
-                                "",
+                                "⸻", "",
+                                f"Bonjour {prenom},", "",
+                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi.", "",
                                 f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
                                 "ton parrainage vient d’être validé.",
                                 "En remerciement, tu remportes un cadeau.",
@@ -801,19 +819,28 @@ def referral_create(request, company_id=None):
                             ]
                             body = "\n".join(lines)
 
-                            logger.info("EMAIL PARRAIN programmé -> %s", to_email)
-                            send_mail(
-                                subject=subject,
-                                message=body,
-                                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                                recipient_list=[to_email],
-                                fail_silently=False,
-                            )
-                            logger.info("EMAIL PARRAIN envoyé -> %s", to_email)
+                            from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+                            logger.warning("EMAIL PARRAIN programmé -> %s", to_email)
+
+                            # Mode debug : envoi immédiat
+                            if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
+                                logger.warning("DEBUG_EMAIL_IMMEDIATE=True → envoi immédiat (pas d'on_commit)")
+                                send_mail(subject, body, from_email, [to_email], fail_silently=False)
+                                logger.warning("EMAIL PARRAIN envoyé (immédiat) -> %s", to_email)
+                            else:
+                                # Mode normal : (ce callback est déjà appelé après commit)
+                                send_mail(subject, body, from_email, [to_email], fail_silently=False)
+                                logger.warning("EMAIL PARRAIN envoyé (post-commit) -> %s", to_email)
+
                         except Exception as e:
                             logger.exception("Email au parrain non envoyé: %s", e)
 
-                    transaction.on_commit(_email_parrain_after_commit)
+                    # Planification de l'envoi
+                    if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
+                        # Test à chaud : envoi tout de suite
+                        _email_parrain_after_commit()
+                    else:
+                        transaction.on_commit(_email_parrain_after_commit)
 
                     # SMS FILLEUL après commit (optionnel)
                     if referee.phone and claim_referee_abs:
