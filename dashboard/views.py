@@ -29,7 +29,8 @@ from django.contrib import messages
 from rewards.services.probabilities import tirer_recompense, NO_HIT
 from rewards.models import RewardTemplate, Reward
 
-
+import logging
+logger = logging.getLogger(__name__)
 # -------------------------------------------------------------
 # Helpers (rôles & périmètre)
 # -------------------------------------------------------------
@@ -641,8 +642,16 @@ def referral_create(request, company_id=None):
                     # 3.b) CADEAU PARRAIN : tirage + respect du minimum requis
                     # ---------------------------------------------------------------------
                     bucket = tirer_recompense(company, referrer)
+                    logger.info("tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
+            bucket, referrer.id, company.id)
+
 
                     if bucket == NO_HIT:
+                        # si véritablement aucun min n’est configuré dans l’entreprise, on refait un tirage "gagnant"
+                        has_min = RewardTemplate.objects.filter(company=company, min_referrals_required__gt=0).exists()
+                        if not has_min:
+                            # ex: choisir au moins le bucket 'SOUVENT' par défaut
+                            bucket = "SOUVENT"
                         # Aucun cadeau parrain éligible → message clair + redirection
                         min_global = (
                             RewardTemplate.objects
@@ -714,7 +723,10 @@ def referral_create(request, company_id=None):
                             transaction.on_commit(_sms_after_commit)
                         else:
                             messages.info(request, "Parrainage OK. SMS non envoyé (numéro du filleul ou lien manquant).")
-
+                        logger.info("NO_HIT: pas d'email au parrain. current_refs=%s, min_global=%s",
+                        current_refs, min_global)
+                        
+                        
                         return redirect("dashboard:clients_list")
 
                     # --- Ici : un bucket valide pour le PARRAIN (SOUVENT/MOYEN/RARE/TRES_RARE) ---
@@ -832,8 +844,13 @@ def referral_create(request, company_id=None):
                                 recipient_list=[to_email],
                                 fail_silently=False,
                             )
+                            logger.info("EMAIL PARRAIN envoyé à %s", to_email)
+
                         except Exception as e:
                             messages.warning(request, f"Email au parrain non envoyé : {e}")
+                     
+                    logger.info("EMAIL PARRAIN programmé -> %s", (referrer.email or "(vide)"))
+       
 
                     transaction.on_commit(_email_parrain_after_commit)
 
