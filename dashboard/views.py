@@ -597,7 +597,6 @@ def referral_create(request, company_id=None):
                     # ---------------------------------------------------------------------
                     # 3.a) CADEAU FILLEUL : immédiatement SENT (toujours, sans minimum)
                     # ---------------------------------------------------------------------
-                    # On prend la récompense "SOUVENT" comme base (ou fallback sur la 1ʳᵉ).
                     tpl_referee = RewardTemplate.objects.filter(
                         company=company, bucket="SOUVENT"
                     ).first() or RewardTemplate.objects.filter(company=company).first()
@@ -611,7 +610,6 @@ def referral_create(request, company_id=None):
                             state="SENT",
                             referral=referral,
                         )
-                        # Si le modèle possède un champ 'sent_at' / 'redeemed_at'
                         update_fields = []
                         if hasattr(rw_referee, "sent_at") and not getattr(rw_referee, "sent_at", None):
                             rw_referee.sent_at = timezone.now()
@@ -622,13 +620,11 @@ def referral_create(request, company_id=None):
                         if update_fields:
                             rw_referee.save(update_fields=update_fields)
 
-                        # (optionnel selon ton app) : le filleul peut devenir parrain ensuite
                         try:
                             _promote_to_referrer(referee)
                         except Exception:
                             pass
 
-                        # Lien absolu pour SMS (si le modèle le génère)
                         claim_referee_abs = (
                             request.build_absolute_uri(rw_referee.claim_path)
                             if getattr(rw_referee, "claim_path", "")
@@ -642,17 +638,21 @@ def referral_create(request, company_id=None):
                     # 3.b) CADEAU PARRAIN : tirage + respect du minimum requis
                     # ---------------------------------------------------------------------
                     bucket = tirer_recompense(company, referrer)
-                    logger.info("tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
-            bucket, referrer.id, company.id)
+                    logger.info(
+                        "tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
+                        bucket, referrer.id, company.id
+                    )
 
+                    # FIX: s'il n'existe AUCUN minimum (>0) pour l'entreprise et qu'on a NO_HIT,
+                    # on force un bucket gagnant pour continuer le flux email.
+                    has_min = RewardTemplate.objects.filter(
+                        company=company, min_referrals_required__gt=0
+                    ).exists()
+                    if bucket == NO_HIT and not has_min:
+                        bucket = "SOUVENT"
 
+                    # Si NO_HIT persiste (donc il y a des min et pas atteints), on sort sans email.
                     if bucket == NO_HIT:
-                        # si véritablement aucun min n’est configuré dans l’entreprise, on refait un tirage "gagnant"
-                        has_min = RewardTemplate.objects.filter(company=company, min_referrals_required__gt=0).exists()
-                        if not has_min:
-                            # ex: choisir au moins le bucket 'SOUVENT' par défaut
-                            bucket = "SOUVENT"
-                        # Aucun cadeau parrain éligible → message clair + redirection
                         min_global = (
                             RewardTemplate.objects
                             .filter(company=company)
@@ -669,7 +669,6 @@ def referral_create(request, company_id=None):
                         else:
                             messages.info(request, "Aucun cadeau parrain éligible pour le moment.")
 
-                        # Popup d’info pour la liste (on met '—' côté parrain)
                         request.session["award_popup"] = {
                             "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
                             "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
@@ -677,7 +676,6 @@ def referral_create(request, company_id=None):
                             "referee_label": getattr(rw_referee, "label", "—"),
                         }
 
-                        # SMS au FILLEUL si possible (après commit)
                         if referee.phone and claim_referee_abs:
                             def _sms_after_commit():
                                 try:
@@ -723,10 +721,11 @@ def referral_create(request, company_id=None):
                             transaction.on_commit(_sms_after_commit)
                         else:
                             messages.info(request, "Parrainage OK. SMS non envoyé (numéro du filleul ou lien manquant).")
-                        logger.info("NO_HIT: pas d'email au parrain. current_refs=%s, min_global=%s",
-                        current_refs, min_global)
-                        
-                        
+
+                        logger.info(
+                            "NO_HIT: pas d'email au parrain. current_refs=%s, min_global=%s",
+                            current_refs, min_global
+                        )
                         return redirect("dashboard:clients_list")
 
                     # --- Ici : un bucket valide pour le PARRAIN (SOUVENT/MOYEN/RARE/TRES_RARE) ---
@@ -737,7 +736,6 @@ def referral_create(request, company_id=None):
                             "Modèle de récompense introuvable pour le tirage parrain. Aucun cadeau créé."
                         )
 
-                        # SMS filleul éventuellement
                         if referee.phone and claim_referee_abs:
                             def _sms_after_commit_only_referee():
                                 try:
@@ -775,14 +773,12 @@ def referral_create(request, company_id=None):
                         referral=referral,
                     )
 
-                    # Lien absolu pour l’email (parrain)
                     claim_referrer_abs = (
                         request.build_absolute_uri(rw_referrer.claim_path)
                         if getattr(rw_referrer, "claim_path", "")
                         else ""
                     )
 
-                    # Popup (affichée à l'arrivée sur clients_list)
                     request.session["award_popup"] = {
                         "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
                         "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
@@ -790,7 +786,6 @@ def referral_create(request, company_id=None):
                         "referee_label": getattr(rw_referee, "label", "—"),
                     }
 
-                    # Message principal
                     messages.success(
                         request,
                         f"Parrainage créé : {referrer} → {referee}. "
@@ -798,7 +793,6 @@ def referral_create(request, company_id=None):
                         f"et Filleul « {getattr(rw_referee, 'label', '—')} » (envoyée).",
                     )
 
-                    # Email au parrain (si adresse et lien dispo) — après commit
                     def _email_parrain_after_commit():
                         try:
                             to_email = (referrer.email or "").strip()
@@ -848,10 +842,8 @@ def referral_create(request, company_id=None):
 
                         except Exception as e:
                             messages.warning(request, f"Email au parrain non envoyé : {e}")
-                     
-                    logger.info("EMAIL PARRAIN programmé -> %s", (referrer.email or "(vide)"))
-       
 
+                    logger.info("EMAIL PARRAIN programmé -> %s", (referrer.email or "(vide)"))
                     transaction.on_commit(_email_parrain_after_commit)
 
                     # SMS au FILLEUL (si possible) — après commit
@@ -864,25 +856,17 @@ def referral_create(request, company_id=None):
                                 sender   = (conf.get("SENDER") or "ParrainApp").strip()
                                 dry_run  = bool(conf.get("DRY_RUN"))
                                 timeout  = int(conf.get("TIMEOUT", 10))
-
                                 if not api_key:
                                     return
-
                                 default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
                                 to_number, meta = normalize_msisdn(referee.phone, default_region=default_region)
                                 if not to_number:
                                     return
-
                                 import requests
                                 url = f"{base_url}/sms/v1/messages"
-                                headers = {
-                                    "X-Api-Key": api_key,
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json",
-                                }
+                                headers = {"X-Api-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"}
                                 text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referee_abs}"
                                 payload = {"recipient": {"to": to_number}, "body": {"text": text}, "from": sender}
-
                                 if not dry_run:
                                     requests.post(url, headers=headers, json=payload, timeout=timeout)
                             except Exception:
