@@ -530,18 +530,21 @@ from rewards.services.probabilities import tirer_recompense, NO_HIT
 # si tu as ce helper ailleurs :
 from rewards.services.smsmode import normalize_msisdn
 
+import logging
+logger = logging.getLogger(__name__)
+
 @login_required
 @transaction.atomic
 def referral_create(request, company_id=None):
     """
     1) Sélection d’un parrain via autocomplete,
-    2) Saisie/repérage du filleul (création si besoin dans l’entreprise du parrain),
+    2) Saisie/repérage du filleul (création si besoin),
     3) Création du parrainage + cadeaux :
-       - le FILLEUL reçoit immédiatement une récompense (état SENT),
-       - le PARRAIN ne reçoit une récompense que si le minimum requis est atteint,
-         sinon message + redirection sans créer de reward parrain.
+       - FILLEUL : récompense envoyée immédiatement (SENT),
+       - PARRAIN : récompense seulement si min atteint ; s’il n’y a aucun min
+         configuré dans l’entreprise, on force un bucket gagnant et on envoie l’email.
     """
-    # ---- Contexte entreprise pour l’autocomplete ----
+    # ---- Contexte entreprise ----
     if _is_superadmin(request.user) and company_id:
         company_ctx = Company.objects.filter(pk=company_id).first()
     else:
@@ -553,7 +556,6 @@ def referral_create(request, company_id=None):
     if request.method == "POST":
         # --- 1) Identifier le parrain ---
         raw_referrer_id = (request.POST.get("referrer") or "").strip()
-
         referrer_qs = Client.objects.filter(is_referrer=True).select_related("company")
         if not _is_superadmin(request.user):
             referrer_qs = referrer_qs.filter(company=request.user.company)
@@ -567,12 +569,10 @@ def referral_create(request, company_id=None):
 
         if not referrer:
             referrer_error = "Sélectionnez un parrain valide dans la liste."
-
-        # --- 2) Valider / créer le filleul dans l'entreprise du parrain ---
+        # --- 2) Filleul dans l'entreprise du parrain ---
         elif ref_form.is_valid():
             company = referrer.company
             email = (ref_form.cleaned_data.get("email") or "").strip().lower()
-
             referee = (
                 Client.objects.filter(company=company, email__iexact=email).first()
                 if email else None
@@ -594,13 +594,11 @@ def referral_create(request, company_id=None):
                 except IntegrityError:
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
-                    # ---------------------------------------------------------------------
-                    # 3.a) CADEAU FILLEUL : immédiatement SENT (toujours, sans minimum)
-                    # ---------------------------------------------------------------------
-                    tpl_referee = RewardTemplate.objects.filter(
-                        company=company, bucket="SOUVENT"
-                    ).first() or RewardTemplate.objects.filter(company=company).first()
-
+                    # ---------- 3.a) récompense FILLEUL : SENT ----------
+                    tpl_referee = (
+                        RewardTemplate.objects.filter(company=company, bucket="SOUVENT").first()
+                        or RewardTemplate.objects.filter(company=company).first()
+                    )
                     if tpl_referee:
                         rw_referee = Reward.objects.create(
                             company=company,
@@ -612,19 +610,15 @@ def referral_create(request, company_id=None):
                         )
                         update_fields = []
                         if hasattr(rw_referee, "sent_at") and not getattr(rw_referee, "sent_at", None):
-                            rw_referee.sent_at = timezone.now()
-                            update_fields.append("sent_at")
+                            rw_referee.sent_at = timezone.now(); update_fields.append("sent_at")
                         if hasattr(rw_referee, "redeemed_at") and not getattr(rw_referee, "redeemed_at", None):
-                            rw_referee.redeemed_at = timezone.now()
-                            update_fields.append("redeemed_at")
+                            rw_referee.redeemed_at = timezone.now(); update_fields.append("redeemed_at")
                         if update_fields:
                             rw_referee.save(update_fields=update_fields)
-
                         try:
                             _promote_to_referrer(referee)
                         except Exception:
                             pass
-
                         claim_referee_abs = (
                             request.build_absolute_uri(rw_referee.claim_path)
                             if getattr(rw_referee, "claim_path", "")
@@ -634,24 +628,22 @@ def referral_create(request, company_id=None):
                         rw_referee = None
                         claim_referee_abs = ""
 
-                    # ---------------------------------------------------------------------
-                    # 3.b) CADEAU PARRAIN : tirage + respect du minimum requis
-                    # ---------------------------------------------------------------------
+                    # ---------- 3.b) récompense PARRAIN ----------
                     bucket = tirer_recompense(company, referrer)
-                    logger.info(
-                        "tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
-                        bucket, referrer.id, company.id
-                    )
+                    logger.info("tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
+                                bucket, referrer.id, company.id)
 
-                    # FIX: s'il n'existe AUCUN minimum (>0) pour l'entreprise et qu'on a NO_HIT,
-                    # on force un bucket gagnant pour continuer le flux email.
+                    # Sait-on s'il existe au moins un min > 0 dans l'entreprise ?
                     has_min = RewardTemplate.objects.filter(
                         company=company, min_referrals_required__gt=0
                     ).exists()
+
+                    # Si NO_HIT **et** aucun min n'existe, on force un bucket gagnant,
+                    # et si le bucket choisi n'existe pas on retombera sur le 1er template.
                     if bucket == NO_HIT and not has_min:
                         bucket = "SOUVENT"
 
-                    # Si NO_HIT persiste (donc il y a des min et pas atteints), on sort sans email.
+                    # Si NO_HIT persiste, c'est (normalement) que des min existent et ne sont pas atteints.
                     if bucket == NO_HIT:
                         min_global = (
                             RewardTemplate.objects
@@ -676,6 +668,7 @@ def referral_create(request, company_id=None):
                             "referee_label": getattr(rw_referee, "label", "—"),
                         }
 
+                        # SMS filleul (optionnel)
                         if referee.phone and claim_referee_abs:
                             def _sms_after_commit():
                                 try:
@@ -685,71 +678,13 @@ def referral_create(request, company_id=None):
                                     sender   = (conf.get("SENDER") or "ParrainApp").strip()
                                     dry_run  = bool(conf.get("DRY_RUN"))
                                     timeout  = int(conf.get("TIMEOUT", 10))
-
                                     if not api_key:
-                                        messages.info(request, "Parrainage OK. SMS non envoyé (SMSMODE_API_KEY manquant).")
+                                        logger.info("SMSMODE: API_KEY manquant (no send).")
                                         return
-
                                     default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
                                     to_number, meta = normalize_msisdn(referee.phone, default_region=default_region)
                                     if not to_number:
-                                        messages.info(request, f"Parrainage OK. SMS non envoyé (numéro invalide: {meta.get('reason')}).")
-                                        return
-
-                                    import requests
-                                    url = f"{base_url}/sms/v1/messages"
-                                    headers = {
-                                        "X-Api-Key": api_key,
-                                        "Content-Type": "application/json",
-                                        "Accept": "application/json",
-                                    }
-                                    text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referee_abs}"
-                                    payload = {"recipient": {"to": to_number}, "body": {"text": text}, "from": sender}
-
-                                    if dry_run:
-                                        messages.info(request, f"DRY_RUN SMSMODE → {to_number}: {text}")
-                                        return
-
-                                    r = requests.post(url, headers=headers, json=payload, timeout=timeout)
-                                    if r.status_code in (200, 201, 202):
-                                        messages.success(request, "Lien de récompense envoyé au filleul par SMS.")
-                                    else:
-                                        messages.warning(request, f"Parrainage OK. SMS non envoyé ({r.status_code}) : {r.text[:300]}")
-                                except Exception as e:
-                                    messages.warning(request, f"Parrainage OK, SMS non envoyé : {e}")
-
-                            transaction.on_commit(_sms_after_commit)
-                        else:
-                            messages.info(request, "Parrainage OK. SMS non envoyé (numéro du filleul ou lien manquant).")
-
-                        logger.info(
-                            "NO_HIT: pas d'email au parrain. current_refs=%s, min_global=%s",
-                            current_refs, min_global
-                        )
-                        return redirect("dashboard:clients_list")
-
-                    # --- Ici : un bucket valide pour le PARRAIN (SOUVENT/MOYEN/RARE/TRES_RARE) ---
-                    tpl_referrer = RewardTemplate.objects.filter(company=company, bucket=bucket).first()
-                    if not tpl_referrer:
-                        messages.error(
-                            request,
-                            "Modèle de récompense introuvable pour le tirage parrain. Aucun cadeau créé."
-                        )
-
-                        if referee.phone and claim_referee_abs:
-                            def _sms_after_commit_only_referee():
-                                try:
-                                    conf = getattr(settings, "SMSMODE", {})
-                                    api_key  = conf.get("API_KEY") or ""
-                                    base_url = (conf.get("BASE_URL") or "https://rest.smsmode.com").rstrip("/")
-                                    sender   = (conf.get("SENDER") or "ParrainApp").strip()
-                                    dry_run  = bool(conf.get("DRY_RUN"))
-                                    timeout  = int(conf.get("TIMEOUT", 10))
-                                    if not api_key:
-                                        return
-                                    default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
-                                    to_number, _ = normalize_msisdn(referee.phone, default_region=default_region)
-                                    if not to_number:
+                                        logger.info("SMSMODE: numéro invalide: %s", meta)
                                         return
                                     import requests
                                     url = f"{base_url}/sms/v1/messages"
@@ -758,12 +693,37 @@ def referral_create(request, company_id=None):
                                     payload = {"recipient": {"to": to_number}, "body": {"text": text}, "from": sender}
                                     if not dry_run:
                                         requests.post(url, headers=headers, json=payload, timeout=timeout)
-                                except Exception:
-                                    pass
-                            transaction.on_commit(_sms_after_commit_only_referee)
+                                except Exception as e:
+                                    logger.warning("SMS filleul non envoyé: %s", e)
+                            transaction.on_commit(_sms_after_commit)
 
+                        logger.info("NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)", current_refs, min_global)
                         return redirect("dashboard:clients_list")
 
+                    # Ici: bucket valide (forcé ou tiré) → on cherche un template.
+                    tpl_referrer = RewardTemplate.objects.filter(company=company, bucket=bucket).first()
+
+                    # --- FALLBACK CRITIQUE ---
+                    # Si le template du bucket choisi n'existe pas, on prend le premier template dispo
+                    # et on aligne le bucket dessus (pour créer la reward + envoyer l'email).
+                    if not tpl_referrer:
+                        tpl_referrer = RewardTemplate.objects.filter(company=company).first()
+                        if tpl_referrer:
+                            logger.warning(
+                                "Template bucket=%s introuvable, fallback sur bucket=%s (id=%s)",
+                                bucket, tpl_referrer.bucket, tpl_referrer.id
+                            )
+                            bucket = tpl_referrer.bucket
+
+                    if not tpl_referrer:
+                        # Il n'y a VRAIMENT aucun template dans l'entreprise → on sort.
+                        messages.error(
+                            request,
+                            "Aucun modèle de récompense défini pour cette entreprise. Créez un template avant."
+                        )
+                        return redirect("dashboard:clients_list")
+
+                    # Création reward PARRAIN
                     rw_referrer = Reward.objects.create(
                         company=company,
                         client=referrer,
@@ -793,10 +753,12 @@ def referral_create(request, company_id=None):
                         f"et Filleul « {getattr(rw_referee, 'label', '—')} » (envoyée).",
                     )
 
+                    # Email PARRAIN après commit
                     def _email_parrain_after_commit():
                         try:
                             to_email = (referrer.email or "").strip()
                             if not to_email:
+                                logger.info("EMAIL PARRAIN: email du parrain vide → skip.")
                                 return
 
                             company_name = getattr(company, "name", "Votre enseigne")
@@ -817,7 +779,6 @@ def referral_create(request, company_id=None):
                             ]
                             if claim_referrer_abs:
                                 lines.append(f"Découvre-le en cliquant sur le lien ci-dessous :\n{claim_referrer_abs}")
-
                             lines += [
                                 "",
                                 f"Merci encore d’avoir parlé de {company_name} autour de toi —",
@@ -831,6 +792,7 @@ def referral_create(request, company_id=None):
                             ]
                             body = "\n".join(lines)
 
+                            logger.info("EMAIL PARRAIN programmé -> %s", to_email)
                             send_mail(
                                 subject=subject,
                                 message=body,
@@ -838,15 +800,13 @@ def referral_create(request, company_id=None):
                                 recipient_list=[to_email],
                                 fail_silently=False,
                             )
-                            logger.info("EMAIL PARRAIN envoyé à %s", to_email)
-
+                            logger.info("EMAIL PARRAIN envoyé -> %s", to_email)
                         except Exception as e:
-                            messages.warning(request, f"Email au parrain non envoyé : {e}")
+                            logger.exception("Email au parrain non envoyé: %s", e)
 
-                    logger.info("EMAIL PARRAIN programmé -> %s", (referrer.email or "(vide)"))
                     transaction.on_commit(_email_parrain_after_commit)
 
-                    # SMS au FILLEUL (si possible) — après commit
+                    # SMS FILLEUL après commit (optionnel)
                     if referee.phone and claim_referee_abs:
                         def _sms_after_commit_ok():
                             try:
@@ -872,8 +832,6 @@ def referral_create(request, company_id=None):
                             except Exception:
                                 pass
                         transaction.on_commit(_sms_after_commit_ok)
-                    else:
-                        messages.info(request, "SMS non envoyé au filleul (numéro ou lien manquant).")
 
                     return redirect("dashboard:clients_list")
             else:
@@ -888,7 +846,6 @@ def referral_create(request, company_id=None):
         "dashboard/referral_form.html",
         {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
     )
-
 
 
 # -------------------------------------------------------------
