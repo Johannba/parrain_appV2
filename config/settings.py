@@ -244,3 +244,14 @@ AUTHENTICATION_BACKENDS = [
     "accounts.backends.CaseInsensitiveModelBackend",  # <- notre backend
     # (hérite de ModelBackend, donc permissions & groupes OK)
 ]
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "dashboard": {"handlers": ["console"], "level": "INFO"},
+        "dashboard.views": {"handlers": ["console"], "level": "INFO"},
+    },
+}
+DEBUG_EMAIL_IMMEDIATE = True
