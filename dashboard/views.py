@@ -615,7 +615,6 @@ def referral_create(request, company_id=None):
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
                     # ---------- GATE: minimum requis (bloque cadeaux parrain + filleul) ----------
-                    # NB: utilise Max déjà importé dans ce module.
                     min_global = (
                         RewardTemplate.objects
                         .filter(company=company)
@@ -632,12 +631,13 @@ def referral_create(request, company_id=None):
                             f"Aucun cadeau (parrain ni filleul) n'est distribué pour ce parrainage. "
                             f"Encore {restant} parrainage(s) à valider."
                         )
-                        # Garder une popup cohérente (labels vides)
+                        # Texte explicite dans la popup
+                        msg_min = "Minimum requis non atteint"
                         request.session["award_popup"] = {
                             "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
                             "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
-                            "referrer_label": "—",
-                            "referee_label": "—",
+                            "referrer_label": msg_min,
+                            "referee_label": msg_min,
                         }
                         logger.warning(
                             "MIN_NOT_MET: skip rewards (referrer_id=%s, company_id=%s, current=%s, min=%s)",
@@ -681,7 +681,6 @@ def referral_create(request, company_id=None):
 
                     # ---------- 3.b) récompense PARRAIN ----------
                     bucket = tirer_recompense(company, referrer)
-                    # Utiliser WARNING pour apparaître par défaut dans les logs docker
                     logger.warning(
                         "tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
                         bucket, referrer.id, company.id
@@ -711,15 +710,24 @@ def referral_create(request, company_id=None):
                                 f"Minimum requis non atteint pour offrir un cadeau parrain : "
                                 f"{current_refs_late}/{min_global_late} (encore {restant} parrainage(s) à valider)."
                             )
+
+                            # >>> ICI AUSSI on met le texte explicite dans la popup
+                            msg_min = "Minimum requis non atteint"
+                            request.session["award_popup"] = {
+                                "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
+                                "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
+                                "referrer_label": msg_min,
+                                "referee_label": msg_min,
+                            }
+
                         else:
                             messages.info(request, "Aucun cadeau parrain éligible pour le moment.")
-
-                        request.session["award_popup"] = {
-                            "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
-                            "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
-                            "referrer_label": "—",
-                            "referee_label": getattr(rw_referee, "label", "Minimum requis non atteint "),
-                        }
+                            request.session["award_popup"] = {
+                                "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
+                                "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
+                                "referrer_label": "—",
+                                "referee_label": getattr(rw_referee, "label", "—"),
+                            }
 
                         # SMS filleul (optionnel, après commit)
                         if referee.phone and claim_referee_abs:
@@ -801,7 +809,7 @@ def referral_create(request, company_id=None):
                         f"et Filleul « {getattr(rw_referee, 'label', '—')} » (envoyée).",
                     )
 
-                    # ---- DEBUG UI : montre la cible email et le bucket pour vérifier rapidement
+                    # ---- DEBUG UI
                     messages.info(
                         request,
                         f"[DEBUG] Bucket parrain={bucket} | Email cible={ (referrer.email or '').strip() or '—' }"
@@ -815,7 +823,7 @@ def referral_create(request, company_id=None):
                     except Exception:
                         pass
 
-                    # Email PARRAIN (après commit par défaut, immédiat si DEBUG_EMAIL_IMMEDIATE=True)
+                    # Email PARRAIN
                     def _email_parrain_after_commit():
                         try:
                             to_email = (referrer.email or "").strip()
@@ -854,22 +862,18 @@ def referral_create(request, company_id=None):
                             from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
                             logger.warning("EMAIL PARRAIN programmé -> %s", to_email)
 
-                            # Mode debug : envoi immédiat
                             if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
                                 logger.warning("DEBUG_EMAIL_IMMEDIATE=True → envoi immédiat (pas d'on_commit)")
                                 send_mail(subject, body, from_email, [to_email], fail_silently=False)
                                 logger.warning("EMAIL PARRAIN envoyé (immédiat) -> %s", to_email)
                             else:
-                                # Mode normal : (ce callback est déjà appelé après commit)
                                 send_mail(subject, body, from_email, [to_email], fail_silently=False)
                                 logger.warning("EMAIL PARRAIN envoyé (post-commit) -> %s", to_email)
 
                         except Exception as e:
                             logger.exception("Email au parrain non envoyé: %s", e)
 
-                    # Planification de l'envoi
                     if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
-                        # Test à chaud : envoi tout de suite
                         _email_parrain_after_commit()
                     else:
                         transaction.on_commit(_email_parrain_after_commit)
@@ -908,12 +912,13 @@ def referral_create(request, company_id=None):
                     ref_form.add_error(None, err.as_text().replace("* ", ""))
                 else:
                     messages.error(request, "Le parrainage n'a pas pu être créé. Corrigez les erreurs.")
- 
+
     return render(
         request,
         "dashboard/referral_form.html",
         {"ref_form": ref_form, "referrer_error": referrer_error, "company": company_ctx},
     )
+
 
 
 # -------------------------------------------------------------
