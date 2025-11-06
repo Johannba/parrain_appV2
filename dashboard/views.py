@@ -534,7 +534,6 @@ from rewards.services.probabilities import tirer_recompense, NO_HIT
 # si tu as ce helper ailleurs :
 from rewards.services.smsmode import normalize_msisdn
 
-
 @login_required
 @transaction.atomic
 def referral_create(request, company_id=None):
@@ -542,9 +541,11 @@ def referral_create(request, company_id=None):
     1) Sélection d’un parrain via autocomplete,
     2) Saisie/repérage du filleul (création si besoin),
     3) Création du parrainage + cadeaux :
-       - FILLEUL : récompense envoyée immédiatement (SENT),
-       - PARRAIN : récompense seulement si min atteint ; s’il n’y a aucun min
-         configuré dans l’entreprise, on force un bucket gagnant et on envoie l’email.
+       - Si un minimum > 0 est configuré et non atteint : aucun cadeau (parrain ni filleul).
+       - Sinon :
+         * FILLEUL : récompense envoyée immédiatement (SENT),
+         * PARRAIN : récompense seulement si min atteint ; s’il n’y a aucun min
+           configuré dans l’entreprise, on force un bucket gagnant et on envoie l’email.
     """
     # ---- Contexte entreprise ----
     if _is_superadmin(request.user) and company_id:
@@ -613,6 +614,37 @@ def referral_create(request, company_id=None):
                 except IntegrityError:
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
+                    # ---------- GATE: minimum requis (bloque cadeaux parrain + filleul) ----------
+                    # NB: utilise Max déjà importé dans ce module.
+                    min_global = (
+                        RewardTemplate.objects
+                        .filter(company=company)
+                        .aggregate(Max("min_referrals_required"))["min_referrals_required__max"] or 0
+                    )
+                    # Compte APRÈS enregistrement de ce nouveau parrainage (inclut donc l'actuel)
+                    current_refs = Referral.objects.filter(company=company, referrer=referrer).count()
+
+                    if min_global > 0 and current_refs < min_global:
+                        restant = min_global - current_refs
+                        messages.warning(
+                            request,
+                            f"Minimum requis non atteint ({current_refs}/{min_global}). "
+                            f"Aucun cadeau (parrain ni filleul) n'est distribué pour ce parrainage. "
+                            f"Encore {restant} parrainage(s) à valider."
+                        )
+                        # Garder une popup cohérente (labels vides)
+                        request.session["award_popup"] = {
+                            "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
+                            "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
+                            "referrer_label": "—",
+                            "referee_label": "—",
+                        }
+                        logger.warning(
+                            "MIN_NOT_MET: skip rewards (referrer_id=%s, company_id=%s, current=%s, min=%s)",
+                            referrer.id, company.id, current_refs, min_global
+                        )
+                        return redirect("dashboard:clients_list")
+
                     # ---------- 3.a) récompense FILLEUL : SENT ----------
                     tpl_referee = (
                         RewardTemplate.objects.filter(company=company, bucket="SOUVENT").first()
@@ -666,18 +698,18 @@ def referral_create(request, company_id=None):
 
                     # Si NO_HIT persiste, il y a des min non atteints → pas d’email parrain
                     if bucket == NO_HIT:
-                        min_global = (
+                        min_global_late = (
                             RewardTemplate.objects
                             .filter(company=company)
                             .aggregate(Max("min_referrals_required"))["min_referrals_required__max"] or 0
                         )
-                        current_refs = Referral.objects.filter(company=company, referrer=referrer).count()
-                        if min_global > 0 and current_refs < min_global:
-                            restant = max(min_global - current_refs, 0)
+                        current_refs_late = Referral.objects.filter(company=company, referrer=referrer).count()
+                        if min_global_late > 0 and current_refs_late < min_global_late:
+                            restant = max(min_global_late - current_refs_late, 0)
                             messages.warning(
                                 request,
                                 f"Minimum requis non atteint pour offrir un cadeau parrain : "
-                                f"{current_refs}/{min_global} (encore {restant} parrainage(s) à valider)."
+                                f"{current_refs_late}/{min_global_late} (encore {restant} parrainage(s) à valider)."
                             )
                         else:
                             messages.info(request, "Aucun cadeau parrain éligible pour le moment.")
@@ -720,7 +752,7 @@ def referral_create(request, company_id=None):
 
                         logger.warning(
                             "NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)",
-                            current_refs, min_global
+                            current_refs_late, min_global_late
                         )
                         return redirect("dashboard:clients_list")
 
@@ -876,7 +908,7 @@ def referral_create(request, company_id=None):
                     ref_form.add_error(None, err.as_text().replace("* ", ""))
                 else:
                     messages.error(request, "Le parrainage n'a pas pu être créé. Corrigez les erreurs.")
-
+ 
     return render(
         request,
         "dashboard/referral_form.html",

@@ -6,9 +6,12 @@ services:
     image: caddy:2
     container_name: proxy
     restart: unless-stopped
+    # Compose lit déjà .env pour l'expansion ${...}; on l'ajoute aussi
+    # comme env_file pour exposer les variables dans le conteneur si besoin.
+    env_file: [.env]
     environment:
-      - ACME_AGREE=true
-      - EMAIL=${CONTACT_EMAIL}
+      ACME_AGREE: "true"
+      EMAIL: ${CONTACT_EMAIL}
     ports:
       - "80:80"
       - "443:443"
@@ -27,12 +30,12 @@ services:
       context: .
     container_name: web
     restart: unless-stopped
+    # Toutes les variables (DJANGO_, POSTGRES_, EMAIL_…) viennent d'ici
     env_file: [.env]
     command: >
       bash -lc "
       mkdir -p /app/staticfiles /app/media &&
-      chmod -R u+rwX /app/staticfiles /app/media ||
-      true &&
+      chmod -R u+rwX /app/staticfiles /app/media || true &&
       ./manage.py migrate --noinput &&
       ./manage.py collectstatic --noinput &&
       gunicorn config.wsgi:application --config /app/gunicorn.conf.py
@@ -52,7 +55,7 @@ services:
       retries: 5
     networks: [webnet]
 
-  # Service d'init des permissions (à lancer une seule fois si besoin)
+  # Service d'init des permissions (utilitaire, à lancer au besoin)
   init-perms:
     image: python:3.12-slim
     user: "0:0"
