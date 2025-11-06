@@ -873,10 +873,63 @@ def referral_create(request, company_id=None):
                         except Exception as e:
                             logger.exception("Email au parrain non envoyé: %s", e)
 
+                    # SMS PARRAIN (en même temps que l’email)
+                    def _sms_parrain_after_commit():
+                        try:
+                            if not getattr(referrer, "phone", None):
+                                logger.warning("SMS PARRAIN: pas de numéro → skip.")
+                                return
+                            if not claim_referrer_abs:
+                                logger.warning("SMS PARRAIN: pas de lien de récompense → skip.")
+                                return
+
+                            conf = getattr(settings, "SMSMODE", {})
+                            api_key  = conf.get("API_KEY") or ""
+                            base_url = (conf.get("BASE_URL") or "https://rest.smsmode.com").rstrip("/")
+                            sender   = (conf.get("SENDER") or "ParrainApp").strip()
+                            dry_run  = bool(conf.get("DRY_RUN"))
+                            timeout  = int(conf.get("TIMEOUT", 10))
+                            if not api_key:
+                                logger.warning("SMSMODE: API_KEY manquant (no send).")
+                                return
+
+                            default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
+                            to_number, meta = normalize_msisdn(referrer.phone, default_region=default_region)
+                            if not to_number:
+                                logger.warning("SMSMODE: numéro parrain invalide: %s", meta)
+                                return
+
+                            import requests
+                            url = f"{base_url}/sms/v1/messages"
+                            headers = {
+                                "X-Api-Key": api_key,
+                                "Content-Type": "application/json",
+                                "Accept": "application/json"
+                            }
+                            filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
+                            company_name   = getattr(company, "name", "Votre enseigne")
+                            text = (
+                                f"Bonne nouvelle 🎉 Ton parrainage avec {filleul_prenom} vient d’être validé "
+                                f"chez {company_name} ! Découvre ta récompense ici 👉 {claim_referrer_abs}"
+                            )
+                            payload = {
+                                "recipient": {"to": to_number},
+                                "body": {"text": text},
+                                "from": sender
+                            }
+                            if not dry_run:
+                                requests.post(url, headers=headers, json=payload, timeout=timeout)
+                            logger.warning("SMS PARRAIN envoyé/programmé -> %s", to_number)
+                        except Exception as e:
+                            logger.warning("SMS parrain non envoyé: %s", e)
+
+                    # Planification : email + SMS en même temps
                     if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
                         _email_parrain_after_commit()
+                        _sms_parrain_after_commit()
                     else:
                         transaction.on_commit(_email_parrain_after_commit)
+                        transaction.on_commit(_sms_parrain_after_commit)
 
                     # SMS FILLEUL après commit (optionnel)
                     if referee.phone and claim_referee_abs:
