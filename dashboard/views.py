@@ -718,7 +718,7 @@ def referral_create(request, company_id=None):
                             "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
                             "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
                             "referrer_label": "—",
-                            "referee_label": getattr(rw_referee, "label", "—"),
+                            "referee_label": getattr(rw_referee, "label", "Minimum requis non atteint "),
                         }
 
                         # SMS filleul (optionnel, après commit)
