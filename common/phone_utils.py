@@ -1,117 +1,129 @@
 # common/phone_utils.py
-from __future__ import annotations
-from typing import Optional, Tuple, Dict
+from typing import Tuple, Optional, Dict
 import re
 
-E164_RE = re.compile(r"^\+\d{6,15}$")
+_DIGITS = re.compile(r"\D+")
 
-# DOM/TOM -> code pays cible
-# Guadeloupe(+590), Martinique(+596), Guyane(+594), Réunion(+262), Mayotte(+262), Haïti(+509)
-DOM_PREFIXES = {
+# Pour DOM/TOM : mapping des préfixes nationaux (après le 0) -> indicatif pays
+# Certains préfixes mobiles (069x/0639) mappent vers l'indicatif DOM correct.
+_DOM_MAP = {
     # Guadeloupe
-    "0590": "+590", "0690": "+590",
+    "590": "590", "690": "590",
     # Martinique
-    "0596": "+596", "0696": "+596",
+    "596": "596", "696": "596",
     # Guyane
-    "0594": "+594", "0694": "+594",
+    "594": "594", "694": "594",
     # Réunion
-    "0262": "+262", "0692": "+262", "0693": "+262",
-    # Mayotte
-    "0269": "+262", "0639": "+262",
+    "262": "262", "692": "262", "693": "262",
+    # Mayotte -> +262
+    "269": "262", "639": "262",
 }
 
-def _digits_plus(s: str) -> str:
-    return re.sub(r"[^\d\+]", "", s or "")
-
-def _region_from_cc(e164: str) -> str:
-    if e164.startswith("+33"):  return "FR"
-    if e164.startswith("+590"): return "GP"  # Guadeloupe
-    if e164.startswith("+596"): return "MQ"  # Martinique
-    if e164.startswith("+594"): return "GF"  # Guyane
-    if e164.startswith("+262"): return "RE"  # Réunion/Mayotte (indistinct)
-    if e164.startswith("+509"): return "HT"  # Haïti
-    if e164.startswith("+20"):  return "EG"  # Égypte
-    return "INTL"
+def _only_digits(s: str) -> str:
+    return _DIGITS.sub("", s or "")
 
 def normalize_msisdn(raw: str, *, default_region: str = "FR") -> Tuple[Optional[str], Dict]:
     """
-    Retourne (to_provider, meta) où:
-      - to_provider = chaîne chiffres SANS '+' (prête pour provider tolérant),
-      - meta = {"input": str, "region_used": str, "e164": "+…", "is_valid": bool, "reason": str}
-
-    Règles robustes:
-      - '00' -> '+'
-      - Si déjà E.164, on renvoie tel quel
-      - Si 10 chiffres et commence par '0' => FR/DOM (force +33 / +590 / +596 / +594 / +262)
-      - Si 9 chiffres et commence par '6' ou '7' => mobile FR sans '0' => +33
-      - Si 8 chiffres => Haïti local => +509
-      - Sinon => on tente par défaut (default_region) mais on n’impose PAS +20 aux 06/07 FR
+    Retourne (to_digits, meta) :
+      - to_digits : E.164 SANS '+' (ex: '33646267551', '590690123456', '50912345678')
+      - meta : dict {"input","region_used","e164","+CC...","is_valid":bool,"reason":str}
+    Règles couvertes : FR métropole (06/07/01..05), DOM/TOM (0xxx / 9-chiffres sans 0),
+    Haïti (8 chiffres locaux), formats internationaux '00' ou déjà '+', ainsi que
+    'intl_no_plus' (ex: 336..., 262...). Ne dépend pas de default_region pour les motifs FR/DOM/HT.
     """
-    cleaned = _digits_plus(raw).replace(" ", "")
-    meta: Dict = {"input": raw or "", "region_used": default_region, "e164": "", "is_valid": False, "reason": ""}
+    meta: Dict[str, Optional[str] | bool] = {
+        "input": raw,
+        "region_used": default_region,
+        "e164": "",
+        "is_valid": False,
+        "reason": "",
+    }
 
-    if not cleaned:
+    s = (raw or "").strip()
+    if not s:
         meta["reason"] = "empty"
         return None, meta
 
-    # 00 => +
-    if cleaned.startswith("00"):
-        cleaned = "+" + cleaned[2:]
+    # 1) E.164 déjà présent (+CC...)
+    if s.startswith("+"):
+        digits = _only_digits(s)  # enlève le '+'
+        if 6 <= len(digits) <= 15:
+            meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "already_e164", "region_used": "INTL"})
+            return digits, meta
+        meta["reason"] = "bad_e164_len"
+        return None, meta
 
-    # Déjà E.164
-    if E164_RE.match(cleaned):
-        meta["e164"] = cleaned
-        meta["region_used"] = _region_from_cc(cleaned)
-        meta["is_valid"] = True
-        meta["reason"] = "already_e164"
-        return cleaned.lstrip("+"), meta
+    # 2) International avec '00'
+    if s.startswith("00"):
+        digits = _only_digits(s[2:])
+        if 6 <= len(digits) <= 15:
+            meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "intl_00", "region_used": "INTL"})
+            return digits, meta
+        meta["reason"] = "bad_intl_00_len"
+        return None, meta
 
-    # --- Heuristique FR/DOM prioritaire si 10 chiffres locaux ---
-    if cleaned.startswith("0") and len(cleaned) == 10 and cleaned.isdigit():
-        n = cleaned[1:]  # supprime le 0
-        # DOM : 059x / 069x / 026x / 0639 / 0269
-        for pfx, cc in DOM_PREFIXES.items():
-            if cleaned.startswith(pfx):
-                e164 = f"{cc}{n}"
-                meta.update({"e164": "+" + e164, "region_used": _region_from_cc("+" + e164),
-                             "is_valid": True, "reason": "dom_national_10"})
-                return e164, meta
+    # 3) FR/DOM national 10 chiffres (commence par 0)
+    ds = _only_digits(s)
+    if len(ds) == 10 and ds.startswith("0"):
+        n = ds[1:]  # on enlève le 0
+        # DOM/TOM ?
+        for dom_prefix, cc in _DOM_MAP.items():
+            if n.startswith(dom_prefix):
+                digits = f"{cc}{n}"
+                meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "dom_national_10", "region_used": "INTL"})
+                return digits, meta
         # Métropole
-        e164 = f"33{n}"
-        meta.update({"e164": "+" + e164, "region_used": "FR", "is_valid": True, "reason": "fr_national_10"})
-        return e164, meta
+        # Fixe 01..05
+        if n[0] in "12345":
+            digits = f"33{n[0]}{n[1:]}"
+            meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "fr_national_10", "region_used": "FR"})
+            return digits, meta
+        # Mobiles 06/07
+        if n[0] in ("6", "7"):
+            digits = f"33{n}"
+            meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "fr_national_10", "region_used": "FR"})
+            return digits, meta
+        meta["reason"] = "unhandled_fr_dom_10"
+        return None, meta
 
-    # 9 chiffres mobiles FR (sans 0 initial)
-    if len(cleaned) == 9 and cleaned.isdigit() and cleaned[0] in ("6", "7"):
-        e164 = f"33{cleaned}"
-        meta.update({"e164": "+" + e164, "region_used": "FR", "is_valid": True, "reason": "fr_mobile_9"})
-        return e164, meta
+    # 4) DOM local 9 chiffres sans '0' initial (ex: 590123456, 690123456, etc.)
+    if len(ds) == 9 and ds.isdigit():
+        p3 = ds[:3]
+        # règles par ordre de spécificité (mobiles 690/696/694/692/693/269/639)
+        if ds.startswith("690"):
+            digits = f"590{ds}"
+        elif ds.startswith("696"):
+            digits = f"596{ds}"
+        elif ds.startswith("694"):
+            digits = f"594{ds}"
+        elif ds.startswith(("692", "693", "262")):
+            digits = f"262{ds}"
+        elif ds.startswith(("269", "639")):
+            digits = f"262{ds}"
+        elif p3 in ("590", "596", "594"):
+            digits = f"{p3}{ds}"
+        else:
+            # FR mobile sans 0 (9 chiffres commençant par 6/7)
+            if ds[0] in ("6", "7"):
+                digits = f"33{ds}"
+                meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "fr_mobile_9", "region_used": "FR"})
+                return digits, meta
+            meta["reason"] = "unhandled_pattern"
+            return None, meta
+        meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "dom_local_9", "region_used": "INTL"})
+        return digits, meta
 
-    # Haïti 8 chiffres locaux
-    if len(cleaned) == 8 and cleaned.isdigit():
-        e164 = f"509{cleaned}"
-        meta.update({"e164": "+" + e164, "region_used": "HT", "is_valid": True, "reason": "ht_local_8"})
-        return e164, meta
+    # 5) Haïti : 8 chiffres locaux
+    if len(ds) == 8 and ds.isdigit():
+        digits = f"509{ds}"
+        meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "ht_local_8", "region_used": "HT"})
+        return digits, meta
 
-    # DOM saisis sans '0' (rare, 9 chiffres après indicatif local)
-    if len(cleaned) == 9 and cleaned.isdigit():
-        for dom3, cc in {k[:3]: v for k, v in DOM_PREFIXES.items()}.items():
-            if cleaned.startswith(dom3):
-                e164 = f"{cc.lstrip('+')}{cleaned}"
-                meta.update({"e164": "+" + e164, "region_used": _region_from_cc("+" + e164),
-                             "is_valid": True, "reason": "dom_local_9"})
-                return e164, meta
+    # 6) International "sans plus" (ex: 336..., 262..., 2010..., etc.)
+    if 6 <= len(ds) <= 15:
+        digits = ds
+        meta.update({"e164": f"+{digits}", "is_valid": True, "reason": "intl_no_plus", "region_used": "INTL"})
+        return digits, meta
 
-    # Fallback “région par défaut” (on ne force pas +20 pour des 06/07 FR)
-    # Si on arrive ici et que ça ressemble à un mobile/trunk FR mal saisi, laisse invalide.
-    if default_region.upper() == "EG" and cleaned.isdigit():
-        # EG typique: 11 chiffres, commence par 1 ou 01
-        n = cleaned.lstrip("0")
-        if len(n) == 11 and n[0] == "1":
-            e164 = f"20{n}"
-            meta.update({"e164": "+" + e164, "region_used": "EG", "is_valid": True, "reason": "eg_local"})
-            return e164, meta
-
-    # Rien de concluant
-    meta["reason"] = "unhandled_pattern"
+    meta["reason"] = "unhandled"
     return None, meta

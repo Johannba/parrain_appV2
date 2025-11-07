@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
-import json
+from typing import Any, Dict, Optional, Tuple
 import logging
+import re
 import requests
 from django.conf import settings
-from common.phone_utils import normalize_msisdn  # ← version canonique (retourne (e164, meta))
+from common.phone_utils import normalize_msisdn  # retourne (to_digits, meta)
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ __all__ = [
     "build_reward_sms_text",
     "_build_smsmode_url",
     "send_sms",
-    "normalize_msisdn",  # on réexporte pour les appels existants
+    "normalize_msisdn",
 ]
 
 # =========================
@@ -68,6 +68,24 @@ def _build_smsmode_url() -> str:
     return f"{base}/sms/v1/messages"
 
 # =========================
+# Helpers
+# =========================
+
+def _to_provider_digits(raw_number: str) -> Tuple[str, Dict[str, Any]]:
+    """
+    Normalise un numéro pour l'API smsmode : renvoie uniquement des chiffres.
+    S'appuie sur common.phone_utils.normalize_msisdn -> (to_digits, meta).
+    """
+    to_digits, meta = normalize_msisdn(
+        raw_number,
+        default_region=getattr(settings, "SMS_DEFAULT_REGION", "FR"),
+    )
+
+    # Priorité : to_digits (déjà sans '+'), sinon meta['e164'] sans '+', sinon digits du brut
+    final = to_digits or (meta.get("e164") or "").lstrip("+") or re.sub(r"\D", "", raw_number or "")
+    return final, meta
+
+# =========================
 # Envoi
 # =========================
 
@@ -75,11 +93,10 @@ def send_sms(payload: SMSPayload) -> SMSResult:
     """
     Envoi via smsmode.
     Auth: header 'X-Api-Key: <API_KEY>'
-    Endpoint attendu: https://rest.smsmode.com/sms/v1/messages
-
-    Corps JSON (conforme smsmode):
+    Endpoint: https://rest.smsmode.com/sms/v1/messages
+    Body:
       {
-        "recipient": {"to": "+33XXXXXXXXX"},
+        "recipient": {"to": "33646267551"},
         "body": {"text": "message"},
         "from": "ParrainApp"  # optionnel selon contrat
       }
@@ -91,34 +108,41 @@ def send_sms(payload: SMSPayload) -> SMSResult:
     url = _build_smsmode_url()
 
     headers = {
-        "X-Api-Key": settings.SMSMODE["API_KEY"],   # ✅ auth correcte
+        "X-Api-Key": settings.SMSMODE["API_KEY"],   # Auth correcte
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
 
-    # Normalisation stricte en E.164 (fallback sur la valeur brute si besoin)
-    to_e164, meta = normalize_msisdn(
-        payload.to,
-        default_region=getattr(settings, "SMS_DEFAULT_REGION", "FR"),
-    )
-    final_to = (meta.get("e164") or to_e164 or payload.to)
-    if final_to != payload.to:
-        logger.info("SMSMODE normalize: raw=%s -> e164=%s", payload.to, final_to)
+    # Normalisation : on envoie des CHIFFRES (sans '+')
+    final_to, meta = _to_provider_digits(payload.to)
+    if not final_to:
+        logger.error("SMSMODE: numéro invalide après normalisation (%s) meta=%s", payload.to, meta)
+        return SMSResult(ok=False, provider_id=None, status="INVALID_NUMBER", raw={"meta": meta})
+
+    if meta.get("e164"):
+        logger.info("SMSMODE normalize: raw=%s -> e164=%s -> to=%s", payload.to, meta["e164"], final_to)
 
     data: Dict[str, Any] = {
-        "recipient": {"to": final_to},   # ← toujours E.164 si possible
-        "body": {"text": payload.text},  # ← champ attendu
+        "recipient": {"to": final_to},
+        "body": {"text": payload.text},
     }
     if payload.sender:
-        data["from"] = payload.sender    # optionnel selon contrat
+        data["from"] = payload.sender
 
     logger.info("SMSMODE POST %s to=%s sender=%s", url, final_to, payload.sender or "")
 
     try:
-        resp = requests.post(url, headers=headers, data=json.dumps(data), timeout=settings.SMSMODE["TIMEOUT"])
-        ctype = (resp.headers.get("Content-Type") or "").lower()
-        raw: Dict[str, Any] = resp.json() if "application/json" in ctype else {"text": resp.text}
-        ok = 200 <= resp.status_code < 300
+        timeout = int(settings.SMSMODE.get("TIMEOUT", 10))
+        resp = requests.post(url, headers=headers, json=data, timeout=timeout)
+
+        # JSON sûr
+        raw: Dict[str, Any]
+        try:
+            raw = resp.json()
+        except Exception:
+            raw = {"text": resp.text}
+
+        ok = 200 <= resp.status_code < 300  # 201 attendu en général
 
         # id de message (peut être messageId ou messageIds[])
         provider_id: Optional[str] = None
@@ -127,13 +151,18 @@ def send_sms(payload: SMSPayload) -> SMSResult:
         else:
             provider_id = raw.get("messageId")
 
-        status = raw.get("status") or ("OK" if ok else f"HTTP_{resp.status_code}")
-        if not ok:
-            logger.error("SMSMODE error: %s (status=%s url=%s)", raw, resp.status_code, url)
+        # statut : objet ou chaîne
+        status_val = raw.get("status")
+        if isinstance(status_val, dict):
+            status_str = status_val.get("value") or status_val.get("status") or ("OK" if ok else f"HTTP_{resp.status_code}")
+        else:
+            status_str = status_val or ("OK" if ok else f"HTTP_{resp.status_code}")
 
-        return SMSResult(ok=ok, provider_id=provider_id, status=status, raw=raw)
+        if not ok:
+            logger.error("SMSMODE error: http=%s raw=%s url=%s", resp.status_code, raw, url)
+
+        return SMSResult(ok=ok, provider_id=provider_id, status=status_str, raw=raw)
 
     except Exception as e:
         logger.exception("SMSMODE exception")
         return SMSResult(ok=False, provider_id=None, status=f"EXC:{e}", raw={})
-
