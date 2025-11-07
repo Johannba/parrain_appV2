@@ -533,6 +533,7 @@ from rewards.services.probabilities import tirer_recompense, NO_HIT
 
 # si tu as ce helper ailleurs :
 from rewards.services.smsmode import normalize_msisdn
+from common.phone_utils import normalize_msisdn 
 
 @login_required
 @transaction.atomic

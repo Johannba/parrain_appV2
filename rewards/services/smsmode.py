@@ -5,11 +5,20 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 import json
 import logging
-import re
 import requests
 from django.conf import settings
+from common.phone_utils import normalize_msisdn  # ← version canonique (retourne (e164, meta))
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "SMSPayload",
+    "SMSResult",
+    "build_reward_sms_text",
+    "_build_smsmode_url",
+    "send_sms",
+    "normalize_msisdn",  # on réexporte pour les appels existants
+]
 
 # =========================
 # Modèles de données
@@ -27,96 +36,6 @@ class SMSResult:
     provider_id: Optional[str]
     status: str
     raw: Dict[str, Any]
-
-# =========================
-# Normalisation E.164 (FR + DROM + HT)
-# =========================
-
-E164_RE = re.compile(r"^\+\d{6,15}$")
-
-def _digits_plus(s: str) -> str:
-    """Garde uniquement chiffres et +."""
-    return re.sub(r"[^\d\+]", "", s or "")
-
-def normalize_msisdn(phone: str) -> str:
-    """
-    Normalise en E.164 pour :
-      - France métropolitaine : 0X XX XX XX XX  -> +33 X...
-      - Guadeloupe : 0590/0690 -> +590590... / +590690...
-      - Martinique : 0596/0696 -> +596596... / +596696...
-      - Guyane : 0594/0694     -> +594594... / +594694...
-      - La Réunion : 0262/0692/0693 -> +262262... / +262692... / +262693...
-      - Mayotte : 0269/0639        -> +262269... / +262639...
-      - Haïti : 8 chiffres locaux  -> +509XXXXXXXX
-    Règles :
-      - '00' prefix => remplacé par '+'
-      - si déjà E.164, renvoyé tel quel
-      - si commence par indicatif sans '+', on ajoute '+'
-    """
-    raw = (phone or "").strip()
-    p = _digits_plus(raw).replace(" ", "")
-
-    # 00 => +
-    if p.startswith("00"):
-        p = "+" + p[2:]
-
-    # déjà E.164 ?
-    if E164_RE.match(p):
-        return p
-
-    # indicatifs DOM/HT sans '+'
-    for cc in ("590", "596", "594", "262", "509"):
-        if p.startswith(cc) and p[len(cc):].isdigit():
-            return f"+{p}"
-
-    # France/DOM formats nationaux (10 chiffres, commence par 0)
-    if p.startswith("0") and len(p) == 10 and p.isdigit():
-        n = p[1:]  # sans le 0
-        # DOM fixes/mobiles
-        if n.startswith(("590", "690")):  # Guadeloupe
-            return f"+590{n}"
-        if n.startswith(("596", "696")):  # Martinique
-            return f"+596{n}"
-        if n.startswith(("594", "694")):  # Guyane
-            return f"+594{n}"
-        if n.startswith(("262", "692", "693")):  # Réunion
-            return f"+262{n}"
-        if n.startswith(("269", "639")):  # Mayotte
-            return f"+262{n}"  # E.164 Mayotte utilise +262
-
-        # Métropole
-        if n[0] in "12345":      # 01..05 -> +331..+335
-            return f"+33{n[0]}{n[1:]}"
-        if n[0] == "6":          # 06 -> +336
-            return f"+33{n}"
-        if n[0] == "7":          # 07 -> +337
-            return f"+33{n}"
-
-    # Haïti local sans trunk (8 chiffres)
-    if len(p) == 8 and p.isdigit():
-        return f"+509{p}"
-
-    # 9 chiffres commençant par indicatifs DOM
-    if len(p) == 9 and p.isdigit():
-        if p.startswith(("590", "596", "594", "262")):
-            return f"+{p[:3]}{p}"
-        if p.startswith("690"):
-            return f"+590{p}"
-        if p.startswith("696"):
-            return f"+596{p}"
-        if p.startswith("694"):
-            return f"+594{p}"
-        if p.startswith(("692", "693")):
-            return f"+262{p}"
-        if p.startswith(("269", "639")):
-            return f"+262{p}"
-
-    # 9 chiffres métropole mobiles sans 0
-    if len(p) == 9 and p.isdigit() and p[0] in ("6", "7"):
-        return f"+33{p}"
-
-    # Rien de concluant => renvoyer brut (le provider peut refuser si invalide)
-    return raw
 
 # =========================
 # Message métier
@@ -177,14 +96,23 @@ def send_sms(payload: SMSPayload) -> SMSResult:
         "Accept": "application/json",
     }
 
+    # Normalisation stricte en E.164 (fallback sur la valeur brute si besoin)
+    to_e164, meta = normalize_msisdn(
+        payload.to,
+        default_region=getattr(settings, "SMS_DEFAULT_REGION", "FR"),
+    )
+    final_to = (meta.get("e164") or to_e164 or payload.to)
+    if final_to != payload.to:
+        logger.info("SMSMODE normalize: raw=%s -> e164=%s", payload.to, final_to)
+
     data: Dict[str, Any] = {
-        "recipient": {"to": payload.to},   # <- champ attendu
-        "body": {"text": payload.text},    # <- champ attendu
+        "recipient": {"to": final_to},   # ← toujours E.164 si possible
+        "body": {"text": payload.text},  # ← champ attendu
     }
     if payload.sender:
-        data["from"] = payload.sender      # optionnel selon votre contrat
+        data["from"] = payload.sender    # optionnel selon contrat
 
-    logger.info("SMSMODE POST %s to=%s sender=%s", url, payload.to, payload.sender or "")
+    logger.info("SMSMODE POST %s to=%s sender=%s", url, final_to, payload.sender or "")
 
     try:
         resp = requests.post(url, headers=headers, data=json.dumps(data), timeout=settings.SMSMODE["TIMEOUT"])
@@ -208,3 +136,4 @@ def send_sms(payload: SMSPayload) -> SMSResult:
     except Exception as e:
         logger.exception("SMSMODE exception")
         return SMSResult(ok=False, provider_id=None, status=f"EXC:{e}", raw={})
+
