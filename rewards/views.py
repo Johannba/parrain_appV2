@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 import random
-import secrets
+from venv import logger
 
 from django.conf import settings
 from django.contrib import messages
@@ -24,8 +24,8 @@ from dashboard.models import Referral
 from .models import RewardTemplate, Reward, ProbabilityWheel
 from .forms import RewardTemplateForm
 from rewards.services.probabilities import BASE_COUNTS, VR_COUNTS, BASE_SIZE, VR_SIZE
-from .services.smsmode import SMSPayload, send_sms, build_reward_sms_text, normalize_msisdn
-
+from .services.smsmode import SMSPayload, send_sms, build_reward_sms_text
+from common.phone_utils import normalize_msisdn
 
 # ----------------------------- UI Dictionaries -----------------------------
 
@@ -726,11 +726,7 @@ def reward_send_sms(request, pk: int):
 
     # --- Permissions (mêmes règles que distribute_reward) ---
     user = request.user
-    if _is_superadmin(user):
-        pass
-    elif getattr(user, "company_id", None) and reward.company_id == user.company_id:
-        pass
-    else:
+    if not (_is_superadmin(user) or (getattr(user, "company_id", None) and reward.company_id == user.company_id)):
         raise Http404("Non autorisé")
 
     # Génère un token s’il n’existe pas encore (pour construire l’URL)
@@ -740,10 +736,14 @@ def reward_send_sms(request, pk: int):
     # Données pour le SMS
     claim_absolute = request.build_absolute_uri(reward.claim_path)
     client_fullname = f"{reward.client.first_name} {reward.client.last_name}".strip()
-    company_name = getattr(reward.company, "name", None)
+    company_name = (getattr(reward.company, "name", "") or "").strip() or None
 
-    phone = normalize_msisdn(reward.client.phone or "")
-    if not phone:
+    # ⚠️ normalize_msisdn renvoie (e164, meta) -> on déballe et on utilise e164
+    to_e164, meta = normalize_msisdn(
+        reward.client.phone or "",
+        default_region=getattr(settings, "SMS_DEFAULT_REGION", "FR"),
+    )
+    if not to_e164:
         messages.error(request, "Le client n’a pas de numéro de téléphone valide.")
         back_id = request.POST.get("back_client")
         return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("dashboard:clients_list")
@@ -754,8 +754,16 @@ def reward_send_sms(request, pk: int):
         company_name=company_name,
     )
 
-    payload = SMSPayload(to=phone, text=text, sender=settings.SMSMODE.get("SENDER") or None)
+    payload = SMSPayload(
+        to=to_e164,
+        text=text,
+        sender=(settings.SMSMODE.get("SENDER") or None),
+    )
     result = send_sms(payload)
+
+    # Log utile pour debug (meta contient ce qu'a fait la normalisation)
+    logger.warning("SMS SEND to=%s ok=%s status=%s meta=%s raw=%s",
+                   to_e164, result.ok, result.status, meta, (result.raw or {}))
 
     if result.ok:
         messages.success(request, "SMS envoyé au client.")
