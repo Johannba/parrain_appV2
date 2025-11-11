@@ -542,11 +542,11 @@ def referral_create(request, company_id=None):
     1) Sélection d’un parrain via autocomplete,
     2) Saisie/repérage du filleul (création si besoin),
     3) Création du parrainage + cadeaux :
-       - Si un minimum > 0 est configuré et non atteint : aucun cadeau (parrain ni filleul).
-       - Sinon :
-         * FILLEUL : récompense envoyée immédiatement (SENT),
-         * PARRAIN : récompense seulement si min atteint ; s’il n’y a aucun min
-           configuré dans l’entreprise, on force un bucket gagnant et on envoie l’email.
+       - FILLEUL : récompense envoyée immédiatement (SENT),
+       - PARRAIN : tirage parmi les buckets dont le minimum est atteint,
+                   avec re-normalisation des probabilités pour sommer à 100.
+         S'il n'y a aucun bucket éligible → NO_HIT (comportement existant conservé).
+         S’il n’y a aucun minimum configuré dans l’entreprise, on force SOUVENT.
     """
     # ---- Contexte entreprise ----
     if _is_superadmin(request.user) and company_id:
@@ -569,6 +569,54 @@ def referral_create(request, company_id=None):
                 obj.__class__.__name__, getattr(obj, "id", None), e
             )
             return ""
+
+    # ---- Tirage normalisé (nouveau) ----
+    # Retire les buckets non éligibles (min non atteint) puis re-normalise
+    # pour que la somme des probabilités restantes = 100.
+    def _draw_bucket_normalized(company, referrer):
+        from decimal import Decimal, getcontext
+        getcontext().prec = 28  # précision confortable
+
+        # Probabilités BRUTES (somme = 100 exactement)
+        PROB = {
+            "SOUVENT":   Decimal("80"),
+            "MOYEN":     Decimal("19"),
+            "RARE":      Decimal("0.99999"),
+            "TRES_RARE": Decimal("0.00001"),
+        }
+        ORDER = ("SOUVENT", "MOYEN", "RARE", "TRES_RARE")
+
+        # Compte des parrainages ACTUELS (incluant celui qui vient d'être créé)
+        current_refs = Referral.objects.filter(company=company, referrer=referrer).count()
+
+        # Carte des minimums requis
+        req_map = {tpl.bucket: int(tpl.min_referrals_required or 0)
+                   for tpl in RewardTemplate.objects.filter(company=company)}
+        # Buckets manquants => min=0
+        for b in PROB.keys():
+            req_map.setdefault(b, 0)
+
+        # Liste des buckets éligibles
+        elig = [b for b in PROB.keys() if current_refs >= req_map[b]]
+        if not elig:
+            return NO_HIT
+
+        # Somme restante et pondération re-normalisée
+        sum_rest = sum(PROB[b] for b in elig)  # ex: 99 si RARE/TRES_RARE exclus
+        if sum_rest <= 0:
+            return NO_HIT
+        weights = {b: (PROB[b] / sum_rest) * Decimal("100") for b in elig}
+
+        # Tirage pondéré (somme ≈ 100)
+        x = Decimal(str(random.random())) * Decimal("100")
+        acc = Decimal("0")
+        for k in ORDER:
+            if k in weights:
+                acc += weights[k]
+                if x < acc:
+                    return k
+        # Bord de précision
+        return elig[0]
 
     ref_form = RefereeInlineForm(request.POST or None)
     referrer_error = None
@@ -615,37 +663,6 @@ def referral_create(request, company_id=None):
                 except IntegrityError:
                     ref_form.add_error(None, "Ce filleul a déjà un parrainage dans cette entreprise.")
                 else:
-                    # ---------- GATE: minimum requis (bloque cadeaux parrain + filleul) ----------
-                    min_global = (
-                        RewardTemplate.objects
-                        .filter(company=company)
-                        .aggregate(Max("min_referrals_required"))["min_referrals_required__max"] or 0
-                    )
-                    # Compte APRÈS enregistrement de ce nouveau parrainage (inclut donc l'actuel)
-                    current_refs = Referral.objects.filter(company=company, referrer=referrer).count()
-
-                    if min_global > 0 and current_refs < min_global:
-                        restant = min_global - current_refs
-                        messages.warning(
-                            request,
-                            f"Minimum requis non atteint ({current_refs}/{min_global}). "
-                            f"Aucun cadeau (parrain ni filleul) n'est distribué pour ce parrainage. "
-                            f"Encore {restant} parrainage(s) à valider."
-                        )
-                        # Texte explicite dans la popup
-                        msg_min = "Minimum requis non atteint"
-                        request.session["award_popup"] = {
-                            "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
-                            "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
-                            "referrer_label": msg_min,
-                            "referee_label": msg_min,
-                        }
-                        logger.warning(
-                            "MIN_NOT_MET: skip rewards (referrer_id=%s, company_id=%s, current=%s, min=%s)",
-                            referrer.id, company.id, current_refs, min_global
-                        )
-                        return redirect("dashboard:clients_list")
-
                     # ---------- 3.a) récompense FILLEUL : SENT ----------
                     tpl_referee = (
                         RewardTemplate.objects.filter(company=company, bucket="SOUVENT").first()
@@ -681,9 +698,10 @@ def referral_create(request, company_id=None):
                         claim_referee_abs = ""
 
                     # ---------- 3.b) récompense PARRAIN ----------
-                    bucket = tirer_recompense(company, referrer)
+                    # 👉 Nouveau tirage normalisé au lieu du GATE + tirage brut
+                    bucket = _draw_bucket_normalized(company, referrer)
                     logger.warning(
-                        "tirer_recompense -> bucket=%s (referrer_id=%s, company_id=%s)",
+                        "tirage_normalisé -> bucket=%s (referrer_id=%s, company_id=%s)",
                         bucket, referrer.id, company.id
                     )
 
@@ -696,7 +714,7 @@ def referral_create(request, company_id=None):
                     if bucket == NO_HIT and not has_min:
                         bucket = "SOUVENT"
 
-                    # Si NO_HIT persiste, il y a des min non atteints → pas d’email parrain
+                    # Si NO_HIT persiste, aucun bucket éligible → pas d’email parrain (comportement conservé)
                     if bucket == NO_HIT:
                         min_global_late = (
                             RewardTemplate.objects
@@ -712,7 +730,7 @@ def referral_create(request, company_id=None):
                                 f"{current_refs_late}/{min_global_late} (encore {restant} parrainage(s) à valider)."
                             )
 
-                            # >>> ICI AUSSI on met le texte explicite dans la popup
+                            # Popup explicite
                             msg_min = "Minimum requis non atteint"
                             request.session["award_popup"] = {
                                 "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
@@ -720,7 +738,6 @@ def referral_create(request, company_id=None):
                                 "referrer_label": msg_min,
                                 "referee_label": msg_min,
                             }
-
                         else:
                             messages.info(request, "Aucun cadeau parrain éligible pour le moment.")
                             request.session["award_popup"] = {
@@ -759,7 +776,6 @@ def referral_create(request, company_id=None):
                                                 res.ok, res.status, meta, (res.raw or {}))
                                 except Exception:
                                     logger.exception("SMS filleul non envoyé")
-
 
                         logger.warning(
                             "NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)",
@@ -909,7 +925,6 @@ def referral_create(request, company_id=None):
                                         res.ok, res.status, meta, (res.raw or {}))
                         except Exception:
                             logger.exception("SMS parrain non envoyé")
-
 
                     # Planification : email + SMS en même temps
                     if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
