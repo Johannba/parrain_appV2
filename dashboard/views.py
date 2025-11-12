@@ -700,7 +700,7 @@ def referral_create(request, company_id=None):
 
                     # ---------- 3.b) récompense PARRAIN ----------
                     # 👉 Nouveau tirage normalisé au lieu du GATE + tirage brut
-                    bucket = tirer_recompense(company, referrer)
+                    bucket = _draw_bucket_normalized(company, referrer)
                     logger.warning(
                         "tirage_normalisé -> bucket=%s (referrer_id=%s, company_id=%s)",
                         bucket, referrer.id, company.id
