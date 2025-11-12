@@ -717,38 +717,21 @@ def referral_create(request, company_id=None):
 
                     # Si NO_HIT persiste, aucun bucket éligible → pas d’email parrain (comportement conservé)
                     if bucket == NO_HIT:
-                        min_global_late = (
-                            RewardTemplate.objects
-                            .filter(company=company)
-                            .aggregate(Max("min_referrals_required"))["min_referrals_required__max"] or 0
+                        messages.warning(
+                            request,
+                            "Minimum requis non atteint pour offrir un cadeau au parrain. "
+                            "Le filleul a bien reçu sa récompense."
                         )
-                        current_refs_late = Referral.objects.filter(company=company, referrer=referrer).count()
-                        if min_global_late > 0 and current_refs_late < min_global_late:
-                            restant = max(min_global_late - current_refs_late, 0)
-                            messages.warning(
-                                request,
-                                f"Minimum requis non atteint pour offrir un cadeau parrain : "
-                                f"{current_refs_late}/{min_global_late} (encore {restant} parrainage(s) à valider)."
-                            )
 
-                            # Popup explicite
-                            msg_min = "Minimum requis non atteint"
-                            request.session["award_popup"] = {
-                                "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
-                                "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
-                                "referrer_label": msg_min,
-                                "referee_label": msg_min,
-                            }
-                        else:
-                            messages.info(request, "Aucun cadeau parrain éligible pour le moment.")
-                            request.session["award_popup"] = {
-                                "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
-                                "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
-                                "referrer_label": "—",
-                                "referee_label": getattr(rw_referee, "label", "—"),
-                            }
+                        # Popup : parrain = min non atteint, filleul = vrai libellé
+                        request.session["award_popup"] = {
+                            "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip() or str(referrer),
+                            "referee_name": f"{referee.first_name} {referee.last_name}".strip() or str(referee),
+                            "referrer_label": "Minimum requis non atteint",
+                            "referee_label": getattr(rw_referee, "label", "—"),
+                        }
 
-                        # SMS filleul (optionnel, après commit)
+                        # SMS filleul après commit (si configuré)
                         if referee.phone and claim_referee_abs:
                             def _sms_after_commit():
                                 try:
@@ -756,18 +739,12 @@ def referral_create(request, company_id=None):
                                     if not conf.get("API_KEY"):
                                         logger.warning("SMSMODE: API_KEY manquant (no send).")
                                         return
-                                    if not (referee.phone and claim_referee_abs):
-                                        logger.warning("SMS FILLEUL: numéro ou lien manquant → skip.")
-                                        return
-
                                     default_region = getattr(settings, "SMS_DEFAULT_REGION", "FR")
                                     to_e164, meta = normalize_msisdn(referee.phone, default_region=default_region)
                                     if not to_e164:
                                         logger.warning("SMSMODE: numéro filleul invalide: %s", meta)
                                         return
-
                                     text = f"{referee.first_name or referee.last_name}, voici votre lien cadeau : {claim_referee_abs}"
-
                                     res = send_sms(SMSPayload(
                                         to=to_e164,
                                         text=text,
@@ -777,12 +754,9 @@ def referral_create(request, company_id=None):
                                                 res.ok, res.status, meta, (res.raw or {}))
                                 except Exception:
                                     logger.exception("SMS filleul non envoyé")
+                            transaction.on_commit(_sms_after_commit)
 
-                        logger.warning(
-                            "NO_HIT: pas d'email au parrain. current_refs=%s (min_global=%s)",
-                            current_refs_late, min_global_late
-                        )
-                        return redirect("dashboard:clients_list")
+    return redirect("dashboard:clients_list")
 
                     # Ici : bucket valide (forcé ou tiré) → chercher un template
                     tpl_referrer = RewardTemplate.objects.filter(company=company, bucket=bucket).first()

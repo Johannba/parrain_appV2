@@ -124,27 +124,23 @@ def reset_wheel(company: Company, key: str) -> None:
 # ------------------ Éligibilité par minimums ------------------
 def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
     """
-    Retourne, pour chaque bucket, si le client est éligible selon les minimums.
-    Règle globale: si un minimum “max” existe (>0) et n’est pas encore atteint,
-    alors aucun bucket n’est éligible (cohérent avec l’UI où on masque tout).
+    Retourne l'éligibilité par bucket, SANS bloquer globalement.
+    Chaque bucket est éligible si referrals_count >= min du template correspondant.
+    S'il n'y a pas de template pour un bucket, il est considéré non éligible.
     """
     referrals_count = Referral.objects.filter(company=company, referrer=client).count()
+
     tpls = {
         t.bucket: t
         for t in RewardTemplate.objects.filter(company=company)
                                        .only("bucket", "min_referrals_required")
     }
 
-    global_min = max(int(t.min_referrals_required or 0) for t in tpls.values()) if tpls else 0
-    if global_min > 0 and referrals_count < global_min:
-        return {SOUVENT: False, MOYEN: False, RARE: False, TRES_RARE: False}
-
     def is_ok(bucket: str) -> bool:
         tpl = tpls.get(bucket)
         if not tpl:
-            return False
-        min_required = int(tpl.min_referrals_required or 0)
-        return referrals_count >= min_required
+            return False  # pas de template => pas d'éligibilité
+        return referrals_count >= int(tpl.min_referrals_required or 0)
 
     return {
         SOUVENT:   is_ok(SOUVENT),
@@ -152,6 +148,7 @@ def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
         RARE:      is_ok(RARE),
         TRES_RARE: is_ok(TRES_RARE),
     }
+
 
 
 # ------------------ Consommation “avec saut” ------------------
