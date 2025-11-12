@@ -1,5 +1,6 @@
 # dashboard/views.py
 from __future__ import annotations
+import random
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -699,7 +700,7 @@ def referral_create(request, company_id=None):
 
                     # ---------- 3.b) récompense PARRAIN ----------
                     # 👉 Nouveau tirage normalisé au lieu du GATE + tirage brut
-                    bucket = _draw_bucket_normalized(company, referrer)
+                    bucket = tirer_recompense(company, referrer)
                     logger.warning(
                         "tirage_normalisé -> bucket=%s (referrer_id=%s, company_id=%s)",
                         bucket, referrer.id, company.id
