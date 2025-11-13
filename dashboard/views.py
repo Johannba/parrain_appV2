@@ -534,7 +534,6 @@ from dashboard.forms import ReferralForm, RefereeInlineForm
 from dashboard.models import Referral, Client
 from rewards.models import RewardTemplate, Reward
 from rewards.services.smsmode import SMSPayload, send_sms
-from rewards.services.probabilities import NO_HIT
 from common.phone_utils import normalize_msisdn
 
 logger = logging.getLogger(__name__)
