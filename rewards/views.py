@@ -9,9 +9,7 @@ from venv import logger
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db import transaction
 from django.db.models import Q, Count
 from django.db.models.functions import TruncMonth
 from django.http import Http404
@@ -21,6 +19,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.models import Company
 from dashboard.models import Referral
+from rewards.services import award_both_parties
 from .models import RewardTemplate, Reward, ProbabilityWheel
 from .forms import RewardTemplateForm
 from rewards.services.probabilities import BASE_COUNTS, VR_COUNTS, BASE_SIZE, VR_SIZE
@@ -772,3 +771,40 @@ def reward_send_sms(request, pk: int):
 
     back_id = request.POST.get("back_client")
     return redirect("dashboard:client_detail", pk=back_id) if back_id else redirect("rewards:history_company")
+@login_required
+def validate_referral_and_award_referrer(request, referral_id: int):
+    """
+    Valide un parrainage et attribue une récompense au PARRAIN ET au FILLEUL.
+
+    -> Respecte maintenant les minimums de parrainages configurés sur les RewardTemplate.
+    """
+    referral = get_object_or_404(
+        Referral.objects.select_related("company", "referrer", "referee"), pk=referral_id
+    )
+    company: Company = referral.company
+
+    user = request.user
+    if not (_is_superadmin(user) or getattr(user, "company_id", None) == company.id):
+        messages.error(request, "Accès refusé.")
+        return redirect("dashboard:client_detail", pk=referral.referrer_id)
+
+    reward_parrain, reward_filleul = award_both_parties(referral=referral)
+
+    if reward_parrain is None:
+        messages.success(
+            request,
+            (
+                f"Parrainage validé. Récompense créée pour le filleul « {reward_filleul.label} ». "
+                "Le parrain n'a pas encore atteint le minimum requis pour obtenir un cadeau."
+            ),
+        )
+    else:
+        messages.success(
+            request,
+            (
+                f"Parrainage validé. Récompenses créées : Parrain « {reward_parrain.label} » "
+                f"et Filleul « {reward_filleul.label} »."
+            ),
+        )
+
+    return redirect("dashboard:client_detail", pk=referral.referrer_id)

@@ -11,6 +11,7 @@ from django.shortcuts import render  # inoffensif si non utilisé
 from accounts.models import Company
 from rewards.models import ProbabilityWheel, RewardTemplate
 from dashboard.models import Referral
+import random
 
 # ---------- Compatibilité historique avec rewards.probabilities ----------
 from rewards.probabilities import (  # type: ignore
@@ -18,6 +19,11 @@ from rewards.probabilities import (  # type: ignore
     ensure_wheel as _legacy_ensure_wheel,
     draw as _legacy_draw,
 )
+from django.db.models import Max
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # Exposition des symboles historiques
 WheelSpec = _LegacyWheelSpec
@@ -32,7 +38,9 @@ __all__ = [
     # API roues exactes
     "ensure_wheels", "rebuild_wheel", "reset_wheel",
     # Tirage métier + affichage
-    "tirer_recompense", "get_normalized_percentages",
+    "tirer_recompense",
+    "get_normalized_percentages",
+    "tirer_recompense_with_normalization",
     # Compat
     "WheelSpec", "ensure_wheel", "draw",
 ]
@@ -125,29 +133,52 @@ def reset_wheel(company: Company, key: str) -> None:
 def _eligible_buckets_for(company: Company, client) -> Dict[str, bool]:
     """
     Retourne l'éligibilité par bucket, SANS bloquer globalement.
-    Chaque bucket est éligible si referrals_count >= min du template correspondant.
-    S'il n'y a pas de template pour un bucket, il est considéré non éligible.
+
+    - On compte le nombre de parrainages du client dans l’entreprise.
+    - Pour chaque bucket, on prend le MAX des min_referrals_required
+      (utile s’il y a des doublons de templates).
+    - Un bucket est éligible si referrals_count >= min_required.
     """
+    # Nombre de parrainages de ce client dans cette entreprise
     referrals_count = Referral.objects.filter(company=company, referrer=client).count()
 
-    tpls = {
-        t.bucket: t
-        for t in RewardTemplate.objects.filter(company=company)
-                                       .only("bucket", "min_referrals_required")
+    # Agrégation par bucket : on prend le max des minimums configurés
+    agg = (
+        RewardTemplate.objects
+        .filter(company=company)
+        .values("bucket")
+        .annotate(min_required=Max("min_referrals_required"))
+    )
+    thresholds: Dict[str, int] = {
+        row["bucket"]: int(row["min_required"] or 0) for row in agg
     }
 
     def is_ok(bucket: str) -> bool:
-        tpl = tpls.get(bucket)
-        if not tpl:
-            return False  # pas de template => pas d'éligibilité
-        return referrals_count >= int(tpl.min_referrals_required or 0)
+        min_required = thresholds.get(bucket)
+        if min_required is None:
+            # pas de template pour ce bucket -> non éligible
+            return False
+        return referrals_count >= min_required
 
-    return {
+    elig = {
         SOUVENT:   is_ok(SOUVENT),
         MOYEN:     is_ok(MOYEN),
         RARE:      is_ok(RARE),
         TRES_RARE: is_ok(TRES_RARE),
     }
+
+    # Log debug utile pour vérifier ce qui se passe en vrai
+    logger.warning(
+        "ELIG company=%s client=%s referrals=%s thresholds=%s elig=%s",
+        getattr(company, "id", None),
+        getattr(client, "id", None),
+        referrals_count,
+        thresholds,
+        elig,
+    )
+
+    return elig
+
 
 
 
@@ -244,3 +275,44 @@ def get_normalized_percentages(company: Company, client) -> Dict[str, Decimal]:
         RARE:      (p_base[RARE]    / mass) * Decimal(100) if elig.get(RARE,    False)   else Decimal(0),
         TRES_RARE: (p_tr[TRES_RARE] / mass) * Decimal(100) if elig.get(TRES_RARE, False) else Decimal(0),
     }
+def tirer_recompense_with_normalization(company: Company, client) -> str:
+    """
+    Tirage « mathématique » :
+
+    1. On part des probabilités canoniques :
+         - SOUVENT   = 80 / 100
+         - MOYEN     = 19 / 100
+         - RARE      = 0,99999 / 100
+         - TRES_RARE = 1 / 100000
+    2. On enlève les buckets dont le minimum n'est pas atteint
+       (via _eligible_buckets_for).
+    3. On RENORMALISE pour que la somme fasse 100.
+    4. On tire un bucket pondéré.
+
+    Si aucun bucket n'est éligible → NO_HIT.
+    """
+    # Pourcentages déjà normalisés côté UI (0..100)
+    pct = get_normalized_percentages(company, client)
+    total = sum(pct.values())
+
+    if total <= 0:
+        return NO_HIT
+
+    # tirage dans [0 ; total) (en pratique total ≈ 100)
+    x = Decimal(str(random.random())) * total
+    acc = Decimal("0")
+
+    for bucket in (SOUVENT, MOYEN, RARE, TRES_RARE):
+        p = pct.get(bucket, Decimal("0"))
+        if p <= 0:
+            continue
+        acc += p
+        if x < acc:
+            return bucket
+
+    # garde-fou numérique
+    for bucket in (TRES_RARE, RARE, MOYEN, SOUVENT):
+        if pct.get(bucket, Decimal("0")) > 0:
+            return bucket
+
+    return NO_HIT

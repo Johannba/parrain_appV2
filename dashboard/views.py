@@ -27,7 +27,7 @@ from rewards.models import Reward, RewardTemplate
 from rewards.services import award_both_parties
 
 from django.db.models import Max
-from rewards.services.probabilities import tirer_recompense, get_normalized_percentages, NO_HIT
+from rewards.services.probabilities import tirer_recompense, get_normalized_percentages, NO_HIT, tirer_recompense_with_normalization
 from rewards.models import RewardTemplate, Reward
 
 import logging
@@ -573,60 +573,6 @@ def referral_create(request, company_id=None):
                            obj.__class__.__name__, getattr(obj, "id", None), e)
             return ""
 
-    def _draw_bucket_normalized(company, referrer) -> str:
-        """
-        Retire les buckets dont le minimum n'est pas atteint, puis
-        RE-NORMALISE les poids pour sommer à 100 avant de tirer.
-
-        Base (sur 100) :
-          SOUVENT=80, MOYEN=19, RARE=0.99999, TRES_RARE=0.00001
-        Exemple : si RARE et TRES_RARE inéligibles → somme restante = 99,
-        on tire avec SOUVENT=(80/99)*100, MOYEN=(19/99)*100.
-        """
-        getcontext().prec = 28  # bonne précision
-        PROB = {
-            "SOUVENT":   Decimal("80"),
-            "MOYEN":     Decimal("19"),
-            "RARE":      Decimal("0.99999"),
-            "TRES_RARE": Decimal("0.00001"),
-        }
-        ORDER = ("SOUVENT", "MOYEN", "RARE", "TRES_RARE")
-
-        # nb de parrainages (incluant celui qu'on vient de créer puisqu'on appelle après save)
-        current_refs = Referral.objects.filter(company=company, referrer=referrer).count()
-
-        # min requis par bucket (0 par défaut si template présent sans valeur)
-        req_map = {t.bucket: int(t.min_referrals_required or 0)
-                   for t in RewardTemplate.objects.filter(company=company)}
-        # un bucket SANS template n'est PAS éligible (on ne l'ajoute donc pas)
-
-        # buckets qui ont un template ET dont min est atteint
-        eligible = []
-        for b in PROB.keys():
-            if b in req_map and current_refs >= req_map[b]:
-                eligible.append(b)
-
-        if not eligible:
-            return "NO_HIT"
-
-        # somme de la masse restante
-        total = sum(PROB[b] for b in eligible)
-        if total <= 0:
-            return "NO_HIT"
-
-        # re-normalisation pour sommer à 100 (sans arrondir)
-        weights = {b: (PROB[b] / total) * Decimal("100") for b in eligible}
-
-        # tirage pondéré
-        x = Decimal(str(random.random())) * Decimal("100")
-        acc = Decimal("0")
-        for k in ORDER:
-            if k in weights:
-                acc += weights[k]
-                if x < acc:
-                    return k
-        # garde-fou numérique
-        return eligible[-1]
 
     # ---------- Form setup ----------
     ref_form = RefereeInlineForm(request.POST or None)
@@ -702,9 +648,11 @@ def referral_create(request, company_id=None):
                         claim_referee_abs = _safe_abs(request, rw_referee)
 
                     # --- tirage PARRAIN via normalisation ---
-                    bucket = _draw_bucket_normalized(company, referrer)
-                    logger.warning("tirage_normalisé -> %s (referrer_id=%s, company_id=%s)",
-                                   bucket, referrer.id, company.id)
+                    bucket = tirer_recompense_with_normalization(company, referrer)
+                    logger.warning(
+                        "tirage_normalisé -> %s (referrer_id=%s, company_id=%s)",
+                        bucket, referrer.id, company.id
+                    )
 
                     # entreprise avec AU MOINS un min > 0 ?
                     has_min_gt0 = RewardTemplate.objects.filter(
@@ -840,8 +788,8 @@ def referral_create(request, company_id=None):
                                 return
                             company_name = getattr(company, "name", "Votre enseigne")
                             filleul_prenom = (referee.first_name or referee.last_name or str(referee)).strip()
-                            text = (f"Bonne nouvelle 🎉 Ton parrainage avec {filleul_prenom} vient d’être validé "
-                                    f"chez {company_name} ! Découvre ta récompense ici 👉 {claim_referrer_abs}")
+                            text = (f"Bonne nouvelle Ton parrainage avec {filleul_prenom} vient d’être validé "
+                                    f"chez {company_name} ! Découvre ta récompense ici {claim_referrer_abs}")
                             res = send_sms(SMSPayload(
                                 to=to_e164,
                                 text=text,
@@ -1029,29 +977,6 @@ def validate_referral_and_award(request, referral_id: int):
     )
     return redirect("rewards:spin", reward_id=reward.id)
 
-@login_required
-def validate_referral_and_award_referrer(request, referral_id: int):
-    """
-    Valide un parrainage et attribue une récompense au PARRAIN ET au FILLEUL.
-    """
-    referral = get_object_or_404(
-        Referral.objects.select_related("company", "referrer", "referee"), pk=referral_id
-    )
-    company: Company = referral.company
-
-    user = request.user
-    if not (_is_superadmin(user) or getattr(user, "company_id", None) == company.id):
-        messages.error(request, "Accès refusé.")
-        return redirect("dashboard:client_detail", pk=referral.referrer_id)
-
-    reward_parrain, reward_filleul = award_both_parties(referral=referral)
-
-    messages.success(
-        request,
-        f"Parrainage validé. Récompenses créées : Parrain « {reward_parrain.label} » "
-        f"et Filleul « {reward_filleul.label} ».",
-    )
-    return redirect("dashboard:client_detail", pk=referral.referrer_id)
 
 # --- AJOUTER EN BAS DU FICHIER (ou près des vues superadmin) ---
 

@@ -2,7 +2,7 @@
 from django.urls import path
 from .views import (
     reward_list, reward_update, rewards_history_company, reward_spin,
-    use_reward, distribute_reward, referral_delete,rewards_stats,test_wheel, reward_send_sms
+    use_reward, distribute_reward, referral_delete,rewards_stats,test_wheel, reward_send_sms,validate_referral_and_award_referrer
 )
 
 app_name = "rewards"
@@ -19,5 +19,6 @@ urlpatterns = [
     path("referral/<int:pk>/delete/", referral_delete, name="referral_delete"),
     path("test-wheel/", test_wheel, name="test_wheel"), 
     path("<int:pk>/send/sms/", reward_send_sms, name="reward_send_sms"),
+    path("referrals/<int:referral_id>/award-referrer/", validate_referral_and_award_referrer, name="validate_referral_and_award_referrer"),
     
 ]
