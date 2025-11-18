@@ -124,8 +124,18 @@ class Reward(models.Model):
 
     @property
     def valid_until(self):
+        """
+        Date de validité affichée sur la page publique.
+
+        - Priorité : token_expires_at (déjà calculé dans ensure_token avec cooldown_days ou 180j)
+        - Fallback : created_at + cooldown_days si jamais on a une durée mais pas encore de token.
+        """
+        if self.token_expires_at:
+            return self.token_expires_at
+
         if self.cooldown_days and self.created_at:
             return self.created_at + timedelta(days=int(self.cooldown_days))
+
         return None
 
     @property
