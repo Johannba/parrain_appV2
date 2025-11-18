@@ -817,17 +817,17 @@ def referral_create(request, company_id=None):
                             ).strip()
 
                             # Objet : Pizza 132 — Ton parrainage est validé
-                            subject = f"{company_name} — cadeaux obtenu"
+                            subject = f"Confirmation de parrainage — {company_name}"
 
                             lines = [
                                 # Salut Stan,
-                                f"Salut {prenom},",
+                                f"Bonjour {prenom},",
                                 "",
                                 # Olivier est venu découvrir Pizza 132 grâce à toi 🙌
-                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi 🙌",
+                                f"Votre parrainage avec Olivier a été enregistré chez {company_name}",
                                 "",
                                 # Pour te remercier, retrouve ta récompense ici :
-                                "Pour te remercier, retrouve ta récompense ici :",
+                                "Vous pouvez accéder à votre avantage ici :",
                             ]
 
                             # https://chuchote.com/rewards/use/...
@@ -839,12 +839,9 @@ def referral_create(request, company_id=None):
 
                             lines += [
                                 # Encore merci — ça compte vraiment pour nous 🔥
-                                "Encore merci — ça compte vraiment pour nous 🔥",
-                                "",
-                                # À très bientôt,
-                                "À très bientôt,",
-                                # L’équipe Pizza 132
-                                f"L’équipe {company_name}",
+                                "Nous vous remercions pour votre recommandation.",
+                                f"{company_name}",
+                                f"Message automatique faisant suite à l’enregistrement de votre parrainage."
                             ]
 
                             body = "\n".join(lines)
