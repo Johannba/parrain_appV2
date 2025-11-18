@@ -859,8 +859,6 @@ def referral_create(request, company_id=None):
                             logger.exception("Email parrain non envoyé: %s", e)
 
 
-
-
                     def _sms_parrain_after_commit():
                         try:
                             if not getattr(referrer, "phone", None) or not claim_referrer_abs:
@@ -900,32 +898,6 @@ def referral_create(request, company_id=None):
                     else:
                         transaction.on_commit(_email_parrain_after_commit)
                         transaction.on_commit(_sms_parrain_after_commit)
-
-                    # SMS filleul (lien) optionnel si le filleul a un reward
-                    if rw_referee and referee.phone and claim_referee_abs:
-                        def _sms_after_commit_ok():
-                            try:
-                                conf = getattr(settings, "SMSMODE", {})
-                                if not conf.get("API_KEY"):
-                                    return
-                                to_number, meta = normalize_msisdn(
-                                    referee.phone,
-                                    default_region=getattr(settings, "SMS_DEFAULT_REGION", "FR"),
-                                )
-                                if not to_number:
-                                    return
-                                text = (
-                                    f"{referee.first_name or referee.last_name}, "
-                                    f"voici votre lien cadeau : {claim_referee_abs}"
-                                )
-                                send_sms(SMSPayload(
-                                    to=to_number,
-                                    text=text,
-                                    sender=(conf.get("SENDER") or "ParrainApp"),
-                                ))
-                            except Exception:
-                                pass
-                        transaction.on_commit(_sms_after_commit_ok)
 
                     return redirect("dashboard:clients_list")
 
