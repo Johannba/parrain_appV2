@@ -228,7 +228,7 @@ def clients_list(request):
     # Récupère et consomme la popup éventuelle (parrainage créé)
     award_popup = request.session.pop("award_popup", None)
 
-    u = request.user
+    u = request.user    
     qs = Client.objects.filter(is_referrer=True)
     if not _is_superadmin(u):
         qs = qs.filter(company=u.company)
