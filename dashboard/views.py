@@ -11,6 +11,9 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from django.core.mail import send_mail
+from django.db import transaction, IntegrityError
+from django.shortcuts import render, redirect
 from django.utils import timezone
 
 from accounts.models import Company
@@ -24,16 +27,17 @@ from .forms import (
 )
 from rewards.forms import RewardTemplateForm
 from rewards.models import Reward, RewardTemplate
-from rewards.services import award_both_parties
 
-from django.db.models import Max
-from rewards.services.probabilities import tirer_recompense, get_normalized_percentages, NO_HIT, tirer_recompense_with_normalization
+from rewards.services.probabilities import tirer_recompense_with_normalization
 from rewards.models import RewardTemplate, Reward
 
 import logging
 logger = logging.getLogger(__name__)
 from django.db import transaction
+from decimal import Decimal, getcontext
 
+from dashboard.forms import ReferralForm, RefereeInlineForm
+from common.phone_utils import normalize_msisdn
 
 
 # -------------------------------------------------------------
@@ -517,24 +521,7 @@ def referrer_lookup(request):
 # Parrainage : création (recherche parrain + filleul inline)
 # -------------------------------------------------------------
 
-from decimal import Decimal, getcontext
-import random
-import logging
 
-from django.conf import settings
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.core.mail import send_mail
-from django.db import transaction, IntegrityError
-from django.shortcuts import render, redirect
-from django.utils import timezone
-
-from accounts.models import Company
-from dashboard.forms import ReferralForm, RefereeInlineForm
-from dashboard.models import Referral, Client
-from rewards.models import RewardTemplate, Reward
-from rewards.services.smsmode import SMSPayload, send_sms
-from common.phone_utils import normalize_msisdn
 
 logger = logging.getLogger(__name__)
 
@@ -815,7 +802,7 @@ def referral_create(request, company_id=None):
                         f"et Filleul « {getattr(rw_referee, 'label', '—') if rw_referee else '—'} » (envoyée).",
                     )
 
-                    # ----------------- email + sms parrain post-commit -----------------
+                                        # ----------------- email + sms parrain post-commit -----------------
                     def _email_parrain_after_commit():
                         try:
                             to_email = (referrer.email or "").strip()
@@ -828,43 +815,51 @@ def referral_create(request, company_id=None):
                             filleul_prenom = (
                                 referee.first_name or referee.last_name or str(referee)
                             ).strip()
-                            subject = f"{company_name} – parrainage validé"
+
+                            # Objet : Pizza 132 — Ton parrainage est validé
+                            subject = f"{company_name} — Ton parrainage est validé"
+
                             lines = [
-                                "⸻",
+                                # Salut Stan,
+                                f"Salut {prenom},",
                                 "",
-                                f"Bonjour {prenom},",
+                                # Olivier est venu découvrir Pizza 132 grâce à toi 🙌
+                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi 🙌",
                                 "",
-                                f"{filleul_prenom} est venu découvrir {company_name} grâce à toi.",
-                                "",
-                                f"Et comme chez {company_name}, on aime remercier ceux qui partagent leurs bonnes adresses…",
-                                "ton parrainage vient d’être validé.",
-                                "En remerciement, tu remportes un cadeau.",
+                                # Pour te remercier, retrouve ta récompense ici :
+                                "Pour te remercier, retrouve ta récompense ici :",
                             ]
+
+                            # https://chuchote.com/rewards/use/...
                             if claim_referrer_abs:
-                                lines.append(
-                                    "Découvre-le en cliquant sur le lien ci-dessous :\n"
-                                    f"{claim_referrer_abs}"
-                                )
+                                lines += [
+                                    f"{claim_referrer_abs}",
+                                    "",
+                                ]
+
                             lines += [
+                                # Encore merci — ça compte vraiment pour nous 🔥
+                                "Encore merci — ça compte vraiment pour nous 🔥",
                                 "",
-                                f"Merci encore d’avoir parlé de {company_name} autour de toi —",
-                                "c’est grâce à des clients comme toi qu’on fait ce métier avec passion.",
-                                "",
-                                "À très vite,",
+                                # À très bientôt,
+                                "À très bientôt,",
+                                # L’équipe Pizza 132
                                 f"L’équipe {company_name}",
-                                "",
-                                "⸻",
-                                f"Message envoyé par {company_name} via Chuchote.",
                             ]
+
                             body = "\n".join(lines)
                             send_mail(
-                                subject, body,
+                                subject,
+                                body,
                                 getattr(settings, "DEFAULT_FROM_EMAIL", None),
                                 [to_email],
                                 fail_silently=False,
                             )
                         except Exception as e:
                             logger.exception("Email parrain non envoyé: %s", e)
+
+
+
 
                     def _sms_parrain_after_commit():
                         try:
