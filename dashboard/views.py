@@ -817,7 +817,7 @@ def referral_create(request, company_id=None):
                             ).strip()
 
                             # Objet : Pizza 132 — Ton parrainage est validé
-                            subject = f"{company_name} — Merci pour votre parrainage"
+                            subject = f"{company_name} — cadeaux obtenu"
 
                             lines = [
                                 # Salut Stan,
