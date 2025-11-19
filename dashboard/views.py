@@ -92,6 +92,7 @@ def _kpis_for_company(company: Company):
     now = timezone.now()
     month_start, prev_month_start, prev_month_end = _month_bounds(now)
 
+    # Parrainages du mois
     referrals_this_month = Referral.objects.filter(
         company=company, created_at__gte=month_start
     ).count()
@@ -104,11 +105,24 @@ def _kpis_for_company(company: Company):
     if prev_referrals:
         delta_pct = round((referrals_this_month - prev_referrals) * 100 / prev_referrals)
 
+    # --- KPI Cadeaux PARRAIN uniquement ---
+    # On ne compte que les rewards liés à un parrainage
+    # ET dont le client est le PARRAIN (referral.referrer)
+    base_qs = Reward.objects.filter(
+        company=company,
+        referral__isnull=False,
+    ).filter(
+        client_id=F("referral__referrer_id")
+    )
+
+    rewards_sent = base_qs.filter(state="SENT").count()
+    rewards_pending = base_qs.filter(state="PENDING").count()
+
     return {
         "referrals_month": referrals_this_month,
         "referrals_delta_pct": delta_pct,
-        "rewards_sent": Reward.objects.filter(company=company, state="SENT").count(),
-        "rewards_pending": Reward.objects.filter(company=company, state="PENDING").count(),
+        "rewards_sent": rewards_sent,          # Cadeaux parrain distribués
+        "rewards_pending": rewards_pending,    # Cadeaux parrain en attente
         "clients": Client.objects.filter(company=company).count(),
     }
 
