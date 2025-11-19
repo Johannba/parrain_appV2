@@ -37,7 +37,7 @@ from decimal import Decimal, getcontext
 
 from dashboard.forms import ReferralForm, RefereeInlineForm
 from common.phone_utils import normalize_msisdn
-
+from django.db.models import Q, F
 
 # -------------------------------------------------------------
 # Helpers (rôles & périmètre)
