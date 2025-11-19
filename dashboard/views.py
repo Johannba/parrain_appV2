@@ -856,38 +856,59 @@ def referral_create(request, company_id=None):
                             logger.exception("Email parrain non envoyé: %s", e)
 
 
-                    def _sms_parrain_after_commit():
+                    def _email_parrain_after_commit():
                         try:
-                            if not getattr(referrer, "phone", None) or not claim_referrer_abs:
+                            to_email = (referrer.email or "").strip()
+                            if not to_email:
                                 return
-                            to_e164, meta = normalize_msisdn(
-                                referrer.phone,
-                                default_region=getattr(settings, "SMS_DEFAULT_REGION", "FR"),
-                            )
-                            if not to_e164:
-                                logger.warning(
-                                    "SMSMODE: numéro parrain invalide: %s", meta
-                                )
-                                return
+
                             company_name = getattr(company, "name", "Votre enseigne")
+                            prenom = (
+                                referrer.first_name or referrer.last_name or str(referrer)
+                            ).strip()
                             filleul_prenom = (
                                 referee.first_name or referee.last_name or str(referee)
                             ).strip()
-                            text = (
-                                f"Bonne nouvelle Ton parrainage avec {filleul_prenom} vient d’être validé "
-                                f"chez {company_name} ! Découvre ta récompense ici {claim_referrer_abs}"
+
+                            # Objet : Confirmation de parrainage — Nom de l’enseigne
+                            subject = f"Confirmation de parrainage — {company_name}"
+
+                            lines = [
+                                # Bonjour Stan,
+                                f"Bonjour {prenom},",
+                                "",
+                                # Votre parrainage avec Assan a été enregistré chez Pizza 132
+                                f"Votre parrainage avec {filleul_prenom} a été enregistré chez {company_name}.",
+                                "",
+                                # Vous pouvez accéder à votre avantage ici :
+                                "Vous pouvez accéder à votre avantage ici :",
+                            ]
+
+                            # https://chuchote.com/rewards/use/...
+                            if claim_referrer_abs:
+                                lines += [
+                                    f"{claim_referrer_abs}",
+                                    "",
+                                ]
+
+                            lines += [
+                                "Nous vous remercions pour votre recommandation.",
+                                "",
+                                f"{company_name}",
+                                "Message automatique faisant suite à l’enregistrement de votre parrainage.",
+                            ]
+
+                            body = "\n".join(lines)
+                            send_mail(
+                                subject,
+                                body,
+                                getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                                [to_email],
+                                fail_silently=False,
                             )
-                            res = send_sms(SMSPayload(
-                                to=to_e164,
-                                text=text,
-                                sender=(settings.SMSMODE.get("SENDER") or None),
-                            ))
-                            logger.warning(
-                                "SMS PARRAIN ok=%s status=%s meta=%s raw=%s",
-                                res.ok, res.status, meta, (res.raw or {})
-                            )
-                        except Exception:
-                            logger.exception("SMS parrain non envoyé")
+                        except Exception as e:
+                            logger.exception("Email parrain non envoyé: %s", e)
+
 
                     if getattr(settings, "DEBUG_EMAIL_IMMEDIATE", False):
                         _email_parrain_after_commit()
