@@ -695,6 +695,9 @@ def referral_create(request, company_id=None):
                             )
                             return redirect("dashboard:clients_list")
 
+                        # 👉 calcul de la date de validité à partir du template
+                        valid_until_referee = _compute_valid_until_from_template(tpl_referee)
+
                         # création de la récompense FILLEUL (SENT immédiat)
                         rw_referee = Reward.objects.create(
                             company=company,
@@ -703,7 +706,9 @@ def referral_create(request, company_id=None):
                             label=tpl_referee.label or "Cadeau",
                             state="SENT",
                             referral=referral,
+                            valid_until=valid_until_referee,   # 👈 ICI
                         )
+
                         upd = []
                         if hasattr(rw_referee, "sent_at") and not getattr(rw_referee, "sent_at", None):
                             rw_referee.sent_at = timezone.now(); upd.append("sent_at")
@@ -811,6 +816,9 @@ def referral_create(request, company_id=None):
                             )
                             return redirect("dashboard:clients_list")
 
+                    # 👉 calcul de la date de validité pour le parrain
+                    valid_until_referrer = _compute_valid_until_from_template(tpl_referrer)
+
                     rw_referrer = Reward.objects.create(
                         company=company,
                         client=referrer,
@@ -818,9 +826,10 @@ def referral_create(request, company_id=None):
                         label=tpl_referrer.label if tpl_referrer else "Cadeau",
                         state="PENDING",
                         referral=referral,
+                        valid_until=valid_until_referrer,   # 👈 ICI
                     )
                     claim_referrer_abs = _safe_abs(request, rw_referrer)
-                    
+
                     # popup + message
                     request.session["award_popup"] = {
                         "referrer_name": (
