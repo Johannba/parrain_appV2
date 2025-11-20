@@ -18,6 +18,7 @@ gunicorn = ">=21.2"
 redis = ">=5"
 dj-database-url = "*"
 dotenv = "*"
+python-dateutil = "*"
 
 [dev-packages]
 pytest = "*"
