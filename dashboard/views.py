@@ -704,9 +704,9 @@ def referral_create(request, company_id=None):
                             client=referee,
                             bucket=bucket_referee,
                             label=tpl_referee.label or "Cadeau",
+                            cooldown_days=tpl_referee.cooldown_days,
                             state="SENT",
                             referral=referral,
-                            valid_until=valid_until_referee,   # 👈 ICI
                         )
 
                         upd = []
@@ -816,17 +816,15 @@ def referral_create(request, company_id=None):
                             )
                             return redirect("dashboard:clients_list")
 
-                    # 👉 calcul de la date de validité pour le parrain
-                    valid_until_referrer = _compute_valid_until_from_template(tpl_referrer)
 
                     rw_referrer = Reward.objects.create(
                         company=company,
                         client=referrer,
                         bucket=bucket,
                         label=tpl_referrer.label if tpl_referrer else "Cadeau",
+                        cooldown_days=tpl_referrer.cooldown_days if tpl_referrer else 0,
                         state="PENDING",
                         referral=referral,
-                        valid_until=valid_until_referrer,   # 👈 ICI
                     )
                     claim_referrer_abs = _safe_abs(request, rw_referrer)
 
