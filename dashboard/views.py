@@ -38,7 +38,18 @@ from decimal import Decimal, getcontext
 from dashboard.forms import ReferralForm, RefereeInlineForm
 from common.phone_utils import normalize_msisdn
 from django.db.models import Q, F
-from rewards.views import _compute_valid_until_from_template
+from dateutil.relativedelta import relativedelta
+
+
+
+def _compute_valid_until_from_template(tpl: RewardTemplate):
+    """
+    Calcule la date de validité à partir du template de récompense.
+    Utilise cooldown_months, avec un fallback à 1 mois si non renseigné.
+    """
+    months = getattr(tpl, "cooldown_months", 1) or 1
+    base = timezone.now().date()
+    return base + relativedelta(months=months)
 
 # -------------------------------------------------------------
 # Helpers (rôles & périmètre)
