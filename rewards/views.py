@@ -1,11 +1,11 @@
 # rewards/views.py
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 import random
 
-logger = logging.getLogger(__name__)
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -25,6 +25,8 @@ from .forms import RewardTemplateForm
 from rewards.services.probabilities import BASE_COUNTS, VR_COUNTS, BASE_SIZE, VR_SIZE
 from .services.smsmode import SMSPayload, send_sms, build_reward_sms_text
 from common.phone_utils import normalize_msisdn
+
+logger = logging.getLogger(__name__)
 
 # ----------------------------- UI Dictionaries -----------------------------
 

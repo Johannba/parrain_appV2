@@ -38,8 +38,21 @@ from decimal import Decimal, getcontext
 from dashboard.forms import ReferralForm, RefereeInlineForm
 from common.phone_utils import normalize_msisdn
 from django.db.models import Q, F
-from dateutil.relativedelta import relativedelta
+import calendar
 
+
+
+def _add_months(base_date, months: int):
+    """
+    Ajoute `months` mois à une date en gérant les fins de mois.
+    (31 janvier + 1 mois -> 28/29 février, etc.)
+    """
+    month_index = base_date.month - 1 + int(months)
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    # on garde le même jour si possible, sinon le dernier du mois
+    day = min(base_date.day, calendar.monthrange(year, month)[1])
+    return base_date.replace(year=year, month=month, day=day)
 
 
 def _compute_valid_until_from_template(tpl: RewardTemplate):
@@ -49,7 +62,8 @@ def _compute_valid_until_from_template(tpl: RewardTemplate):
     """
     months = getattr(tpl, "cooldown_months", 1) or 1
     base = timezone.now().date()
-    return base + relativedelta(months=months)
+    return _add_months(base, months)
+
 
 # -------------------------------------------------------------
 # Helpers (rôles & périmètre)
@@ -689,8 +703,6 @@ def referral_create(request, company_id=None):
                             label=tpl_referee.label or "Cadeau",
                             state="SENT",
                             referral=referral,
-                            # >>> AJOUT : date de validité calculée à partir du template
-                            valid_until=_compute_valid_until_from_template(tpl_referee),
                         )
                         upd = []
                         if hasattr(rw_referee, "sent_at") and not getattr(rw_referee, "sent_at", None):
@@ -806,11 +818,9 @@ def referral_create(request, company_id=None):
                         label=tpl_referrer.label if tpl_referrer else "Cadeau",
                         state="PENDING",
                         referral=referral,
-                        # >>> AJOUT : date de validité calculée à partir du template du parrain
-                        valid_until=_compute_valid_until_from_template(tpl_referrer),
                     )
                     claim_referrer_abs = _safe_abs(request, rw_referrer)
-
+                    
                     # popup + message
                     request.session["award_popup"] = {
                         "referrer_name": (

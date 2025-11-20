@@ -149,16 +149,22 @@
         Présentez <strong>ce lien</strong> en caisse. Un membre de l’équipe validera la récompense.
         <div class="row">
           <div>
-            <div class="muted" style="margin:10px 0 6px">Ton lien</div>
+            <div class="muted" style="margin:10px 0 6px">
+              Ton lien
+              {% if reward.valid_until %}
+                — valable jusqu’au {{ reward.valid_until|date:"d/m/Y" }}
+              {% endif %}
+            </div>
             <div class="codebox" id="copybox">
               <!-- Affichage raccourci mais copie = URL complète -->
               <span class="url" id="copyUrl" data-full="{{ claim_absolute }}">{{ claim_absolute }}</span>
-              <button class="btn" id="copyBtn" data-url="{{ claim_absolute }}" aria-label="Copier le lien">Copier le lien</button>
+              <button class="btn" id="copyBtn" data-url="{{ claim_absolute }}" aria-label="Copier le lien">
+                Copier le lien
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </div>
   </main>
 
   <div class="footer">
