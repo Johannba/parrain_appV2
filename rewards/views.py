@@ -4,8 +4,8 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 import random
-from venv import logger
 
+logger = logging.getLogger(__name__)
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
