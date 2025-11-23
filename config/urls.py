@@ -44,6 +44,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("healthz", healthz, name="healthz"),
     path("healthz/", healthz, name="healthz-slash"),
+    path("legal/", include("legal.urls", namespace="legal")),
 ]
 
 if settings.DEBUG:

@@ -82,12 +82,12 @@
           <div class="col-md-6">
             <a href="{% url 'dashboard:referral_create' %}" class="btn btn-outline-primary w-100">Créer un parrainage</a>
           </div>
-          <div class="col-md-6">
+          {% comment %} <div class="col-md-6">
             <a href="{% url 'rewards:list' %}" class="btn btn-outline-primary w-100">Gérer les récompenses</a>
-          </div>
-          <div class="col-md-6">
+          </div> {% endcomment %}
+          {% comment %} <div class="col-md-6">
             <a href="{% url 'rewards:stats' %}" class="btn btn-outline-primary w-100">Voir les statistiques</a>
-          </div>
+          </div> {% endcomment %}
         </div>
       </div>
     </div>

@@ -62,6 +62,7 @@ else:
 # ======================================================================
 INSTALLED_APPS = [
     # Apps projet
+    "legal",
     "core",
     "public",
     "rewards.apps.RewardsConfig",

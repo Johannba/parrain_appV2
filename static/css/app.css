@@ -4,6 +4,21 @@
   --brand-gradient-end:#1A0D3A;
   --brand-ink:#1E164B;
 }
+:root{
+  --brand-primary:#E1007A;           /* magenta boutons */
+  --brand-gradient-start:#251053;
+  --brand-gradient-end:#1A0D3A;
+  --brand-ink:#1E164B;
+
+  /* FOOTER */
+  --brand-footer-bg:#210f49;
+
+    /* Rose accent */
+  --rose:#d63384;
+  --rose-soft:#fde6f1;
+  --rose-shadow:rgba(214,51,132,.25);
+}
+
 
 body{background-color:#f8f9fb}
 
@@ -156,4 +171,22 @@ body{background-color:#f8f9fb}
 #referrer-results .list-group-item:hover,
 #referrer-results .list-group-item:focus{
   background-color: var(--rose-soft);
+}
+
+
+/* ====== FOOTER DASHBOARD ====== */
+footer.app-footer{
+  background-color: var(--brand-footer-bg);
+  color: #fff;
+}
+
+footer.app-footer a{
+  color: rgba(255,255,255,0.85);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+footer.app-footer a:hover{
+  color: #fff;
+  text-decoration: underline;
 }

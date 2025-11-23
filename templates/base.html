@@ -6,7 +6,6 @@
   <title>{% block title %}Chuchote{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {% include "partials/_favicons.html" %}
-  
 
   <!-- Bootstrap local -->
   <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
@@ -14,7 +13,26 @@
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 <body>
-  {% block content %}{% endblock %}
+
+  <main class="app-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer global -->
+  <footer class="app-footer mt-4">
+    <div class="container py-3 py-md-4">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+        <small>© 2025 Chuchote • ParrainApp</small>
+        <div class="d-flex flex-wrap gap-3">
+          <!-- Remplace les # par tes vraies URLs (views Django ou PDFs) -->
+          <a href="#" class="link-light">Mentions légales</a>
+          <a href="#" class="link-light">CGU</a>
+          <a href="#" class="link-light">Politique de confidentialité</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
   <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
   <script src="{% static 'js/app.js' %}"></script>
 </body>

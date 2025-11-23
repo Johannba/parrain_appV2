@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 
-<body data-page="{% block body_data_page %}{% endblock %}">
+<body data-page="{% block body_data_page %}{% endblock %}" class="d-flex flex-column min-vh-100">
   <!-- TOP BAR (horizontal) -->
   <header class="topbar border-bottom sticky-top">
     <div class="topbar-gradient">
@@ -27,69 +27,17 @@
             <span class="fw-bold">ChuChote</span>
           </a>
 
-          {% comment %} <!-- Recherche -->
-          <form class="d-none d-md-flex" role="search" method="get" action="" style="min-width: 480px;">
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">🔎</span>
-
-              <!-- type de filtre courant (conservé au submit) -->
-              <input type="hidden" name="type" value="{{ filter_type|default:'tous' }}">
-
-              <input class="form-control"
-                     type="search"
-                     name="q"
-                     value="{{ current_q|default:'' }}"
-                     placeholder="Rechercher (nom, email, username)"
-                     aria-label="Search">
-
-              {# Filtre spécifique pour la vue Parrains (optionnel) #}
-              {% if filter_type == 'parrains' %}
-                <input class="form-control"
-                       type="search"
-                       name="ref_name"
-                       value="{{ current_ref_name|default:'' }}"
-                       placeholder="Filtrer les parrains par nom"
-                       aria-label="Filtrer les parrains par nom">
-              {% endif %}
-
-              {# Filtre entreprise visible pour superadmin #}
-              {% if companies_for_filter and request.user.profile == 'superadmin' %}
-                <select class="form-select" name="company" aria-label="Filtrer par entreprise">
-                  <option value="">Toutes les entreprises</option>
-                  {% for c in companies_for_filter %}
-                    <option value="{{ c.id }}"
-                            {% if current_company|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
-                      {{ c.name }}
-                    </option>
-                  {% endfor %}
-                </select>
-              {% endif %}
-
-              <button class="btn btn-outline-light" type="submit">Filtrer</button>
-            </div>
-          </form> {% endcomment %}
+          {% comment %} <!-- Recherche --> ... {% endcomment %}
 
           <!-- Actions à droite -->
           <div class="d-flex align-items-center gap-2">
-            {# Afficher le bouton Créer un utilisateur seulement pour superadmin ou admin #}
-            {% comment %} {% if request.user.profile == 'superadmin' or request.user.profile == 'admin' %}
-              <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:user_create' %}">Créer un utilisateur</a>
-            {% endif %}
-
-            {% if request.user.profile == 'superadmin' %}
-              <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:company_list' %}">
-                Entreprises
-              </a>
-            {% endif %} {% endcomment %}
+            {% comment %} boutons superadmin/admin {% endcomment %}
 
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
                 {{ request.user.get_username|default:"Compte" }}
               </button>
               <ul class="dropdown-menu dropdown-menu-end">
-                {% comment %} <li><a class="dropdown-item" href="#">Profil</a></li>
-                <li><a class="dropdown-item" href="#">Paramètres</a></li> {% endcomment %}
-
                 <li><a class="dropdown-item" href="{% url 'accounts:logout' %}">Déconnexion</a></li>
               </ul>
             </div>
@@ -103,7 +51,7 @@
     <div class="topbar-nav bg-white">
       <div class="container">
         <ul class="nav nav-pills gap-1 py-2" id="mainNav">
-          <li class="nav-item  me-2 ">
+          <li class="nav-item me-2">
             <a class="nav-link border border-2 rounded-3 {% block nav_dashboard_active %}{% endblock %}"
                style="--bs-border-color:#220f4c"
                href="{% url 'dashboard:root' %}">
@@ -111,11 +59,10 @@
             </a>
           </li>
 
-          {# Onglet Utilisateurs visible uniquement pour superadmin ou admin #}
           {% if request.user.profile == 'superadmin' or request.user.profile == 'admin' %}
-            <li class="nav-item  me-2">
-               <a class="nav-link border border-2 rounded-3 {% block nav_users_active %}{% endblock %}"
-                style="--bs-border-color:#220f4c"
+            <li class="nav-item me-2">
+              <a class="nav-link border border-2 rounded-3 {% block nav_users_active %}{% endblock %}"
+                 style="--bs-border-color:#220f4c"
                  href="{% url 'accounts:user_list' %}">
                 Utilisateurs
               </a>
@@ -125,7 +72,7 @@
           {% if request.user.profile == 'superadmin' %}
             <li class="nav-item me-2">
               <a class="nav-link border border-2 rounded-3 {% block nav_companies_active %}{% endblock %}"
-                style="--bs-border-color:#220f4c"
+                 style="--bs-border-color:#220f4c"
                  href="{% url 'accounts:company_list' %}">
                 Entreprises
               </a>
@@ -134,38 +81,37 @@
 
           <!-- nav métiers -->
           <li class="nav-item me-2">
-             <a class="nav-link border border-2 rounded-3 {% block nav_clients_active %}{% endblock %}"
-                style="--bs-border-color:#220f4c"
+            <a class="nav-link border border-2 rounded-3 {% block nav_clients_active %}{% endblock %}"
+               style="--bs-border-color:#220f4c"
                href="{% url 'dashboard:clients_list' %}">
               Parrainage
             </a>
           </li>
 
-         {# --- Gestion des Récompenses : visible seulement pour admin & superadmin --- #}
           {% if request.user.profile == 'superadmin' or request.user.profile == 'admin' %}
             <li class="nav-item me-2">
               <a class="nav-link border border-2 rounded-3 {% block nav_rewards_active %}{% endblock %}"
-                style="--bs-border-color:#220f4c"
-                href="{% url 'rewards:list' %}">
+                 style="--bs-border-color:#220f4c"
+                 href="{% url 'rewards:list' %}">
                 Paramétrage des récompenses
               </a>
             </li>
           {% endif %}
 
-
           <li class="nav-item me-2">
             <a class="nav-link border border-2 rounded-3 {% block nav_stats_active %}{% endblock %}"
-              style="--bs-border-color:#220f4c" 
-              href="{% url 'rewards:stats' %}">
+               style="--bs-border-color:#220f4c"
+               href="{% url 'rewards:stats' %}">
               Statistiques
             </a>
           </li>
+
           {% if request.user.profile == 'admin' or request.user.profile == 'operateur' %}
             {% if request.user.company %}
               <li class="nav-item me-2">
                 <a class="nav-link border border-2 rounded-3"
-                  style="--bs-border-color:#220f4c"
-                  href="{% url 'public:company_presentation' slug=request.user.company.slug %}">
+                   style="--bs-border-color:#220f4c"
+                   href="{% url 'public:company_presentation' slug=request.user.company.slug %}">
                   chuchote/{{ request.user.company.slug }}
                 </a>
               </li>
@@ -178,9 +124,24 @@
   </header>
 
   <!-- CONTENU -->
-  <main class="container my-4">
+  <main class="container my-4 flex-grow-1">
     {% block content %}{% endblock %}
   </main>
+
+  <!-- FOOTER DASHBOARD -->
+ <footer class="app-footer mt-4" style="background-color:#210f49; color:#fff;">
+  <div class="container py-3 py-md-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+      <small>© 2025 Chuchote</small>
+      <div class="d-flex flex-wrap gap-3">
+        <a href="{% url 'legal:contact' %}" class="link-light text-decoration-none">Contact</a>
+        <a href="{% url 'legal:mentions' %}" class="link-light text-decoration-none">Mentions légales</a>
+        <a href="{% url 'legal:cgu' %}" class="link-light text-decoration-none">CGU</a>
+        <a href="{% url 'legal:privacy' %}" class="link-light text-decoration-none">Politique de confidentialité</a>
+      </div>
+    </div>
+  </div>
+</footer>
 
   <!-- JS -->
   <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
