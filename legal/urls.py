@@ -4,8 +4,8 @@ from . import views
 app_name = "legal"
 
 urlpatterns = [
-    path("mentions-legales/", views.mentions_legales, name="mentions"),
-    path("cgu/", views.cgu, name="cgu"),
-    path("politique-confidentialite/", views.politique_confidentialite, name="privacy"),
-    path("contact/", views.contact, name="contact"),
+    path("contact/", views.contact_view, name="contact"),
+    path("mentions-legales/", views.mentions_view, name="mentions"),
+    path("cgu/", views.cgu_view, name="cgu"),
+    path("politique-de-confidentialite/", views.privacy_view, name="privacy"),
 ]

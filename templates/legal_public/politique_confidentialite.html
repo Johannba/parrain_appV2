@@ -1,4 +1,4 @@
-{% extends "base_dashboard.html" %}
+{% extends "base_legal_public.html" %}
 {% block title %}Politique de confidentialité • Chuchote{% endblock %}
 
 {% block content %}
@@ -6,6 +6,12 @@
   <div class="container">
     <div class="row justify-content-center">
       <div class="col-lg-9 col-md-10">
+         <!-- lien retour landing -->
+        <p class="mb-3">
+          <a href="{% url 'accounts:login' %}" class="text-decoration-none" style="color:#210f49;">
+            ← Retour à la page de connection
+          </a>
+        </p>
         <div class="bg-white p-4 p-md-5 shadow-sm" style="min-height: calc(100vh - 160px);">
 
           <h1 class="h3 fw-bold mb-2">🔐 POLITIQUE DE CONFIDENTIALITÉ – CHUCHOTE</h1>

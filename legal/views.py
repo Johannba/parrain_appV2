@@ -1,13 +1,33 @@
 from django.shortcuts import render
 
-def mentions_legales(request):
-    return render(request, "legal/mentions_legales.html")
+def cgu_view(request):
+    template = (
+        "legal/cgu.html"
+        if request.user.is_authenticated
+        else "legal_public/cgu.html"
+    )
+    return render(request, template)
 
-def cgu(request):
-    return render(request, "legal/cgu.html")
+def mentions_view(request):
+    template = (
+        "legal/mentions_legales.html"
+        if request.user.is_authenticated
+        else "legal_public/mentions_legales.html"
+    )
+    return render(request, template)
 
-def politique_confidentialite(request):
-    return render(request, "legal/politique_confidentialite.html")
+def privacy_view(request):
+    template = (
+        "legal/politique_confidentialite.html"
+        if request.user.is_authenticated
+        else "legal_public/politique_confidentialite.html"
+    )
+    return render(request, template)
 
-def contact(request):
-    return render(request, "legal/contact.html")
+def contact_view(request):
+    template = (
+        "legal/contact.html"
+        if request.user.is_authenticated
+        else "legal_public/contact.html"
+    )
+    return render(request, template)

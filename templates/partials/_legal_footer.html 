@@ -1,0 +1,14 @@
+{# templates/partials/_legal_footer.html #}
+<footer class="app-footer mt-4" style="background-color:#210f49; color:#fff;">
+  <div class="container py-3 py-md-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+      <small>© 2025 Chuchote</small>
+      <div class="d-flex flex-wrap gap-3">
+        <a href="{% url 'legal:contact' %}" class="link-light text-decoration-none">Contact</a>
+        <a href="{% url 'legal:mentions' %}" class="link-light text-decoration-none">Mentions légales</a>
+        <a href="{% url 'legal:cgu' %}" class="link-light text-decoration-none">CGU</a>
+        <a href="{% url 'legal:privacy' %}" class="link-light text-decoration-none">Politique de confidentialité</a>
+      </div>
+    </div>
+  </div>
+</footer>

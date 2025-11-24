@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     SignInView, logout_view,
     UserListView, UserCreateView, UserUpdateView, UserDeleteView,
-    company_list, company_create, company_update,company_delete 
+    company_list, company_create,
 )
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth_views

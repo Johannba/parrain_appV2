@@ -1,0 +1,24 @@
+{# templates/base_legal_public.html #}
+{% load static %}
+
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Chuchote{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+  <main class="flex-fill">
+    {% block content %}{% endblock %}
+  </main>
+
+  {# footer légal qu’on a mis dans accounts/templates/accounts/_legal_footer.html #}
+  {% include "accounts/_legal_footer.html" %}
+
+  <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

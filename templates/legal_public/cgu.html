@@ -1,4 +1,4 @@
-{% extends "base_dashboard.html" %}
+{% extends "base_legal_public.html" %}
 {% block title %}CGU • Chuchote{% endblock %}
 
 {% block content %}
@@ -7,6 +7,13 @@
     <div class="row justify-content-center">
       <!-- largeur "page" -->
       <div class="col-lg-9 col-md-10">
+        <!-- lien retour landing -->
+        <p class="mb-3">
+          <a href="{% url 'accounts:login' %}" class="text-decoration-none" style="color:#210f49;">
+            ← Retour à la page de connection
+          </a>
+        </p>
+
         <!-- feuille blanche -->
         <div class="bg-white p-4 p-md-5 shadow-sm" style="min-height: calc(100vh - 160px);">
 

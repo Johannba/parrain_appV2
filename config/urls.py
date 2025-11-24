@@ -1,6 +1,6 @@
 # config/urls.py
 from django.contrib import admin
-from django.shortcuts import redirect
+from django.shortcuts import redirect,render
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
@@ -8,6 +8,7 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.db import connection
 from django.http import JsonResponse
 from django.urls import reverse
+
 
 def healthz(request):
     try:
@@ -29,13 +30,12 @@ def root_view(request):
             return redirect("dashboard:company_home")
         return redirect("dashboard:root")
 
-    # Anonyme → montrer le login directement
-    login_url = reverse("accounts:login")
-    next_url = reverse("dashboard:root")
-    return redirect(f"{login_url}?next={next_url}")
+    # Anonyme → afficher la landing
+    return render(request, "public/landing.html")
+
 
 urlpatterns = [
-    # path("", root_view, name="root"),
+    path("", root_view, name="root"),
     path("", include("dashboard.urls")),
     path("chuchote/", include("public.urls")),
     path("accounts/", include(("accounts.urls", "accounts"), namespace="accounts")),
@@ -46,6 +46,7 @@ urlpatterns = [
     path("healthz/", healthz, name="healthz-slash"),
     path("legal/", include("legal.urls", namespace="legal")),
 ]
+
 
 if settings.DEBUG:
     urlpatterns += staticfiles_urlpatterns()

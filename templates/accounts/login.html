@@ -8,75 +8,88 @@
   <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
-<body class="bg-light">
-  <div class="container py-5">
-    <div class="col-md-5 col-lg-4 mx-auto">
-      <div class="text-center mb-4">
-        <a class="navbar-brand d-inline-flex align-items-center gap-2 text-decoration-none" href="#">
-          <span class="brand-dot"></span>
-          <span class="fw-bold" style="color:var(--brand-ink)">ChuChote</span>
-        </a>
-      </div>
 
-      {% if form.errors %}
-      <div class="alert alert-danger d-flex align-items-start gap-2">
-        <div>⚠️</div>
-        <div>
-          <div class="fw-semibold mb-1">Impossible de vous connecter.</div>
-          <ul class="mb-0 small">
-            {% for field in form %}
-              {% for error in field.errors %}
-                <li><strong>{{ field.label }} :</strong> {{ error }}</li>
-              {% endfor %}
-            {% endfor %}
-            {% for error in form.non_field_errors %}
-              <li>{{ error }}</li>
-            {% endfor %}
-          </ul>
+{# FLEX EN COLONNE + hauteur écran #}
+<body class="bg-light d-flex flex-column min-vh-100">
+
+  {# contenu principal #}
+  <main class="flex-fill">
+    <div class="container py-5">
+      <div class="col-md-5 col-lg-4 mx-auto">
+        <div class="text-center mb-4">
+          <a class="navbar-brand d-inline-flex align-items-center gap-2 text-decoration-none" href="#">
+            <span class="brand-dot"></span>
+            <span class="fw-bold" style="color:var(--brand-ink)">ChuChote</span>
+          </a>
         </div>
-      </div>
-      {% endif %}
 
-      <div class="card shadow-sm">
-        <div class="card-body p-4">
-          <h1 class="h5 mb-3">Connexion</h1>
-
-          <form method="post" novalidate class="vstack gap-3">
-            {% csrf_token %}
-
-            <div>
-              <label class="form-label" for="{{ form.username.id_for_label }}">Nom d’utilisateur</label>
-              {% render_field form.username class+="form-control" placeholder="ex. johann" %}
-            </div>
-
-            <div>
-              <label class="form-label" for="{{ form.password.id_for_label }}">Mot de passe</label>
-              <div class="input-group">
-                {% render_field form.password class+="form-control" autocomplete="current-password" %}
-                <button type="button" class="btn btn-outline-secondary" id="togglePwd">Afficher</button>
-              </div>
-            </div>
-
-            {% if form.remember %}
-            <div class="form-check">
-              {% render_field form.remember class+="form-check-input" %}
-              <label class="form-check-label" for="{{ form.remember.id_for_label }}">Se souvenir de moi</label>
-            </div>
-            {% endif %}
-
-            <button class="btn btn-primary w-100">Se connecter</button>
-          </form>
-          <div class="text-center mt-3">
-              <a href="{% url 'accounts:password_reset' %}" class="small">Mot de passe oublié ?</a>
+        {% if form.errors %}
+        <div class="alert alert-danger d-flex align-items-start gap-2">
+          <div>⚠️</div>
+          <div>
+            <div class="fw-semibold mb-1">Impossible de vous connecter.</div>
+            <ul class="mb-0 small">
+              {% for field in form %}
+                {% for error in field.errors %}
+                  <li><strong>{{ field.label }} :</strong> {{ error }}</li>
+                {% endfor %}
+              {% endfor %}
+              {% for error in form.non_field_errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+            </ul>
           </div>
         </div>
-      </div>
+        {% endif %}
 
-      <p class="text-center text-secondary small mt-3 mb-0">
-        Besoin d’aide ? Contactez l’administrateur de la plateforme.
-      </p>
+        <div class="card shadow-sm">
+          <div class="card-body p-4">
+            <h1 class="h5 mb-3">Connexion</h1>
+
+            <form method="post"
+                  action="{% url 'accounts:login' %}"
+                  novalidate
+                  class="vstack gap-3">
+              {% csrf_token %}
+
+              <div>
+                <label class="form-label" for="{{ form.username.id_for_label }}">Nom d’utilisateur</label>
+                {% render_field form.username class+="form-control" placeholder="ex. johann" %}
+              </div>
+
+              <div>
+                <label class="form-label" for="{{ form.password.id_for_label }}">Mot de passe</label>
+                <div class="input-group">
+                  {% render_field form.password class+="form-control" autocomplete="current-password" %}
+                  <button type="button" class="btn btn-outline-secondary" id="togglePwd">Afficher</button>
+                </div>
+              </div>
+
+              {% if form.remember %}
+              <div class="form-check">
+                {% render_field form.remember class+="form-check-input" %}
+                <label class="form-check-label" for="{{ form.remember.id_for_label }}">Se souvenir de moi</label>
+              </div>
+              {% endif %}
+
+              <button class="btn btn-primary w-100">Se connecter</button>
+            </form>
+
+            <div class="text-center mt-3">
+              <a href="{% url 'accounts:password_reset' %}" class="small">Mot de passe oublié ?</a>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-center text-secondary small mt-3 mb-0">
+          Besoin d’aide ? Contactez l’administrateur de la plateforme.
+        </p>
+      </div>
     </div>
-  </div>
+  </main>
+
+  {# footer légal collé en bas #}
+  {% include "accounts/_legal_footer.html" %}
 
   <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
   <script>
