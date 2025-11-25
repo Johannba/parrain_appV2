@@ -1,4 +1,5 @@
 {# templates/public/landing.html #}
+{% load static %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -6,6 +7,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chuchote – Booster de bouche-à-oreille pour professionnels</title>
   <meta name="description" content="Chuchote aide les professionnels à transformer leurs clients en ambassadeurs grâce à un système de récompenses personnalisables. Pour salons, restaurants, boutiques et indépendants." />
+
+  {# >>> ajout: même CSS que le dashboard #}
+  <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+
   <style>
     :root {
       --bg: #fff9fc; /* rose encore plus clair */
@@ -182,24 +188,21 @@
       outline: none;
     }
 
-    footer {
-      text-align: center;
-      padding: 2rem 1rem 3rem;
-      font-size: .9rem;
-      color: var(--muted);
-    }
+    /* surtout : on NE redéfinit PAS footer ici
+       pour laisser le style du partial _legal_footer.html */
   </style>
 </head>
-<body>
+
+{# layout flex pour coller le footer en bas #}
+<body class="d-flex flex-column min-vh-100">
 <header>
   <div class="brand">Chuchote</div>
   <nav>
-    {# On pointe vers la vue de connexion Django #}
     <a href="{% url 'accounts:login' %}" class="btn">Se connecter</a>
   </nav>
 </header>
 
-<main>
+<main class="flex-fill">
   <section class="hero">
     <div>
       <h1>La solution intelligente pour booster le bouche-à-oreille de vos clients 💡</h1>
@@ -251,12 +254,8 @@
   </section>
 </main>
 
-<footer>
-  ©️ <span id="year"></span> Chuchote – booster de bouche-à-oreille client.
-</footer>
+{# footer légal réutilisé, même rendu que dans l’app #}
+{% include "accounts/_legal_footer.html" %}
 
-<script>
-  document.getElementById('year').textContent = new Date().getFullYear();
-</script>
 </body>
 </html>
