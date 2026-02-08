@@ -22,13 +22,14 @@ chuchote.com {
     @private path /accounts/* /dashboard/* /admin/*
     header @private X-Robots-Tag "noindex, nofollow"
 
-    handle_path /static/* {
-        root * /srv/static
-        file_server
+    handle /static/* {
+    root * /srv/static
+    file_server
     }
-    handle_path /media/* {
-        root * /srv/media
-        file_server
+
+    handle /media/* {
+    root * /srv/media
+    file_server
     }
 
     @healthz path /healthz

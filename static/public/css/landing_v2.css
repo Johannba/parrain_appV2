@@ -755,7 +755,7 @@ body.public-landing{
 /* FLOW */
 .public-landing .ultra__flow{
   display: grid;
-  gap: 22px;
+  gap: 72px;
   margin-top: 26px;
   padding: 30px;
 }
@@ -949,11 +949,7 @@ body.public-landing{
 .public-landing .ultra-btn:hover{
   filter: brightness(.96);
 }
-.public-landing .ultra-btn{
-  border-radius: 14px;
-  font-size: 34px;
-  max-height: 74px;
-}
+
 /* Responsive */
 @media (max-width: 900px){
   .public-landing .ultra__card{
@@ -1037,7 +1033,7 @@ body.public-landing{
   /* FLOW */
   .public-landing .ultra__flow{
     display: grid;
-    gap: 22px;
+    gap: 42px;
     margin-top: 26px;
     padding: 0px;
   }
@@ -1111,20 +1107,20 @@ body.public-landing{
 }
 @media (max-width: 500px){
   .public-landing .ultra__cta{
-    margin-top: 56px;   
-    margin-bottom: 20px;        /* optionnel : rapproche du bloc */
+    margin-top: 40px;
+    margin-bottom: 16px;
   }
 
   .public-landing .ultra-btn{
-    height: 74px;               /* ✅ plus petit */
-    padding: 0 34px;            /* ✅ moins large */
-    border-radius: 18px;        /* ✅ cohérent */
-    font-size: 28px;            /* ✅ lisible */
-    max-width: 100%;            /* ✅ ne déborde jamais */
-    width: min(320px, 100%);
+    height: 48px;          /* ⬅️ plus petit */
+    padding: 0 22px;       /* ⬅️ moins large */
+    border-radius: 14px;
+    font-size: 20px;       /* ⬅️ texte plus fin */
+    width: min(260px, 100%);
     box-sizing: border-box;
   }
 }
+
 
 /* =========================
    ULTRA — FLÈCHES SUR LES RECTANGLES
