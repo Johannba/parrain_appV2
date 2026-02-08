@@ -43,7 +43,7 @@ def env_list(name: str, default: str = "") -> list[str]:
 # ======================================================================
 # CORE FLAGS
 # ======================================================================
-DEBUG = env_bool("DEBUG", True)
+DEBUG = env_bool("DEBUG", False)
 
 SECRET_KEY = (os.getenv("SECRET_KEY") or ("dev-secret" if DEBUG else ""))
 if not DEBUG and not SECRET_KEY:
