@@ -1,0 +1,31 @@
+{# templates/public/partials/_hero_v2.html #}
+{% load static %}
+
+<header class="hero hero--v2">
+  <div class="hero__brand">{{ company.name }}</div>
+
+  <div class="hero__wrap">
+    <div class="hero__left">
+      <div class="hero__card">
+        <h1 class="hero__title">
+          <span class="hero__line">Parles de {{ company.name }} à</span>
+          <span class="hero__line">tes amis et gagnes</span>
+          <span class="hero__line hero__line--small">jusqu’à</span>
+          <span class="hero__accent">1 Plat + Boisson !</span>
+        </h1>
+        <div class="register-anchor"></div>
+        <div class="hero__actions">
+          <a href="#cadeaux" class="hero__btn hero__btn--primary">Voir les<br>cadeaux</a>
+          <a href="#ultra-simple" class="hero__btn hero__btn--outline">Comment<br>ça marche ?</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero__right">
+      <div class="hero__photo">
+        <img src="{% static 'public/img/herov2.png' %}" alt="Parrainage {{ company.name }}">
+      </div>
+    </div>
+  </div>
+  
+</header>

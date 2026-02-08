@@ -43,7 +43,7 @@ def env_list(name: str, default: str = "") -> list[str]:
 # ======================================================================
 # CORE FLAGS
 # ======================================================================
-DEBUG = env_bool("DEBUG", False)
+DEBUG = env_bool("DEBUG", True)
 
 SECRET_KEY = (os.getenv("SECRET_KEY") or ("dev-secret" if DEBUG else ""))
 if not DEBUG and not SECRET_KEY:
@@ -164,6 +164,19 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+if DEBUG:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        }
+    }
+else:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
+        }
+    }
+    
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 

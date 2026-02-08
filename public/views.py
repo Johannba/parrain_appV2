@@ -14,7 +14,8 @@ from accounts.models import Company
 from dashboard.models import Client
 from .forms import ReferrerForm, ReferrerResetForm
 from rewards.models import RewardTemplate
-
+from dashboard.forms import ReferrerPublicForm  # ✅
+from django.db.models import Case, When, IntegerField
 # ---------------------------
 # Constantes / helpers
 # ---------------------------
@@ -39,137 +40,94 @@ def _build_reset_link(request, *, client: Client) -> str:
 def _loads_token(token: str) -> dict:
     return signing.loads(token, max_age=REFERRER_RESET_MAX_AGE, salt=REFERRER_RESET_SALT)
 
+
 def company_presentation(request, slug: str):
     company = get_object_or_404(Company, slug=slug)
-    form = ReferrerForm(company=company)
 
-    # Récupère les 4 templates (ordre souhaité)
-    order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
-    tpls = {t.bucket: t for t in RewardTemplate.objects.filter(company=company)}
+    form = ReferrerPublicForm(company=company)
 
-    base_labels = []
-    for b in order:
-        lbl = (tpls.get(b).label or "").strip() if tpls.get(b) else ""
-        base_labels.append(lbl or b.title())
+    reward_templates = (
+    RewardTemplate.objects
+    .filter(company=company)
+    .annotate(
+        bucket_order=Case(
+            When(bucket="SOUVENT", then=0),
+            When(bucket="MOYEN", then=1),
+            When(bucket="RARE", then=2),
+            When(bucket="TRES_RARE", then=3),
+            default=99,
+            output_field=IntegerField(),
+        )
+    )
+    .order_by("bucket_order")
+)
 
-    # 8 cases
-    wheel_labels = (base_labels * ((8 + len(base_labels) - 1) // len(base_labels)))[:8]
 
-    return render(request, "public/company_presentation.html", {
+    return render(request, "public/landing_v2.html", {
         "company": company,
         "form": form,
-        "wheel_labels": wheel_labels,
+        "reward_templates": reward_templates,
     })
 
-def referrer_register(request, slug: str):
-    """
-    Inscription d'un parrain depuis la page publique.
-    - Si l'email est déjà utilisé par un parrain de l'entreprise :
-      on déclenche une modale proposant d'envoyer un LIEN DE RÉINITIALISATION DE PROFIL (pas mot de passe).
-    - Sinon : on crée le parrain et on redirige proprement.
-    """
-    company = get_object_or_404(Company, slug=slug)
 
-    def _wheel_labels_for(_company: Company):
-        order = ["SOUVENT", "MOYEN", "RARE", "TRES_RARE"]
-        tpls = {t.bucket: t for t in RewardTemplate.objects.filter(company=_company)}
-        base = []
-        for b in order:
-            lbl = (tpls.get(b).label or "").strip() if tpls.get(b) else ""
-            base.append(lbl or b.title())
-        return (base * ((8 + len(base) - 1) // len(base)))[:8]
+
+
+def referrer_register(request, slug: str):
+    company = get_object_or_404(Company, slug=slug)
 
     if request.method != "POST":
         return redirect("public:company_presentation", slug=slug)
 
-    form = ReferrerForm(request.POST, company=company)
-
-    posted_email = (request.POST.get("email") or "").strip()
-    posted_fn = (request.POST.get("first_name") or "").strip()
-    posted_ln = (request.POST.get("last_name") or "").strip()
+    form = ReferrerPublicForm(request.POST, company=company)
+    posted_email = (request.POST.get("email") or "").strip().lower()
 
     if form.is_valid():
-        # 1) Email déjà parrain pour cette entreprise ? -> erreur + ouverture du pop-up "réinit profil"
-        already_by_email = bool(
+        # ✅ garde ton contrôle email déjà utilisé (modale reset)
+        already_referrer = bool(
             posted_email and Client.objects.filter(
                 company=company, email__iexact=posted_email, is_referrer=True
             ).exists()
         )
-        if already_by_email:
+        if already_referrer:
             form.add_error("email", "Cet email est déjà utilisé par un parrain de cette entreprise.")
-            return render(
-                request,
-                "public/company_presentation.html",
-                {
-                    "company": company,
-                    "form": form,
-                    "wheel_labels": _wheel_labels_for(company),
-                    "form_errors": True,
-                    # Flags -> modale qui propose l'envoi du lien de RÉINITIALISATION DE PROFIL
-                    "suggest_reset": True,
-                    "suggest_reset_email": posted_email,
-                    "suggest_reset_first_name": posted_fn,
-                    "suggest_reset_last_name": posted_ln,
-                },
-            )
+            return render(request, "public/landing_v2.html", {
+                "company": company,
+                "form": form,
+                "form_errors": True,
+                "suggest_reset": True,
+                "suggest_reset_email": posted_email,
+                "open_register_modal": True,
+            })
 
-        # 2) Création du parrain
-        ref = form.save(commit=False)
-        ref.company = company
-        ref.is_referrer = True
         try:
             with transaction.atomic():
-                ref.save()
+                form.save()
         except IntegrityError as e:
-            emsg = str(e).lower()
-            if "phone" in emsg or "téléphone" in emsg or "telephone" in emsg:
-                form.add_error("phone", "Ce numéro de téléphone est déjà utilisé.")
-            elif "email" in emsg:
-                form.add_error("email", "Cet email est déjà utilisé.")
-            else:
-                form.add_error(None, "Ce parrain existe déjà pour cette entreprise.")
-            return render(
-                request,
-                "public/company_presentation.html",
-                {
-                    "company": company,
-                    "form": form,
-                    "wheel_labels": _wheel_labels_for(company),
-                    "form_errors": True,
-                },
-            )
+            msg = str(e)
 
-        # 3) Succès → message + redirect
-        messages.success(
-                request,
-                "✅ Inscription validée ! Merci, vous êtes maintenant parrain. "
-                # "Dites simplement votre prénom à l’accueil lors de la première venue de vos amis pour activer vos récompenses."
-            )
+            # ✅ si la contrainte nom/prénom saute quand même
+            if "uniq_referrer_name_per_company_ci" in msg:
+                form.add_error("last_name", "Un parrain portant ce nom existe déjà pour cette entreprise.")
+            else:
+                form.add_error(None, "Impossible d’enregistrer. Vérifiez les informations.")
+
+            return render(request, "public/landing_v2.html", {
+                "company": company,
+                "form": form,
+                "form_errors": True,
+                "open_register_modal": True,
+            })
+
+        messages.success(request, "✅ Inscription validée ! Vous êtes maintenant parrain.")
         return redirect("public:company_presentation", slug=slug)
 
-    # --- Form invalide → réaffiche avec erreurs
-    # Si l'email posté correspond DÉJÀ à un parrain de l'entreprise,
-    # on déclenche AUSSI la modale ici (cas des erreurs nom/prénom par ex.)
-    suggest_reset = False
-    if posted_email:
-        suggest_reset = Client.objects.filter(
-            company=company, is_referrer=True, email__iexact=posted_email
-        ).exists()
-
-    ctx = {
+    # ❌ form invalide → on ré-affiche + on ouvre la modale
+    return render(request, "public/landing_v2.html", {
         "company": company,
         "form": form,
-        "wheel_labels": _wheel_labels_for(company),
         "form_errors": True,
-    }
-    if suggest_reset:
-        ctx.update({
-            "suggest_reset": True,
-            "suggest_reset_email": posted_email,
-            "suggest_reset_first_name": posted_fn,
-            "suggest_reset_last_name": posted_ln,
-        })
-    return render(request, "public/company_presentation.html", ctx)
+        "open_register_modal": True,
+    })
 
 
 @require_POST

@@ -1,0 +1,114 @@
+{# templates/public/partials/_ultra_simple.html #}
+{% load static %}
+<section id="ultra-simple" class="ultra">
+  <div class="ultra__card">
+    <header class="ultra__head">
+      <h2 class="ultra__title">
+        C’est <span class="ultra__title-accent">ultra simple</span>
+      </h2>
+      <p class="ultra__subtitle">Comment ça marche (en 10 secondes)</p>
+    </header>
+
+    <div class="ultra__flow">
+      <!-- Step 1 -->
+      <div class="ultra-step">
+        <div class="ultra-step__icon" aria-hidden="true">
+          <img src="{% static 'public/img/icons/step-doc.png' %}" alt="">
+        </div>
+        <div class="ultra-step__text">
+          <span class="ultra-step__pink">Inscris-toi</span>
+          <span> en tant<br>que parrain</span>
+        </div>
+      </div>
+
+      <div class="ultra-arrow" aria-hidden="true">↓</div>
+
+      <!-- Step 2 -->
+      <div class="ultra-step">
+        <div class="ultra-step__icon" aria-hidden="true">
+          <img src="{% static 'public/img/icons/step-whisper.png' %}" alt="">
+        </div>
+        <div class="ultra-step__text">
+          <span class="ultra-step__pink">Parles</span>
+          <span> de {{ company.name }} à tes<br>potes</span>
+        </div>
+      </div>
+
+      <div class="ultra-arrow" aria-hidden="true">↓</div>
+
+      <!-- Step 3 -->
+      <div class="ultra-step">
+        <div class="ultra-step__icon" aria-hidden="true">
+          <img src="{% static 'public/img/icons/step-store.png' %}" alt="">
+        </div>
+        <div class="ultra-step__text">
+          <span>Ton pote </span>
+          <span class="ultra-step__pink">vient et<br>consomme</span>
+          <span> chez {{ company.name }}</span>
+        </div>
+      </div>
+
+      <div class="ultra-arrow" aria-hidden="true">↓</div>
+
+      <!-- Step 4 -->
+      <div class="ultra-step ultra-step--tall">
+        <div class="ultra-step__icon" aria-hidden="true">
+          <img src="{% static 'public/img/icons/step-cashier.png' %}" alt="">
+        </div>
+        <div class="ultra-step__text">
+          <span>Avant de payer, </span>
+          <span class="ultra-step__pink">ton<br>pote dit qu’il vient de<br>ta part</span>
+          <span> en donnant<br>ton nom/prénom</span>
+        </div>
+      </div>
+    <div class="ultra-arrow" aria-hidden="true">↓</div>
+    </div>
+    <!-- Bottom 2 cards -->
+<div class="ultra__bottom">
+
+  <!-- LEFT -->
+  <div class="ultra-mini ultra-mini--pink">
+    <div class="ultra-mini__gift" aria-hidden="true">
+      <img src="{% static 'public/img/icons/gift-left.png' %}" alt="">
+    </div>
+
+    <div class="ultra-mini__content">
+      <div class="ultra-mini__title">
+        <span class="ultra-mini__pink">Ton pote</span><br>
+        reçoit son<br>
+        cadeau <span class="hl hl--normal">sur</span> <span class="hl hl--short">place</span>
+      </div>
+
+      <div class="ultra-mini__note">
+        &gt; Utilisable tout de<br>suite
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="ultra-mini ultra-mini--purple">
+    <div class="ultra-mini__gift" aria-hidden="true">
+      <img src="{% static 'public/img/icons/gift-right.png' %}" alt="">
+    </div>
+
+    <div class="ultra-mini__content">
+      <div class="ultra-mini__title">
+        <span class="ultra-mini__pink">Toi,</span> tu reçois<br>
+        ton cadeau<br>
+        <span class="hl hl--wide">par mail ou</span> <span class="hl hl--wide--sms">SMS</span>
+      </div>
+
+      <div class="ultra-mini__note">
+        &gt; Utilisable à ta<br>prochaine visite
+      </div>
+    </div>
+  </div>
+  <div class="register-anchor"></div>
+</div>
+ <!-- CTA -->
+    <div class="ultra__cta">
+      <a href="#" class="ultra-btn" data-open-register>
+        Devenir parrain
+      </a>
+    </div>
+</section>

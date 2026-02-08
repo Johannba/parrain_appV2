@@ -21,11 +21,10 @@ class ReferrerForm(forms.ModelForm):
         model = Client
         fields = ["last_name", "first_name", "email", "phone"]
         widgets = {
-            "last_name":  forms.TextInput(attrs={"placeholder": "Ex : Dupont", "class": "form-control"}),
-            "first_name": forms.TextInput(attrs={"placeholder": "Ex : Marie",  "class": "form-control"}),
-            "email":      forms.EmailInput(attrs={"placeholder": "Ex : marie@mail.com", "class": "form-control"}),
-            # phone : géré par InternationalPhoneFormField
-        }
+            "first_name": forms.TextInput(attrs={"placeholder": "Prénom", "class": "form-control"}),
+            "last_name":  forms.TextInput(attrs={"placeholder": "Nom", "class": "form-control"}),
+            "email":      forms.EmailInput(attrs={"placeholder": "Email", "class": "form-control"}),
+            }
 
     def clean(self):
         cleaned = super().clean()
@@ -71,8 +70,8 @@ class ReferrerResetForm(forms.ModelForm):
         model = Client
         fields = ["last_name", "first_name", "phone"]  # email non éditable ici
         widgets = {
-            "last_name":  forms.TextInput(attrs={"placeholder": "Ex : Dupont", "class": "form-control"}),
-            "first_name": forms.TextInput(attrs={"placeholder": "Ex : Marie",  "class": "form-control"}),
+            "last_name":  forms.TextInput(attrs={"placeholder": "Prénom", "class": "form-control"}),
+            "first_name": forms.TextInput(attrs={"placeholder": "Nom",  "class": "form-control"}),
             "phone":      forms.TextInput(attrs={"class": "form-control"}),
         }
 

@@ -1,4 +1,6 @@
+{# templates/base_public.html #}
 {% load static %}
+
 <!doctype html>
 <html lang="fr">
   <head>
@@ -6,9 +8,11 @@
     <title>{% block title %}Chuchote{% endblock %}</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     {% include "partials/_favicons.html" %}
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@800;900&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    <link rel="stylesheet" href="{% static 'css/landing_v2.css' %}">
   </head>
   <body>
     {% block content %}{% endblock %}

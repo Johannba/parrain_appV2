@@ -1,0 +1,1917 @@
+/* =========================
+   LANDING V2 – THEME + HERO
+   Scope: body.public-landing
+   ========================= */
+
+body.public-landing{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color:#fff;
+   overflow-x: hidden;
+
+  /* ✅ VARIABLES */
+  --bg0:#101727;                 /* ✅ TA VRAIE COULEUR */
+  --bg1:#0c1323;                 /* léger plus sombre pour le bas (proche maquette) */
+  --glowV: rgba(107,92,255,.28);
+  --glowB: rgba(59,91,255,.22);
+
+  --ink:#0b1022;
+  --pink:#ff3c5f;
+  --pink2:#f03b5f;
+
+  --radius:34px;
+  --shadow: 0 26px 70px rgba(0,0,0,.28);
+
+  /* ✅ FOND */
+  background: #101727;
+}
+
+
+/* =========================
+   HERO – IDENTIQUE MAQUETTE
+   ========================= */
+
+.public-landing .hero{
+  min-height: 700px;
+  top: 60px;
+  padding: 40px 48px 80px;
+  position: relative;
+}
+
+/* Logo centré en haut */
+.public-landing .hero__brand{
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: .3px;
+  opacity: .95;
+  z-index: 5;
+}
+
+/* Grille principale */
+.public-landing .hero__wrap{
+  max-width: 1550px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 720px 1fr;
+  align-items: center;
+  column-gap: 0;
+  padding-top: 80px;
+}
+
+/* Colonne gauche */
+.public-landing .hero__left{
+  position: relative;
+  z-index: 3;
+}
+
+/* Carte blanche */
+.public-landing .hero__card{
+  background:#fff;
+  color:var(--ink);
+  border-radius: 36px;
+  padding: 16px 48px 32px;
+  box-shadow: var(--shadow);
+  max-width: 560px;
+  text-align: center;
+}
+
+/* Titre */
+.public-landing .hero__title{
+  margin:0 0 28px;
+  font-weight: 800;
+  letter-spacing: -1.2px;
+  line-height: 1.02;
+  font-size: 60px;
+}
+
+/* Lignes */
+.public-landing .hero__line{ display:block; }
+.public-landing .hero__line--small{ margin-top: 6px; }
+
+/* Accent */
+.public-landing .hero__accent{
+  display:block;
+  margin-top: 6px;
+  color: var(--pink);
+  font-weight: 800;
+}
+
+/* Boutons */
+.public-landing .hero__actions{
+  display:flex;
+  gap: 22px;
+  justify-content: center;
+  align-items: center;
+}
+
+.public-landing .hero__btn{
+  text-decoration: none;
+  border-radius: 32px;
+  padding: 18px 16px;
+  font-weight: 590;
+  font-size: 36px;
+  line-height: 1.15;
+  min-width: 220px;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+
+.public-landing .hero__btn--primary{
+  background: var(--pink);
+  color:#fff;
+  border:2px solid var(--pink);
+}
+.public-landing .hero__btn--primary:hover{
+  background: var(--pink2);
+  border-color: var(--pink2);
+}
+
+.public-landing .hero__btn--outline{
+  background:#fff;
+  color: var(--ink);
+  border:2px solid var(--pink);
+}
+.public-landing .hero__btn--outline:hover{
+  background: rgba(255,43,107,.06);
+}
+
+/* Image */
+.public-landing .hero__right{ position: relative; z-index: 1; }
+
+.public-landing .hero__photo{
+  width: 120%;
+  max-width: 1050px;
+  height: 590px;
+  border-radius: 48px;
+  overflow:hidden;
+  box-shadow: var(--shadow);
+  transform: translateX(-140px);
+  background:#d53454;
+}
+
+.public-landing .hero__photo img{
+  width:110%;
+  height:100%;
+  object-fit: cover;
+
+  /* 🎯 recadrage (bouge l'image dans le cadre) */
+  object-position: 10% 36%;
+
+  /* 🔥 zoom comme Canva */
+  transform: scale(1.45);
+  transform-origin: 52% 10%;
+
+  display:block;
+}
+
+
+/* =========================
+   HERO — MID DESKTOP (≈1389px et moins)
+   Objectif: voir l'image entière + garder le layout desktop
+   ========================= */
+@media (max-width: 1400px){
+
+  /* on resserre un peu la grille */
+  .public-landing .hero__wrap{
+    max-width: 1260px;
+    grid-template-columns: 640px 1fr; /* au lieu de 720px */
+  }
+
+  /* carte un peu moins large */
+  .public-landing .hero__card{
+    max-width: 620px;
+    padding: 14px 42px 28px;
+    border-radius: 34px;
+  }
+
+  .public-landing .hero__title{
+    font-size: 56px;
+  }
+
+  .public-landing .hero__btn{
+    font-size: 32px;
+    min-width: 200px;
+  }
+
+  /* ✅ photo: moins large + moins haute + moins décalée */
+  .public-landing .hero__photo{
+    width: 108%;                 /* au lieu de 120% */
+    max-width: 900px;            /* au lieu de 1050px */
+    height: 520px;               /* au lieu de 590px */
+    transform: translateX(-90px);/* au lieu de -140px */
+    border-radius: 44px;
+  }
+
+  /* ✅ image: zoom réduit pour voir plus l'image */
+  .public-landing .hero__photo img{
+    width: 100%;                 /* au lieu de 110% */
+    transform: scale(1.18);      /* au lieu de 1.45 */
+    transform-origin: 52% 18%;
+    object-position: 50% 32%;    /* recentre un peu */
+  }
+}
+/* =========================
+   HERO — MID DESKTOP (≤1222px)
+   Photo + card superposée (comme mobile)
+   ========================= */
+@media (max-width: 1222px){
+
+  /* Layout vertical */
+  .public-landing .hero__wrap{
+    max-width: 1120px;
+    display: flex;
+    flex-direction: column;
+    padding-top: 0;
+  }
+
+  .public-landing .hero__right{ order: 1; }
+  .public-landing .hero__left{ order: 2; }
+
+  /* PHOTO */
+  .public-landing .hero__photo{
+    width: 100%;
+    max-width: 100%;
+    height: 520px;
+    transform: none;
+    border-radius: 44px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+
+  .public-landing .hero__photo img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 52% 34%;
+    transform: scale(1.08);   /* récupère l’image entière */
+    transform-origin: 50% 20%;
+  }
+
+  /* CARD superposée */
+  .public-landing .hero__card{
+    max-width: 720px;
+    width: 92%;
+    margin: -140px auto 0;   /* chevauchement comme mobile */
+    padding: 22px 36px 28px;
+    border-radius: 36px;
+    position: relative;
+    z-index: 3;
+  }
+
+  /* TITRE */
+  .public-landing .hero__title{
+    font-size: 48px;
+    margin-bottom: 22px;
+    line-height: 1.04;
+  }
+
+  /* ACTIONS / BOUTONS plus bas */
+  .public-landing .hero__actions{
+    margin-top: 22px;
+  }
+
+  .public-landing .hero__btn{
+    font-size: 32px;
+    padding: 16px 18px;
+    min-width: 220px;
+  }
+}
+
+@media (max-width: 900px){
+
+  .public-landing .hero{
+    min-height: unset;
+    padding: 22px 16px 40px;
+  }
+
+  /* Brand en haut centré comme la maquette */
+  .public-landing .hero__brand{
+    position: relative;
+    top: 0;
+    left: 0;
+    transform: none;
+    text-align: center;
+    margin: 10px 0 18px;
+    font-size: 20px;
+    letter-spacing: .2px;
+  }
+
+  /* ✅ photo d’abord, card ensuite */
+  .public-landing .hero__wrap{
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding-top: 0;
+  }
+  .public-landing .hero__right{ order: 1; }
+  .public-landing .hero__left{ order: 2; }
+
+  /* Photo plein large, gros arrondi */
+  .public-landing .hero__photo{
+    width: 100%;
+    max-width: 100%;
+    height: clamp(360px, 52vw, 520px);
+    border-radius: 34px;
+    transform: none;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+
+  .public-landing .hero__photo img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* recadrage proche de ta capture */
+    object-position: 70% 60%;
+    transform: scale(1.32);
+    transform-origin: 40% 5%;
+  }
+
+  /* ✅ Carte blanche qui chevauche la photo */
+  .public-landing .hero__card{
+    max-width: 100%;
+    width: 100%;
+    margin: -110px auto 0 -58px;          /* chevauche */
+    border-radius: 34px;
+    padding: 26px 58px 22px;
+    box-shadow: var(--shadow);
+    position: relative;
+    z-index: 3;
+    
+  }
+
+  /* Titre comme maquette */
+  .public-landing .hero__title{
+    font-size: clamp(43px, 9vw, 48px);
+    line-height: 1.04;
+    letter-spacing: -1.1px;
+    margin: 0 0 16px;
+    font-weight: 900;
+  }
+
+  .public-landing .hero__accent{
+    margin-top: 8px;
+    font-weight: 900;
+  }
+
+  /* ✅ Boutons 2 colonnes, gros arrondi */
+  .public-landing .hero__actions{
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .public-landing .hero__btn{
+    flex: 1;
+    min-width: 0;
+    height: 92px;
+    padding: 0 18px;
+    border-radius: 28px;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.05;
+    white-space: normal;            /* autorise 2 lignes comme "Voir les cadeaux" */
+  }
+
+  .public-landing .hero__btn--primary{
+    box-shadow: 0 18px 44px rgba(240,59,95,.25);
+  }
+}
+
+@media (max-width: 800px){
+  .public-landing .hero__card{
+    max-width: 100%;
+    width: 100%;
+    margin: -110px auto 0 -48px;          /* chevauche */
+    border-radius: 34px;
+    padding: 26px 38px 22px;
+    box-shadow: var(--shadow);
+    position: relative;
+    z-index: 3;
+    
+  }
+}
+@media (max-width: 700px){
+  .public-landing .hero__card{
+    margin: -110px auto 0 -48px;          /* chevauche */
+    padding: 16px 53px 22px;
+    
+  }
+
+    /* Titre comme maquette */
+  .public-landing .hero__title{
+    font-size: clamp(33px, 9vw, 38px);
+    line-height: 1.04;
+    letter-spacing: -1.1px;
+    margin: 0 0 16px;
+    font-weight: 900;
+  }
+    .public-landing .hero__btn{
+    flex: 1;
+    min-width: 0;
+    height: 72px;
+    padding: 0 8px;
+    border-radius: 28px;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.05;
+    white-space: normal;            /* autorise 2 lignes comme "Voir les cadeaux" */
+  }
+
+}
+
+/* Très petit mobile : chevauchement un poil réduit */
+@media (max-width: 500px){
+
+    /* Photo plein large, gros arrondi */
+  .public-landing .hero__photo{
+    width: 100%;
+    max-width: 100%;
+    height: clamp(190px, 52vw, 590px);
+    border-radius: 34px;
+    transform: none;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+
+  .public-landing .hero__photo img{
+    width: 105%;
+    height: 120%;
+    object-fit: cover;
+    /* recadrage proche de ta capture */
+    object-position: 80% 10%;
+    transform: scale(1.32);
+    transform-origin: 60% 15%;
+  }
+  /* on resserre un peu la grille */
+  .public-landing .hero__wrap{
+   margin-left: auto;
+   margin-right: auto;
+  }
+  .public-landing .hero__card{
+    margin: -49px auto 0 -48px;          /* chevauche */
+    padding: 16px 45px 22px;
+  }
+  .public-landing .hero__btn{
+    height: 84px;
+    font-size: 24px;
+  }
+    /* Titre comme maquette */
+  .public-landing .hero__title{
+    font-size: clamp(30px, 9vw, 16px);
+    line-height: 1.04;
+    letter-spacing: -1.1px;
+    margin: 0 0 16px;
+    font-weight: 900;
+  }
+
+  .public-landing .hero__btn{
+    flex: 1;
+    min-width: 0;
+    height: 72px;
+    padding: 0 8px;
+    border-radius: 28px;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.05;
+    white-space: normal;            /* autorise 2 lignes comme "Voir les cadeaux" */
+  }
+}  
+
+
+/* =========================
+   SECTION — CADEAUX (V2)
+   ========================= */
+/* petit trait blanc au-dessus du titre */
+.public-landing .gifts__divider{
+  width: min(1796px, calc(100% - 44px));
+  height: 0.1px;
+  margin: 0 auto 26px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.85);
+}
+
+.public-landing .gifts{
+  padding: 24px 22px 70px;
+  background: #101727; /* ✅ fond exact demandé */
+}
+
+.public-landing .gifts__container{
+  max-width: 1260px;
+  margin: 0 auto;
+}
+
+.public-landing .gifts__title{
+  margin: 0 0 54px;
+  text-align: center;
+  color: #ffffff;
+  font-weight: 900;
+  letter-spacing: 2px;
+  font-size: clamp(44px, 5.2vw, 74px);
+}
+
+/* grille 2x2 desktop */
+.public-landing .gifts__grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px 154px;
+  align-items: center;
+  justify-items: center;
+}
+
+/* pill */
+.public-landing .gift-pill{
+  width: min(760px, 110%);
+  height: 118px;
+  border-radius: 29px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 14px;
+  box-shadow: 0 18px 46px rgba(0,0,0,.28);
+}
+
+.public-landing .gift-pill__icon{
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: #0b1022;
+  margin-bottom: 15px;
+  margin-left: 10px;
+}
+
+.public-landing .gift-icon{
+  width: 64px;
+  height: 64px;
+}
+
+/* texte pill */
+.public-landing .gift-pill__text{
+  font-size: 52px;
+  font-weight: 620;
+  letter-spacing: -1px;
+  color: #0b1022;
+}
+.gift-pill__icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.gift-icon-img{
+  width: 144px;      /* ajuste si besoin */
+  height: 74px;
+  object-fit: contain;
+  display:block;
+}
+
+
+/* variantes couleurs (calées sur ta capture) */
+.public-landing .gift-pill--white{
+  background: #ffffff;
+}
+
+.public-landing .gift-pill--pinklight{
+  background: #f6bdca; /* rose clair */
+}
+
+.public-landing .gift-pill--pinkmid{
+  background: #f48aa2; /* rose moyen */
+}
+
+.public-landing .gift-pill--pinkstrong{
+  background: #ef3a5f; /* rose/rouge fort */
+}
+
+/* icones noires (outline) */
+.public-landing .gift-pill--pinkstrong .gift-pill__icon,
+.public-landing .gift-pill--pinkmid .gift-pill__icon,
+.public-landing .gift-pill--pinklight .gift-pill__icon,
+.public-landing .gift-pill--white .gift-pill__icon{
+  color: #0b1022;
+}
+
+/* texte central bas */
+.public-landing .gifts__subtitle{
+  margin: 0;
+  text-align: center;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 6px;
+  line-height: 1.12;
+  font-size: clamp(42px, 4.3vw, 68px);
+  margin-top: 100px;
+}
+
+.public-landing .gifts__subtitle-accent{
+  color: #ef3a5f; /* même rose fort que pill 4 */
+}
+@media (max-width: 1400px){
+  .public-landing .gifts__grid{
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
+/* responsive mobile -> colonne */
+@media (max-width: 900px){
+  .public-landing .gifts__grid{
+    grid-template-columns: 1fr;
+    gap: 24px 54px;
+    align-items: center;
+    justify-items: center;
+  }
+  .public-landing .gifts__container{
+  max-width: 600px;
+  margin: 0 auto;
+}
+  .public-landing .gift-pill{
+    height: 96px;
+    padding: 0 22px;
+  }
+  .public-landing .gift-pill__text{
+    font-size: 40px;
+  }
+  .public-landing .gift-pill__icon{
+    width: 62px;
+    height: 62px;
+  }
+  .public-landing .gift-icon{
+    width: 54px;
+    height: 54px;
+  }
+  .gifts__subtitle{
+    margin: 0px;
+  }
+}
+
+@media (max-width: 800px){
+
+  .public-landing .gifts__container{
+  max-width: 400px;
+  margin: 0 auto;
+}
+}
+/* responsive mobile -> colonne */
+@media (max-width: 500px){
+  .public-landing .gifts__grid{
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .public-landing .gift-pill{
+    height: 76px;
+    width:  350px;
+    padding: 0 12px;
+  }
+  .gift-icon-img{
+    width: 48px;      /* ajuste si besoin */
+    height: 48px;
+  } 
+ .public-landing .gift-pill__text{
+    font-size: 30px;
+  }
+
+  .public-landing .gift-pill__icon{
+    margin-left: 0px;
+    margin-bottom: 0px;
+  }
+  /* texte central bas */
+.public-landing .gifts__subtitle{
+  margin-top: 50px;
+  font-weight: 600;
+  font-size: clamp(25px, 4.3vw, 68px);
+  line-height: 1.49;
+  }
+  .public-landing .gifts__title{
+  font-size: clamp(31px, 5.2vw, 44px);
+}
+
+  .public-landing .ultra-arrow{
+    width: 28px;
+    height: 28px;
+    font-size: 24px;
+    font-weight: 700;
+    margin: -2px auto;
+  }
+  
+}
+
+
+
+
+
+/* =========================
+   SECTION — ULTRA SIMPLE (V2) — CANVA LOOK
+   ========================= */
+
+.public-landing .ultra{
+  padding: 70px 22px 90px;
+  background: #101727;
+}
+
+/* ✅ Carte beaucoup plus large (comme Canva) */
+.public-landing .ultra__card{
+  width: min(800px, 96vw);
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 44px;
+  padding: 44px 56px 96px;
+  box-shadow: 0 30px 90px rgba(0,0,0,.22);
+  color: #0b1022;
+}
+
+.public-landing .ultra__head{
+  text-align: left;
+  margin-bottom: 28px;
+}
+
+.public-landing .ultra__title{
+  margin: 0;
+  font-size: 64px;
+  line-height: 1.02;
+  font-weight: 1000;
+  letter-spacing: -0.03em;
+}
+
+.public-landing .ultra__title-accent{
+  color: var(--pink);
+}
+
+.public-landing .ultra__subtitle{
+  margin: 10px 0 0;
+  color: rgba(11, 16, 34, 0.975);
+  font-weight: 500;
+  font-size: 22px;
+}
+
+/* FLOW */
+.public-landing .ultra__flow{
+  display: grid;
+  gap: 22px;
+  margin-top: 26px;
+  padding: 30px;
+}
+
+/* ✅ Steps plus grands + style Canva */
+.public-landing .ultra-step{
+  position: relative;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 22px;
+  align-items: center;
+  margin-bottom: 40px;
+
+  border: 8px solid var(--pink);
+  border-radius: 34px;
+  padding: 10px 34px;
+  background: #fff;
+  min-height: 150px;
+}
+
+/* ✅ Zone icône + débord à gauche */
+.public-landing .ultra-step__icon{
+  width: 180px;
+  height: 180px;
+  display: grid;
+  place-items: center;
+}
+
+.public-landing .ultra-step__icon img{
+  width: 165px;
+  height: 165px;
+  object-fit: contain;
+  display: block;
+}
+
+/* ✅ Texte plus grand (comme la capture) */
+.public-landing .ultra-step__text{
+  font-size: 42px;
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.public-landing .ultra-step__pink{
+  color: var(--pink);
+}
+
+/* ✅ Flèches plus grosses */
+.public-landing .ultra-arrow{
+  width: 94px;
+  height: 94px;
+  border-radius: 999px;
+  background: #0b0b0f;
+  color: #fff;
+
+  display: grid;
+  place-items: center;
+
+  margin: -6px auto;
+  font-size: 68px;
+  font-weight: 1000;
+  line-height: 1;
+}
+
+/* Bottom cards */
+.public-landing .ultra__bottom{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  margin-top: 26px;
+  max-width: 750px;
+  justify-content: center; 
+  margin: 40px auto 0;
+  
+}
+
+.public-landing .ultra-mini{
+  border-radius: 28px;
+  padding: 36px 15px 22px;
+  background: #ffffff;
+  min-height: 260px;
+  border:8px solid var(--pink);
+}
+
+.public-landing .ultra-mini--purple{
+  border-color: RGB(124, 72, 228);
+}
+
+.public-landing .ultra-mini__gift{
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+}
+
+.public-landing .ultra-mini__gift img{
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  display: block;
+}
+
+.public-landing .ultra-mini__title{
+  font-weight: 700;
+  font-size: 48px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-align: center; 
+}
+
+.public-landing .ultra-mini__pink{
+  color: var(--pink);
+}
+
+.public-landing .ultra-mini__note{
+  margin-top: 14px;
+  font-size: 36px;
+  font-weight: 500;
+  color: #0b0b0f;
+  text-align: center; 
+}
+
+/* ✅ Trait Canva (pill) SOUS le texte, sans bouger le texte */
+.public-landing .ultra-mini__title{
+  position: relative; /* ✅ crée un contexte propre */
+}
+
+.public-landing .hl{
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  z-index: 0;
+
+  /* longueur par défaut du trait */
+  --hl-width: 110%;
+}
+
+/* le trait */
+.public-landing .hl::after{
+  content: "";
+  position: absolute;
+  left: 53%;
+  transform: translateX(-50%);
+  bottom: -0.02em;
+
+  width: var(--hl-width);
+  height: 0.10em;
+  background: #111;
+
+  z-index: -1;
+  pointer-events: none;
+}
+.public-landing .hl--short{
+  --hl-width: 85%;
+}
+
+.public-landing .hl--normal{
+  --hl-width: 100%;
+}
+
+.public-landing .hl--wide{
+  --hl-width: 93%;
+}
+.public-landing .hl--wide--sms{
+  --hl-width: 97%;
+}
+
+/* CTA */
+.public-landing .ultra__cta{
+  display: grid;
+  place-items: center;
+  margin-top: 80px;
+}
+
+.public-landing .ultra-btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 134px;
+  padding: 0 124px;
+  border-radius: 39px;
+
+  background: var(--pink);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 60px;
+  letter-spacing: -0.01em;
+  box-shadow: 0 18px 44px rgba(240,59,95,.25);
+}
+
+.public-landing .ultra-btn:hover{
+  filter: brightness(.96);
+}
+.public-landing .ultra-btn{
+  border-radius: 14px;
+  font-size: 34px;
+  max-height: 74px;
+}
+/* Responsive */
+@media (max-width: 900px){
+  .public-landing .ultra__card{
+    width: min(560px, 92vw);
+    padding: 26px 18px 18px;
+    border-radius: 32px;
+  }
+
+  .public-landing .ultra__title{ font-size: 34px; }
+  .public-landing .ultra__subtitle{ font-size: 14px; }
+
+  .public-landing .ultra-step{
+    grid-template-columns: 90px 1fr;
+    padding: 14px 16px;
+    border-radius: 18px;
+    min-height: 0;
+    border-width: 3px;
+  }
+
+  .public-landing .ultra-step__icon{
+    width: 72px;
+    height: 72px;
+    margin-left: 0; /* ✅ stop débord mobile */
+  }
+
+  .public-landing .ultra-step__icon img{
+    width: 60px;
+    height: 60px;
+  }
+
+  .public-landing .ultra-step__text{
+    font-size: 20px;
+  }
+
+  .public-landing .ultra-arrow{
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .public-landing .ultra__bottom{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .public-landing .ultra-mini{
+    min-height: 0;
+    border-width: 3px;
+    border-radius: 18px;
+  }
+
+  .public-landing .ultra-mini__gift img{
+    width: 72px;
+    height: 72px;
+  }
+
+  .public-landing .ultra-mini__title{
+    font-size: 18px;
+  }
+
+  .public-landing .ultra-mini__note{
+    font-size: 12px;
+  }
+}
+
+/* Responsive */
+@media (max-width: 500px){
+  .public-landing .ultra__card{
+    width: min(360px, 92vw);
+    padding: 26px 18px 18px;
+    border-radius: 32px;
+    margin: 0 auto;
+    background: #ffffff;
+  
+  }
+  .public-landing .ultra{
+    padding: 0px 22px 90px;
+    background: #101727;
+  }
+  /* FLOW */
+  .public-landing .ultra__flow{
+    display: grid;
+    gap: 22px;
+    margin-top: 26px;
+    padding: 0px;
+  }
+  /* ✅ Steps plus grands + style Canva */
+  .public-landing .ultra-step{
+    position: relative;
+    display: grid;
+    grid-template-columns: 55px 1fr;
+    gap: 22px;
+    align-items: center;
+    margin-bottom: 10px;
+
+    border: 5px solid var(--pink);
+    border-radius: 24px;
+    padding: 10px 14px;
+    min-height: 15px;
+    width: 320px;
+  }
+
+  /* ✅ Flèches plus grosses */
+  .public-landing .ultra-arrow{
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    background: #0b0b0f;
+    color: #fff;
+
+    display: grid;
+    place-items: center;
+
+    margin: -6px auto;
+    font-size: 48px;
+    font-weight: 1000;
+    line-height: 1;
+  }
+  /* Bottom cards */
+  .public-landing .ultra__bottom{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 50px;
+    max-width: 650px;
+    justify-content: center; 
+
+  }
+   .public-landing .ultra-mini{
+    border-width: 5px;
+    padding: 10px 5px 10px;
+  }
+  .public-landing .ultra-mini__title{
+  font-weight: 600;
+  font-size: 22px;
+ 
+  }
+
+  .public-landing .ultra-mini__note{
+    font-size: 16px;
+  }
+
+ 
+}
+@media (max-width: 500px){
+  .public-landing .ultra-step:not(:last-of-type)::after{
+    width: 50px !important;
+    height: 50px !important;
+    font-size: 36px !important;
+    bottom: -43px !important;  /* ajuste la position */
+    
+  }
+
+}
+@media (max-width: 500px){
+  .public-landing .ultra__cta{
+    margin-top: 56px;   
+    margin-bottom: 20px;        /* optionnel : rapproche du bloc */
+  }
+
+  .public-landing .ultra-btn{
+    height: 74px;               /* ✅ plus petit */
+    padding: 0 34px;            /* ✅ moins large */
+    border-radius: 18px;        /* ✅ cohérent */
+    font-size: 28px;            /* ✅ lisible */
+    max-width: 100%;            /* ✅ ne déborde jamais */
+    width: min(320px, 100%);
+    box-sizing: border-box;
+  }
+}
+
+/* =========================
+   ULTRA — FLÈCHES SUR LES RECTANGLES
+   (sans toucher au HTML)
+   ========================= */
+
+/* 1) Cache les flèches actuelles */
+.public-landing .ultra-arrow{
+  display: none !important;
+}
+
+/* 2) Chaque step devient un "anchor" pour positionner la flèche */
+.public-landing .ultra-step{
+  position: relative; /* déjà présent, mais on sécurise */
+}
+
+/* 3) Flèche sur le rectangle (sauf le dernier step) */
+.public-landing .ultra-step:not(:last-of-type)::after{
+  content: "↓";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -92px;               /* colle la bulle à cheval sur le bas du rectangle */
+  width: 104px;
+  height: 104px;
+  border-radius: 999px;
+  background: #0b0b0f;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 68px;
+  font-weight: 1000;
+  line-height: 1;
+  z-index: 10;                 /* au-dessus des rectangles */
+}
+
+
+
+/* =========================
+   SECTION — LES + DU PARRAINAGE
+   Scope: body.public-landing
+   ========================= */
+
+.public-landing .perks{
+  padding: 70px 22px 190px;
+  background: #101727;
+  color: #fff;
+}
+
+.public-landing .perks__wrap{
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.public-landing .perks__title{
+  margin: 0 0 44px;
+  text-align: center;
+  font-weight: 730;
+  letter-spacing: 0.03em;
+
+  /* ✅ AVANT: clamp(100px, 5.2vw, 74px) (min > max) */
+  font-size: clamp(74px, 5.2vw, 100px);
+}
+
+
+.public-landing .perks__plus{
+  color: var(--pink);
+}
+
+.public-landing .perks__list{
+  display: grid;
+  gap: 46px;
+  margin: 0 auto;
+  margin-bottom: 100px;
+}
+
+/* ligne = icône + pill */
+.public-landing .perk{
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 22px;
+  align-items: center;
+}
+
+/* pill blanche */
+.public-landing .perk__pill{
+  background: #fff;
+  color: var(--ink);
+  border-radius: 71px;
+  padding: 40px 64px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  font-size: clamp(62px, 2.6vw, 34px);
+  line-height: 1.08;
+  box-shadow: 0 18px 60px rgba(0,0,0,.22);
+}
+/* pill blanche */
+.public-landing .perk__pill_2{
+  background: #fff;
+  color: var(--ink);
+  border-radius: 71px;
+  padding: 65px 64px;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  font-size: clamp(62px, 2.6vw, 34px);
+  line-height: 1.08;
+  box-shadow: 0 18px 60px rgba(0,0,0,.22);
+}
+
+.public-landing .perk__pink{
+  color: var(--pink);
+}
+
+/* icônes */
+.public-landing .perk__icon{
+  width: 110px;
+  height: 110px;
+  border-radius: 30px;
+  display: grid;
+  place-items: center;
+}
+
+.public-landing .perk__icon img{
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  display: block;
+}
+
+/* glow néon (simple & efficace) */
+.public-landing .perk__icon--gift img{
+  filter: drop-shadow(0 0 14px rgba(255,60,95,.55));
+  
+}
+.public-landing .perk__icon--noapp img{
+  filter: drop-shadow(0 0 14px rgba(255,60,95,.35));
+}
+.public-landing .perk__icon--star img{
+  filter: drop-shadow(0 0 14px rgba(107,92,255,.55));
+}
+
+
+/* CTA */
+.public-landing .perks__cta{
+  display: grid;
+  place-items: center;
+  margin-top: 56px;
+}
+
+.public-landing .perks__btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 118px;
+  padding: 8px 120px;
+  border-radius: 44px;
+  background: var(--pink);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-size: clamp(28px, 4.2vw, 60px);
+  box-shadow: 0 18px 44px rgba(240,59,95,.25);
+}
+
+.public-landing .perks__btn:hover{
+  filter: brightness(.96);
+}
+
+/* texte final */
+.public-landing .perks__promise{
+  margin: 70px auto 0;
+  max-width: 760px;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.28;
+  font-size: clamp(28px, 4.2vw, 56px);
+}
+
+.public-landing .perks__pink{
+  color: var(--pink);
+}
+
+/* responsive */
+@media (max-width: 680px){
+  .public-landing .perk{
+    grid-template-columns: 74px 1fr;
+    gap: 14px;
+  }
+  .public-landing .perk__icon{
+    width: 70px;
+    height: 70px;
+  }
+  .public-landing .perk__icon img{
+    width: 56px;
+    height: 56px;
+  }
+  .public-landing .perk__pill{
+    padding: 16px 18px;
+    border-radius: 26px;
+  }
+  .public-landing .perks__btn{
+    height: 76px;
+    padding: 0 56px;
+    border-radius: 12px;
+  }
+}
+
+
+body.public-landing #perks .perk__icon{
+  width: 190px !important;
+  height: 230px !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: visible !important;
+} 
+
+/* ✅ toutes les images des perks */
+body.public-landing #perks .perk__icon img{
+  width: 230px !important;
+  height: 230px !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  display: block !important;
+}
+
+/* ✅ le "Julien" (pas une image) */
+body.public-landing #perks .perk__avatar{
+  font-size: 40px !important;    /* AVANT: 18px */
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+/* le cercle devient un container de superposition */
+.public-landing #perks .perk__icon--avatar{
+  position: relative !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;     /* pour garder tout dans le rond */
+}
+
+/* l'image remplit le rond */
+.public-landing #perks .perk__icon--avatar img{
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;     /* ou contain si c’est une icône */
+  z-index: 1 !important;
+}
+
+
+/* texte "Julien" — blanc SOFT */
+.public-landing #perks .perk__icon--avatar .perk__avatar{
+  font-family: 'Basma', 'Pacifico', cursive !important;
+  position: relative !important;
+  z-index: 2 !important;
+
+  font-size: 38px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+
+  color: rgba(255,255,255,.92) !important;
+
+  padding: 0 68px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+
+  /* 🌙 Glow très discret */
+  text-shadow:
+    0 0 3px  rgba(255,255,255,.55),
+    0 0 6px  rgba(255,255,255,.35),
+    0 0 10px rgba(255,255,255,.48) !important;
+
+  /* diffusion minimale */
+  filter: drop-shadow(0 0 4px rgba(255,255,255,.25)) !important;
+}
+
+/* =========================
+   PERK — NO APP (PHONE + TRAITS)
+   ========================= */
+
+/* container de superposition */
+body.public-landing #perks .perk__icon--noapp{
+  position: relative !important;
+  width: 210px !important;
+  height: 190px !important;
+  display: block !important;        /* pas grid ici, sinon ça place mal */
+  overflow: visible !important;
+}
+
+/* base : téléphone */
+body.public-landing #perks .perk__icon--noapp .noapp__phone{
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) rotate(-2deg) !important; /* inclinaison comme la photo */
+  width: 215px !important;
+  height: 215px !important;
+  object-fit: contain !important;
+  z-index: 1 !important;
+
+  /* glow néon léger */
+  filter: drop-shadow(0 0 14px rgba(107,92,255,.35)) !important;
+}
+
+/* traits = au-dessus du téléphone */
+body.public-landing #perks .perk__icon--noapp .noapp__slash{
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  object-fit: contain !important;
+  z-index: 3 !important;
+  pointer-events: none !important;
+}
+
+/* trait rouge principal (grand) */
+body.public-landing #perks .perk__icon--noapp .noapp__slash--1{
+  width: 296px !important;
+  height: 296px !important;
+  transform: translate(-50%, -50%) rotate(-2deg) !important; /* même angle que le phone */
+  filter: drop-shadow(0 0 18px rgba(255, 70, 70, .55)) !important;
+}
+
+/* trait secondaire (plus fin) */
+body.public-landing #perks .perk__icon--noapp .noapp__slash--2{
+  width: 296px !important;
+  height: 296px !important;
+  transform: translate(-46%, -50%) rotate(-2deg) !important;
+  filter: drop-shadow(0 0 14px rgba(255, 70, 70, .55)) !important;
+}
+
+/* =========================
+   PERK — STAR (GROSSIR)
+   ========================= */
+
+/* container un peu plus grand */
+body.public-landing #perks .perk__icon--star{
+  width: 190px !important;   /* AVANT: 140px */
+  height: 190px !important;
+}
+
+/* étoile plus grande */
+body.public-landing #perks .perk__icon--star img{
+  width: 260px !important;   /* AVANT: 180px */
+  height: 220px !important;
+  object-fit: contain !important;
+
+  /* glow renforcé (optionnel mais stylé) */
+  filter:
+    drop-shadow(0 0 18px rgba(107,92,255,.55))
+    drop-shadow(0 0 34px rgba(107,92,255,.35)) !important;
+}
+
+/* =========================
+   RESPONSIVE — PERKS (match maquette PDF)
+   Ne touche PAS au desktop : seulement < 900px
+   ========================= */
+
+/* TABLET + MOBILE */
+@media (max-width: 900px){
+
+  .public-landing #perks.perks{
+    padding: 52px 16px 110px;
+  }
+
+  .public-landing #perks .perks__wrap{
+    max-width: 760px;
+  }
+
+  .public-landing #perks .perks__title{
+    font-size: clamp(42px, 7vw, 62px);
+    margin-bottom: 26px;
+  }
+
+  .public-landing #perks .perks__list{
+    gap: 22px;
+    margin-bottom: 54px;
+  }
+
+  /* ✅ look maquette : icône à gauche + pill à droite + léger chevauchement */
+  .public-landing #perks .perk{
+    grid-template-columns: 92px 1fr !important;
+    gap: 14px !important;
+    align-items: center !important;
+  }
+
+  /* on neutralise tes grosses tailles desktop */
+  body.public-landing #perks .perk__icon{
+    width: 92px !important;
+    height: 92px !important;
+    border-radius: 26px !important;
+    justify-self: end !important;
+    margin-right: -10px !important; /* ✅ chevauche la pill comme sur la photo */
+  }
+
+  body.public-landing #perks .perk__icon img{
+    width: 118px !important;
+    height: 118px !important;
+  }
+
+  /* pills : grosses, très arrondies, compactes */
+  .public-landing #perks .perk__pill,
+  .public-landing #perks .perk__pill_2{
+     border-radius: 24px !important;
+    padding: 18px 22px !important;
+    font-size: clamp(18px, 4.3vw, 30px) !important;
+    line-height: 1.06 !important;
+  }
+
+  /* pill_2 un poil plus haute (comme sur la maquette) */
+  .public-landing #perks .perk__pill_2{
+    padding-top: 22px !important;
+    padding-bottom: 22px !important;
+  }
+
+  /* Julien : scale down propre */
+  .public-landing #perks .perk__icon--avatar .perk__avatar{
+    font-size: 22px !important;
+    padding: 0 26px !important;
+  }
+
+  /* NO APP : phone + traits doivent rester “dans” l’icône */
+  body.public-landing #perks .perk__icon--noapp{
+    width: 92px !important;
+    height: 92px !important;
+    margin-right: -10px !important;
+  }
+  body.public-landing #perks .perk__icon--noapp .noapp__phone{
+    width: 126px !important;
+    height: 126px !important;
+    transform: translate(-50%, -50%) rotate(-6deg) !important;
+  }
+  body.public-landing #perks .perk__icon--noapp .noapp__slash--1,
+  body.public-landing #perks .perk__icon--noapp .noapp__slash--2{
+    width: 160px !important;
+    height: 160px !important;
+    transform: translate(-50%, -50%) rotate(-6deg) !important;
+  }
+
+  /* STAR : même échelle que la maquette */
+  body.public-landing #perks .perk__icon--star{
+    width: 92px !important;
+    height: 92px !important;
+    margin-right: -10px !important;
+  }
+  body.public-landing #perks .perk__icon--star img{
+    width: 140px !important;
+    height: 128px !important;
+  }
+
+  /* CTA : bouton “Devenir parrain” plus proche de la maquette */
+  .public-landing #perks .perks__btn{
+    height: 76px !important;
+    padding: 0 44px !important;
+    border-radius: 34px !important;
+    font-size: 28px !important;
+  }
+
+  .public-landing #perks .perks__promise{
+    margin-top: 44px !important;
+    font-size: clamp(18px, 4.8vw, 18px) !important;
+    letter-spacing: 0.04em !important;
+  }
+}
+
+/* TINY MOBILE : encore plus compact */
+@media (max-width: 500px){
+
+  .perks__title{
+    font-size: clamp(22px, 7vw, 42px) !important;
+    margin-bottom: 28px !important;
+
+  }
+  .public-landing #perks .perk{
+    grid-template-columns: 42px 1fr !important;
+  }
+
+  .public-landing #perks .perks__list{
+    gap: 22px !important;
+  }
+
+  body.public-landing #perks .perk__icon{
+    max-height: 72px;
+    width: 62px !important;
+    height: 62px !important;
+    margin-right: -24px !important;
+   
+  }
+
+  body.public-landing #perks .perk__icon img{
+    max-height: 70px !important;
+    width: 70px !important;
+    height:70px !important;
+    margin-top: -10px !important;
+  }
+
+  .public-landing #perks .perk__pill,
+  .public-landing #perks .perk__pill_2{
+    height:100% !important; /* ✅ prend toute la largeur dispo */
+    max-height: 40px !important; /* ✅ mais pas trop haut */
+    padding: 15px 18px !important;
+    font-size: clamp(12px, 4.6vw, 17px) !important;
+    border-radius: 24px !important;
+  }
+  .public-landing #perks .perk__pill_2{
+    display: flex;
+    align-items: center;     /* ✅ centrage vertical */
+  }
+  
+  .public-landing #perks .perk__icon--avatar .perk__avatar{
+    font-size: 12px !important;
+    padding: 0 19px !important;
+    margin-bottom:10px;
+    margin-right: 25px !important;
+  }
+
+  /* NO APP : phone + traits doivent rester “dans” l’icône */
+  body.public-landing #perks .perk__icon--noapp{
+    width: 62px !important;
+    height: 62px !important;
+    margin-right: -26px !important;
+    transform: translateY(19px);
+  }
+  body.public-landing #perks .perk__icon--noapp .noapp__phone{
+    width: 70px !important;
+    height: 70px !important;
+    transform: translate(-50%, -50%) rotate(-2deg) !important;
+  }
+  body.public-landing #perks .perk__icon--noapp .noapp__slash--1,
+  body.public-landing #perks .perk__icon--noapp .noapp__slash--2{
+    width: 106px !important;
+    height: 93px !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: translate(-50%, -50%) rotate(-3deg) !important;
+  }
+   /* STAR : même échelle que la maquette */
+  body.public-landing #perks .perk__icon--star{
+    width: 82px !important;
+    height: 82px !important;
+    margin-right: -30px !important;
+  }
+  body.public-landing #perks .perk__icon--star img{
+    width: 90px !important;
+    height: 90px !important;
+    transform: translateY(11px);
+  }
+  .public-landing .ultra{
+    padding-bottom: 0px; /* ou 30px */
+  }
+  body.public-landing #perks .perks__btn{
+    border-radius: 24px !important;
+  }
+}
+/* =========================
+   CTA GLOBAL FIXED (visible partout)
+   ========================= */
+body.public-landing #perks .perks__cta{
+  position: fixed !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+
+  display: grid;
+  place-items: center;
+
+  padding: 14px 1px 12px;
+
+
+
+  /* optionnel: petite ligne de séparation */
+  /* border-top: 1px solid rgba(255,255,255,.08); */
+}
+
+/* bouton centré + largeur responsive */
+body.public-landing #perks .perks__btn{
+  width: min(260px, calc(100% - 24px));
+  height: 74px;
+  border-radius: 24px;
+  font-size: 32px;
+}
+
+
+@media (max-width: 680px){
+  body.public-landing #perks .perks__cta{
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 14px 16px 20px;
+    z-index: 100;
+  }
+
+  /* évite que le bouton masque le contenu */
+  body.public-landing{
+    padding-bottom: 80px;
+  }
+  body.public-landing #perks .perks__btn{
+  width: min(260px, calc(100% - 24px));
+  }
+
+}
+
+/* =========================
+   MODALE INSCRIPTION (Design screenshot)
+   ========================= */
+
+.register-modal[hidden]{
+  display:none !important;
+}
+
+.register-modal{
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+}
+
+/* backdrop gris */
+.register-modal__backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 24, 35, .55);
+}
+
+/* card blanche */
+.register-modal__card{
+  position: relative;
+  z-index: 1;
+  width: min(840px, calc(100% - 28px));
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+
+  background: #ffffff;
+  border-radius: 36px;
+  padding: 34px 34px 30px;
+
+  box-shadow: 0 40px 120px rgba(0,0,0,.35);
+}
+
+/* bouton X dans un rond */
+.register-modal__close{
+  position: absolute;
+  top: 18px;
+  right: 18px;
+
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+
+  border: none;
+  background: #f2f2f2;
+  color: #111;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.register-modal__title{
+  margin: 4px 0 26px;
+  font-size: clamp(30px, 3.4vw, 48px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #111;
+}
+
+/* erreurs */
+.register-modal__errors{
+  background: #fff2f2;
+  border: 1px solid #ffd2d2;
+  color: #b00020;
+  border-radius: 18px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-weight: 600;
+}
+
+/* form */
+.register-form .field{
+  margin-bottom: 18px;
+}
+
+.register-form input{
+  width: 100%;              /* 🔥 prend toute la largeur du form */
+  max-width: 93%;       /* 🔥 limite propre (desktop) */
+  margin-left: auto;
+  margin-right: auto;
+
+  height: 74px;
+  border-radius: 22px;
+  border: 2px solid #e6eef6;
+  background: #ffffff;
+  padding: 0 26px;
+
+  font-size: 22px;
+  font-weight: 900;
+  color: #111;
+  outline: none;
+}
+
+
+.register-form input::placeholder{
+  color: #9aa6b2;
+  font-weight: 00;
+}
+
+.register-form input:focus{
+  border-color: #cfe1ff;
+  box-shadow: 0 0 0 6px rgba(207,225,255,.55);
+}
+
+/* help text gris */
+.register-form .help{
+  margin: 10px 0 0;
+  color: #9aa6b2;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* bouton rose */
+.register-modal__submit{
+  margin-top: 18px;
+  width: 100%;
+  height: 82px;
+  border-radius: 14px;
+
+  border: none;
+  cursor: pointer;
+
+  background: RGB(247, 52, 154);
+  color: #fff;
+
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.register-modal__submit:hover{
+  filter: brightness(.97);
+}
+
+@media (max-width: 560px){
+  .register-modal__card{
+    border-radius: 28px;
+    padding: 22px 18px 18px;
+
+  }
+
+  .register-form input{
+    height: 52px;
+    border-radius: 18px;
+    font-size: 20px;
+    padding: 0 18px;
+  }
+
+  .register-form .help{
+    font-size: 14px;
+  }
+  
+
+  .register-modal__close{
+    width: 46px;
+    height: 46px;
+    font-size: 22px;
+  }
+
+.register-form input{
+  width: 100%;              /* 🔥 prend toute la largeur du form */
+  max-width: 90%;         /* 🔥 limite propre (desktop) */
+  height: 64px;
+  
+}
+
+/* bouton rose */
+.register-modal__submit{
+  margin-top: 18px;
+  width: 100%;
+  height: 62px;
+  font-weight: 600;
+  font-size: 22px;
+}
+
+}

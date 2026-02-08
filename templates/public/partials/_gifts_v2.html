@@ -1,0 +1,54 @@
+{# templates/public/partials/_gifts_v2.html #}
+{% load static %}
+
+<section id="cadeaux" class="gifts">
+  <div class="gifts__container">
+
+    <h2 class="gifts__title">Les cadeaux à gagner :</h2>
+
+    <div class="gifts__grid">
+
+      {% for rt in reward_templates %}
+
+        <div class="gift-pill
+          {% if rt.bucket == 'SOUVENT' %}gift-pill--white{% endif %}
+          {% if rt.bucket == 'MOYEN' %}gift-pill--pinklight{% endif %}
+          {% if rt.bucket == 'RARE' %}gift-pill--pinkmid{% endif %}
+          {% if rt.bucket == 'TRES_RARE' %}gift-pill--pinkstrong{% endif %}
+        ">
+
+          <span class="gift-pill__icon" aria-hidden="true">
+            {% if rt.bucket == "SOUVENT" %}
+              <img src="{% static 'public/img/icons/gift-present-outline.png' %}" alt="" class="gift-icon-img">
+            {% elif rt.bucket == "MOYEN" %}
+              <img src="{% static 'public/img/icons/gift-line.png' %}" alt="" class="gift-icon-img">
+            {% elif rt.bucket == "RARE" %}
+              <img src="{% static 'public/img/icons/gift-box-line.png' %}" alt="" class="gift-icon-img">
+            {% else %}
+              <img src="{% static 'public/img/icons/surprise-box-line.png' %}" alt="" class="gift-icon-img">
+            {% endif %}
+          </span>
+
+          <span class="gift-pill__text">{{ rt.label }}</span>
+        </div>
+
+      {% empty %}
+        <div class="gift-pill gift-pill--white">
+          <span class="gift-pill__icon" aria-hidden="true">
+            <img src="{% static 'public/img/icons/gift-present-outline.png' %}" alt="" class="gift-icon-img">
+          </span>
+          <span class="gift-pill__text">Cadeaux bientôt disponibles</span>
+        </div>
+      {% endfor %}
+
+      <div class="register-anchor"></div>
+    </div>
+
+    <p class="gifts__subtitle">
+      <span class="gifts__subtitle-accent">À chaque parrainage</span> tu<br>
+      gagnes forcément<br>
+      un de ces cadeaux
+    </p>
+
+  </div>
+</section>

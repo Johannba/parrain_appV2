@@ -1,0 +1,76 @@
+{# templates/public/partials/_perks.html #}
+{% load static %}
+<section id="perks" class="perks">
+  <div class="perks__wrap">
+
+    <h2 class="perks__title">
+      Les <span class="perks__plus">+</span> du parrainage
+    </h2>
+
+    <div class="perks__list">
+
+      <!-- 1 -->
+      <div class="perk">
+        <div class="perk__icon perk__icon--gift" aria-hidden="true">
+          <img src="{% static 'public/img/icons/perk-gift.png' %}" alt="">
+        </div>
+        <div class="perk__pill">
+          Tout le monde est <span class="perk__pink">récompensé</span> !<br>
+          Ton pote sur place et toi par mail
+        </div>
+      </div>
+
+      <!-- 2 -->
+      <div class="perk">
+        <div class="perk__icon perk__icon--avatar" aria-hidden="true">
+          <img src="{% static 'public/img/icons/perk-noapp.png' %}" alt="">
+          <span class="perk__avatar">Julien</span>
+        </div>
+        <div class="perk__pill">
+          Ton pote a juste à dire qu’il <span class="perk__pink">vient<br>de ta part</span> à la caisse
+        </div>
+      </div>
+
+     <!-- 3 -->
+    <div class="perk">
+      <div class="perk__icon perk__icon--noapp" aria-hidden="true">
+        <img class="noapp__phone" src="{% static 'public/img/icons/perk-start-phone.svg' %}" alt="">
+        <img class="noapp__slash noapp__slash--1" src="{% static 'public/img/icons/perk-start-trait-1.svg' %}" alt="">
+        <img class="noapp__slash noapp__slash--2" src="{% static 'public/img/icons/perk-start-trait-2.svg' %}" alt="">
+      </div>
+
+      <div class="perk__pill_2">
+        <span class="perk__pink">Aucune appli</span> à installer
+      </div>
+    </div>
+
+
+      <!-- 4 -->
+      <div class="perk">
+        <div class="perk__icon perk__icon--star" aria-hidden="true">
+          <img src="{% static 'public/img/icons/perk-star.svg' %}" alt="">
+        </div>
+        <div class="perk__pill">
+          Ultra simple et rapide,<br>
+          inscription <span class="perk__pink">en 10 secondes</span>
+        </div>
+      </div>
+
+    </div>
+
+  <div class="perks__cta">
+  <a href="#" class="perks__btn" data-open-register>Devenir parrain</a>
+</div>
+
+
+    <div class="register-anchor"></div>
+    <div class="perks__promise">
+      Tu fais déjà<br>
+      du bouche-à-oreille<br>
+      <span class="perks__pink">gratuitement</span>,<br>
+      dorénavant tu es<br>
+      <span class="perks__pink">récompensé</span> pour le faire !
+    </div>
+
+  </div>
+</section>

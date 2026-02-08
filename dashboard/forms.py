@@ -400,3 +400,89 @@ class RefereeInlineForm(forms.ModelForm):
         if commit:
             obj.save()
         return obj
+
+from django import forms
+from django.forms import TextInput, EmailInput
+from dashboard.models import Client  # ou .models selon ton app
+from dashboard.forms import normalize_phone  # si tu veux factoriser, sinon importe la fonction
+
+# public/forms.py
+from django import forms
+from django.forms import TextInput, EmailInput
+from dashboard.models import Client
+from dashboard.forms import normalize_phone  # garde ta fonction existante
+
+
+class ReferrerPublicForm(forms.ModelForm):
+    """
+    Form PUBLIC: inscription parrain depuis landing.
+    - company injectée via __init__(company=...)
+    - is_referrer=True forcé au save()
+    - contrôles doublons : email + (nom, prénom)
+    """
+    class Meta:
+        model = Client
+        fields = ("first_name", "last_name", "email", "phone")
+        widgets = {
+            "first_name": TextInput(attrs={"placeholder": "Prénom"}),
+            "last_name":  TextInput(attrs={"placeholder": "Nom"}),
+            "email":      EmailInput(attrs={"placeholder": "Email"}),
+            "phone":      TextInput(attrs={"placeholder": "Numéro de téléphone"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.company = kwargs.pop("company", None)
+        super().__init__(*args, **kwargs)
+
+        # Optionnel : enlever les classes bootstrap pour laisser ton CSS modale gérer
+        for f in self.fields.values():
+            f.widget.attrs.pop("class", None)
+
+        # champs requis
+        self.fields["first_name"].required = True
+        self.fields["last_name"].required = True
+        self.fields["email"].required = True
+        self.fields["phone"].required = True
+
+    def clean(self):
+        cleaned = super().clean()
+        company = self.company
+
+        if not company:
+            raise forms.ValidationError("Entreprise manquante.")
+
+        ln = (cleaned.get("last_name") or "").strip()
+        fn = (cleaned.get("first_name") or "").strip()
+        email = (cleaned.get("email") or "").strip().lower()
+        phone = (cleaned.get("phone") or "").strip()
+
+        cleaned["last_name"] = ln
+        cleaned["first_name"] = fn
+        cleaned["email"] = email
+        cleaned["phone"] = normalize_phone(phone, company)
+
+        # ✅ email déjà utilisé par un parrain dans cette entreprise
+        if email and Client.objects.filter(
+            company=company, email__iexact=email, is_referrer=True
+        ).exists():
+            self.add_error("email", "Cet email est déjà utilisé par un parrain de cette entreprise.")
+
+        # ✅ doublon (nom, prénom) chez les parrains de l’entreprise (CI)
+        # -> évite l'IntegrityError sur uniq_referrer_name_per_company_ci
+        if ln and Client.objects.filter(
+            company=company,
+            is_referrer=True,
+            last_name__iexact=ln,
+            first_name__iexact=fn,
+        ).exists():
+            self.add_error("last_name", "Un parrain portant ce nom existe déjà pour cette entreprise.")
+
+        return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.company = self.company
+        obj.is_referrer = True
+        if commit:
+            obj.save()
+        return obj

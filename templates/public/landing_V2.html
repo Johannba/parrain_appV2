@@ -1,0 +1,170 @@
+{# templates/public/landing_v2.html #}
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <title>Chuchote - {{ company.name }} </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{% static 'public/css/landing_v2.css' %}">
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+</head>
+
+<body class="public-landing v2">
+
+  {% include "public/partials/_hero_v2.html" %}
+  {% include "public/partials/_gifts_v2.html" %}
+  {% include "public/partials/_ultra_simple.html" %}
+  {% include "public/partials/_perks.html" %}
+
+
+ {# ... landing_v2.html ... #}
+
+{# ✅ MODALE INSCRIPTION (design comme la capture) #}
+<div class="register-modal" hidden>
+  <div class="register-modal__backdrop" data-close-register></div>
+
+  <div class="register-modal__card" role="dialog" aria-modal="true" aria-label="Inscription rapide">
+    <button class="register-modal__close" type="button" aria-label="Fermer" data-close-register>
+      ✕
+    </button>
+
+    <h2 class="register-modal__title">Inscription rapide</h2>
+
+    {# ✅ Erreurs globales (non_field_errors) #}
+    {% if form.non_field_errors %}
+      <div class="register-modal__errors">
+        {% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}
+      </div>
+    {% endif %}
+
+    {# ✅ Erreurs par champ (affichage clean) #}
+    {% for field in form %}
+      {% if field.errors %}
+        <div class="register-modal__errors">
+          {% for e in field.errors %}<div>{{ e }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+
+
+    <form id="registerForm" method="POST" action="{% url 'public:referrer_register' slug=company.slug %}" class="register-form">
+
+      {% csrf_token %}
+
+      <div class="field">
+        {{ form.first_name }}
+        <p class="help">Nécessaire pour valider le parrainage</p>
+      </div>
+
+      <div class="field">
+        {{ form.last_name }}
+        <p class="help">Nécessaire pour valider le parrainage</p>
+      </div>
+
+      <div class="field">
+        {{ form.email }}
+        <p class="help">Nécessaire pour recevoir ton cadeau</p>
+      </div>
+
+      <div class="field">
+        {{ form.phone }}
+        <p class="help">Nécessaire pour recevoir ton cadeau</p>
+      </div>
+
+      <button type="submit" class="register-modal__submit">
+        Valider mon inscription
+      </button>
+    </form>
+  </div>
+</div>
+<script>
+  const modal = document.querySelector('.register-modal');
+  const formEl = document.querySelector('#registerForm');
+
+  function openRegister(e){
+    if (e) e.preventDefault();
+    if (!modal) return;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function hardClearFormValues(form){
+    if (!form) return;
+
+    form.querySelectorAll('input, textarea').forEach(el => {
+      const name = (el.getAttribute('name') || '');
+      const type = (el.getAttribute('type') || '').toLowerCase();
+
+      // ✅ ne touche pas au CSRF
+      if (name === 'csrfmiddlewaretoken') return;
+
+      // ✅ ne touche pas aux hidden (souvent utilisés par des libs)
+      if (type === 'hidden') return;
+
+      if (type === 'checkbox' || type === 'radio') {
+        el.checked = false;
+      } else if (type === 'file') {
+        el.value = '';
+      } else {
+        el.value = '';
+      }
+
+      // enlève aussi le value HTML "bindé"
+      el.removeAttribute('value');
+    });
+
+    form.querySelectorAll('select').forEach(sel => {
+      sel.selectedIndex = 0;
+    });
+  }
+
+  function resetRegisterForm(){
+    if (!formEl || !modal) return;
+
+    // reset classique
+    formEl.reset();
+
+    // reset hard (mais sans casser CSRF)
+    hardClearFormValues(formEl);
+
+    // remove erreurs
+    modal.querySelectorAll('.register-modal__errors').forEach(el => el.remove());
+
+    // remove invalid state
+    formEl.querySelectorAll('input, select, textarea').forEach(i => {
+      if (i.setCustomValidity) i.setCustomValidity('');
+      i.classList.remove('is-invalid');
+      i.removeAttribute('aria-invalid');
+    });
+  }
+
+  function closeRegister(){
+    if (!modal) return;
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    resetRegisterForm();
+  }
+
+  if (modal){
+    document.querySelectorAll('[data-open-register]').forEach(el => {
+      el.addEventListener('click', openRegister);
+    });
+
+    modal.querySelectorAll('[data-close-register]').forEach(el => {
+      el.addEventListener('click', closeRegister);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeRegister();
+    });
+  }
+
+  // auto-open si erreurs backend
+  {% if open_register_modal %}
+    openRegister();
+  {% endif %}
+</script>
+
+
+</body>
+</html>

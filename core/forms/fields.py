@@ -9,7 +9,7 @@ class InternationalPhoneFormField(forms.CharField):
         attrs.setdefault("class", "form-control")
         attrs.setdefault(
             "placeholder",
-            "Ex : 0694 12 34 56 ou 0594 12 34 56 ou +594 694 12 34 56"
+            "Numéro de téléphone",
         )
         kwargs.setdefault("widget", forms.TextInput(attrs=attrs))
         super().__init__(*args, **kwargs)

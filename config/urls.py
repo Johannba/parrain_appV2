@@ -33,7 +33,6 @@ def root_view(request):
     # Anonyme → afficher la landing
     return render(request, "public/landing.html")
 
-
 urlpatterns = [
     path("", root_view, name="root"),
     path("", include("dashboard.urls")),
@@ -49,5 +48,4 @@ urlpatterns = [
 
 
 if settings.DEBUG:
-    urlpatterns += staticfiles_urlpatterns()
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
