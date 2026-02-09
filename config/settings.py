@@ -161,7 +161,8 @@ USE_TZ = True
 # STATIC / MEDIA
 # ======================================================================
 STATIC_URL = "/static/"
-STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
+
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 if DEBUG:

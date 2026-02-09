@@ -1,7 +1,7 @@
 name: parrainapp
 
 services:
-  proxy:
+    proxy:
     image: caddy:2
     container_name: proxy
     restart: unless-stopped
@@ -19,10 +19,12 @@ services:
       - static_data:/srv/static:ro
       - media_data:/srv/media:ro
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     networks: [webnet]
 
-  web:
+
+web:
     build:
       context: .
     container_name: web

@@ -7,7 +7,6 @@ www.chuchote.com {
     redir https://chuchote.com{uri} 308
 }
 
-# Site canonique
 chuchote.com {
     encode gzip
 
@@ -22,26 +21,34 @@ chuchote.com {
     @private path /accounts/* /dashboard/* /admin/*
     header @private X-Robots-Tag "noindex, nofollow"
 
-    handle /static/* {
-    root * /srv/static
-    file_server
-    }
-
-    handle /media/* {
-    root * /srv/media
-    file_server
-    }
-
     @healthz path /healthz
     respond @healthz 200
 
-    reverse_proxy web:8000 {
-        transport http {
-            read_timeout 60s
-            write_timeout 60s
-            keepalive 30s
+    route {
+        @static path /static/*
+        handle @static {
+            root * /srv/static
+            uri strip_prefix /static
+            file_server
         }
-        header_up Host {host}
-        header_up X-Forwarded-Proto {scheme}
+
+        @media path /media/*
+        handle @media {
+            root * /srv/media
+            uri strip_prefix /media
+            file_server
+        }
+
+        handle {
+            reverse_proxy web:8000 {
+                transport http {
+                    read_timeout 60s
+                    write_timeout 60s
+                    keepalive 30s
+                }
+                header_up Host {host}
+                header_up X-Forwarded-Proto {scheme}
+            }
+        }
     }
 }
