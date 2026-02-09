@@ -1,0 +1,121 @@
+name: parrainapp
+
+services:
+    proxy:
+    image: caddy:2
+    container_name: proxy
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      ACME_AGREE: "true"
+      EMAIL: ${CONTACT_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - static_data:/srv/static:ro
+      - media_data:/srv/media:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [webnet]
+
+
+web:
+    build:
+      context: .
+    container_name: web
+    restart: unless-stopped
+    env_file: [.env]
+    command: >
+      bash -lc "
+      mkdir -p /app/staticfiles /app/media &&
+      chmod -R u+rwX /app/staticfiles /app/media || true &&
+      ./manage.py migrate --noinput &&
+      ./manage.py collectstatic --noinput &&
+      gunicorn config.wsgi:application --config /app/gunicorn.conf.py
+      "
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'Host: chuchote.com' http://127.0.0.1:8000/healthz/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [webnet]
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Dev local uniquement : expose le port Postgres sur l’hôte
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [webnet]
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    networks: [webnet]
+
+  init-perms:
+    image: python:3.12-slim
+    user: "0:0"
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "mkdir -p /app/staticfiles /app/media &&
+       chown -R 999:999 /app/staticfiles /app/media &&
+       chmod -R u+rwX /app/staticfiles /app/media"
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    networks: [webnet]
+
+  backup:
+    image: postgres:16
+    container_name: backup
+    restart: unless-stopped
+    env_file: [.env]
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      "echo 'Backup service ready. Run ./backup.sh from host to trigger backups.'"
+    volumes:
+      - pgbackups:/backups
+      - media_data:/media:ro
+    networks: [webnet]
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:
+  static_data:
+  media_data:
+  pgbackups:
+
+networks:
+  webnet:
