@@ -158,26 +158,29 @@ USE_I18N = True
 USE_TZ = True
 
 
-
-
+# ======================================================================
+# STATIC / MEDIA
+# ======================================================================
 STATIC_URL = "/static/"
-
 STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": (
-            "django.contrib.staticfiles.storage.StaticFilesStorage"
-            if DEBUG
-            else "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
-        )
+if DEBUG:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        }
     }
-}
-
+else:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
+        }
+    }
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
