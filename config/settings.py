@@ -157,13 +157,14 @@ TIME_ZONE = os.getenv("TIME_ZONE", "Europe/Paris")
 USE_I18N = True
 USE_TZ = True
 
+
 # ======================================================================
 # STATIC / MEDIA
 # ======================================================================
 STATIC_URL = "/static/"
+
 STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 
-STATIC_ROOT = BASE_DIR / "staticfiles"
 
 if DEBUG:
     STORAGES = {
@@ -177,9 +178,10 @@ else:
             "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
         }
     }
-    
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

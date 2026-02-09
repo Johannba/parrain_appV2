@@ -1,7 +1,7 @@
 name: parrainapp
 
 services:
-    proxy:
+  proxy:
     image: caddy:2
     container_name: proxy
     restart: unless-stopped
@@ -23,8 +23,7 @@ services:
         condition: service_healthy
     networks: [webnet]
 
-
-web:
+  web:
     build:
       context: .
     container_name: web
@@ -63,7 +62,6 @@ web:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Dev local uniquement : expose le port Postgres sur l’hôte
     ports:
       - "5432:5432"
     healthcheck:
