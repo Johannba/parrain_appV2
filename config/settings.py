@@ -157,48 +157,33 @@ TIME_ZONE = os.getenv("TIME_ZONE", "Europe/Paris")
 USE_I18N = True
 USE_TZ = True
 
-<<<<<<< Updated upstream
 
-# ======================================================================
-=======
-# ====================================================================
->>>>>>> Stashed changes
-# STATIC / MEDIA
-# ======================================================================
+
 
 STATIC_URL = "/static/"
 
 STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
-
-if DEBUG:
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-        }
-    }EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend" if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend",
-)
-else:
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
-        }
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG
+            else "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+        )
     }
+}
+
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-<<<<<<< Updated upstream
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ======================================================================
 # EMAIL (Brevo par défaut)
-=======
->>>>>>> Stashed changes
 # ======================================================================
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
