@@ -96,7 +96,7 @@ services:
   backup:
     image: postgres:16
     container_name: backup
-    restart: unless-stopped
+    restart: "no"
     env_file: [.env]
     entrypoint: ["/bin/bash", "-lc"]
     command: >
@@ -106,6 +106,7 @@ services:
       - media_data:/media:ro
     networks: [webnet]
 
+
 volumes:
   pgdata:
   redisdata:
@@ -114,6 +115,12 @@ volumes:
   static_data:
   media_data:
   pgbackups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/parrainapp/backups
+
 
 networks:
   webnet:
