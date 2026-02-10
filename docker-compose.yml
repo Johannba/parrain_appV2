@@ -21,7 +21,6 @@ services:
     depends_on:
       web:
         condition: service_healthy
-    networks: [webnet]
 
   web:
     build:
@@ -62,6 +61,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Dev local uniquement : expose le port Postgres sur l’hôte
     ports:
       - "5432:5432"
     healthcheck:
@@ -96,7 +96,7 @@ services:
   backup:
     image: postgres:16
     container_name: backup
-    restart: "no"
+    restart: unless-stopped
     env_file: [.env]
     entrypoint: ["/bin/bash", "-lc"]
     command: >
@@ -106,7 +106,6 @@ services:
       - media_data:/media:ro
     networks: [webnet]
 
-
 volumes:
   pgdata:
   redisdata:
@@ -115,18 +114,6 @@ volumes:
   static_data:
   media_data:
   pgbackups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /srv/parrainapp/backups
-
 
 networks:
   webnet:
-  pgbackups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /srv/parrainapp/backups
