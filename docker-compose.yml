@@ -124,3 +124,9 @@ volumes:
 
 networks:
   webnet:
+  pgbackups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/parrainapp/backups
