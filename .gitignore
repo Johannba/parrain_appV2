@@ -38,3 +38,6 @@ htmlcov/
 # local only
 .env.local
 dev.sqlite3
+
+# Backup temp/test artifacts
+DESTINATION_FILE
