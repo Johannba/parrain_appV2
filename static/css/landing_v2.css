@@ -3,8 +3,6 @@
    Scope: body.public-landing
    ========================= */
 /* FIX anti-zoom mobile */
-*, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 
 body.public-landing{
@@ -1936,14 +1934,5 @@ body.public-landing #perks .perks__btn{
   font-size: 22px;
 }
 
-}
-@media (max-width: 500px){
-  .public-landing .hero__card,
-  .public-landing .gift-pill,
-  .public-landing .ultra-step{
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box;
-  }
 }
 
