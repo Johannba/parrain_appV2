@@ -2,6 +2,10 @@
    LANDING V2 – THEME + HERO
    Scope: body.public-landing
    ========================= */
+/* FIX anti-zoom mobile */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
 
 body.public-landing{
   margin:0;
@@ -427,7 +431,7 @@ body.public-landing{
 }
 
 /* Très petit mobile : chevauchement un poil réduit */
-@media (max-width: 420px){
+@media (max-width: 500px){
 
     /* Photo plein large, gros arrondi */
   .public-landing .hero__photo{
@@ -1933,3 +1937,13 @@ body.public-landing #perks .perks__btn{
 }
 
 }
+@media (max-width: 500px){
+  .public-landing .hero__card,
+  .public-landing .gift-pill,
+  .public-landing .ultra-step{
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+}
+
