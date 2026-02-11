@@ -427,7 +427,7 @@ body.public-landing{
 }
 
 /* Très petit mobile : chevauchement un poil réduit */
-@media (max-width: 500px){
+@media (max-width: 420px){
 
     /* Photo plein large, gros arrondi */
   .public-landing .hero__photo{
