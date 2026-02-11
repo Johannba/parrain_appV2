@@ -3,6 +3,13 @@
    Scope: body.public-landing
    ========================= */
 /* FIX anti-zoom mobile */
+html { overflow-x: hidden; }
+body { overflow-x: hidden; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+img, svg, video, canvas { max-width: 100%; height: auto; }
+
 
 
 body.public-landing{
