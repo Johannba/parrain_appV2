@@ -11,7 +11,16 @@
           <span class="hero__line">Parles de {{ company.name }} à</span>
           <span class="hero__line">tes amis et gagnes</span>
           <span class="hero__line hero__line--small">jusqu’à</span>
-          <span class="hero__accent">1 Plat + Boisson !</span>
+          {# ✅ Affiche TRES_RARE si existe, sinon fallback #}
+          {% with has_tres_rare=False %}
+            {% for rt in reward_templates %}
+              {% if rt.bucket == "TRES_RARE" %}
+                <span class="hero__accent">{{ rt.label }}</span>
+                {% with has_tres_rare=True %}{% endwith %}
+              {% endif %}
+            {% endfor %}
+          {% endwith %}
+
         </h1>
         <div class="register-anchor"></div>
         <div class="hero__actions">
@@ -20,6 +29,7 @@
         </div>
       </div>
     </div>
+
 
     <div class="hero__right">
       <div class="hero__photo">

@@ -33,7 +33,6 @@ body.public-landing{
 
 .public-landing .hero{
   min-height: 700px;
-  top: 60px;
   padding: 40px 48px 80px;
   position: relative;
 }
@@ -41,7 +40,6 @@ body.public-landing{
 /* Logo centré en haut */
 .public-landing .hero__brand{
   position: absolute;
-  top: 1px;
   left: 50%;
   transform: translateX(-50%);
   font-weight: 900;
@@ -338,6 +336,7 @@ body.public-landing{
   .public-landing .hero__card{
     max-width: 100%;
     width: 100%;
+    height: 260px;
     margin: -110px auto 0 -58px;          /* chevauche */
     border-radius: 34px;
     padding: 26px 58px 22px;
@@ -456,33 +455,40 @@ body.public-landing{
    margin-right: auto;
   }
   .public-landing .hero__card{
-    margin: -49px auto 0 -48px;          /* chevauche */
-    padding: 16px 45px 22px;
+    margin: -49px auto 0 0px;
+    padding: 0px;      /* chevauche */
+    width: 380px;
+    height: 220px;
+    padding: 12px 0px 0px;   /* ⬅️ padding-top ajouté */
+    border-radius: 18px;
   }
-  .public-landing .hero__btn{
-    height: 84px;
-    font-size: 24px;
-  }
+
     /* Titre comme maquette */
   .public-landing .hero__title{
-    font-size: clamp(30px, 9vw, 16px);
+    font-size: clamp(23px, 9vw, 16px);
     line-height: 1.04;
-    letter-spacing: -1.1px;
+    letter-spacing: 1px;
     margin: 0 0 16px;
-    font-weight: 900;
+    font-weight: 800;
   }
 
   .public-landing .hero__btn{
     flex: 1;
-    min-width: 0;
-    height: 72px;
-    padding: 0 8px;
-    border-radius: 28px;
+    width: 30px;
+    height: 62px;
+    padding: 0;
+    border-radius: 18px;
     font-size: 18px;
     font-weight: 800;
     line-height: 1.05;
     white-space: normal;            /* autorise 2 lignes comme "Voir les cadeaux" */
   }
+  .public-landing .hero__actions{
+    max-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+ 
 }  
 
 
@@ -1221,10 +1227,9 @@ body.public-landing{
 .public-landing .perk__pill_2{
   background: #fff;
   color: var(--ink);
-  border-radius: 71px;
+  border-radius: 21px;
   padding: 65px 64px;
   font-weight: 760;
-  letter-spacing: -0.02em;
   font-size: clamp(62px, 2.6vw, 34px);
   line-height: 1.08;
   box-shadow: 0 18px 60px rgba(0,0,0,.22);
@@ -1682,6 +1687,10 @@ body.public-landing #perks .perk__icon--star img{
 /* =========================
    CTA GLOBAL FIXED (visible partout)
    ========================= */
+/* body.public-landing{
+  padding-bottom: 96px;
+} */
+
 body.public-landing #perks .perks__cta{
   position: fixed !important;
   left: 0;
@@ -1692,41 +1701,54 @@ body.public-landing #perks .perks__cta{
   display: grid;
   place-items: center;
 
-  padding: 14px 1px 12px;
-
-
-
-  /* optionnel: petite ligne de séparation */
-  /* border-top: 1px solid rgba(255,255,255,.08); */
+  padding: 10px 12px 14px !important;
 }
 
-/* bouton centré + largeur responsive */
+/* ✅ bouton : base (desktop/tablet) */
 body.public-landing #perks .perks__btn{
-  width: min(260px, calc(100% - 24px));
-  height: 74px;
-  border-radius: 24px;
-  font-size: 32px;
+  width: min(260px, calc(100% - 24px)) !important;
+  height: 74px !important;
+  padding: 0 18px !important;
+  border-radius: 24px !important;
+  font-size: 22px !important;
+  line-height: 1.05 !important;
 }
 
-
+/* ✅ plus petit sur mobile */
 @media (max-width: 680px){
-  body.public-landing #perks .perks__cta{
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 14px 16px 20px;
-    z-index: 100;
-  }
-
-  /* évite que le bouton masque le contenu */
   body.public-landing{
-    padding-bottom: 80px;
-  }
-  body.public-landing #perks .perks__btn{
-  width: min(260px, calc(100% - 24px));
+    padding-bottom: 78px;
   }
 
+  body.public-landing #perks .perks__cta{
+    padding: 8px 12px 12px !important;
+  }
+
+  body.public-landing #perks .perks__btn{
+    width: min(200px, calc(100% - 40px)) !important;
+    height: 54px !important;
+    padding: 0 14px !important;
+    border-radius: 16px !important;
+    font-size: 17px !important;
+  }
+}
+
+/* ✅ tiny mobile encore plus compact */
+@media (max-width: 500px){
+  body.public-landing{
+    padding-bottom: 70px;
+  }
+
+  body.public-landing #perks .perks__cta{
+    padding: 6px 12px 10px !important;
+  }
+
+  body.public-landing #perks .perks__btn{
+    width: min(190px, calc(100% - 48px)) !important;
+    height: 48px !important;
+    font-size: 15px !important;
+    border-radius: 14px !important;
+  }
 }
 
 /* =========================
