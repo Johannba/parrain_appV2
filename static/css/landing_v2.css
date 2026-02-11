@@ -3,12 +3,6 @@
    Scope: body.public-landing
    ========================= */
 /* FIX anti-zoom mobile */
-html { overflow-x: hidden; }
-body { overflow-x: hidden; }
-
-*, *::before, *::after { box-sizing: border-box; }
-
-img, svg, video, canvas { max-width: 100%; height: auto; }
 
 
 
@@ -466,15 +460,15 @@ body.public-landing{
   .public-landing .hero__card{
     margin: -49px auto 0 0px;
     padding: 0px;      /* chevauche */
-    width: 380px;
-    height: 220px;
+    width: 300px;
+    height: 190px;
     padding: 12px 0px 0px;   /* ⬅️ padding-top ajouté */
     border-radius: 18px;
   }
 
     /* Titre comme maquette */
   .public-landing .hero__title{
-    font-size: clamp(23px, 9vw, 16px);
+    font-size: clamp(18px, 9vw, 16px);
     line-height: 1.04;
     letter-spacing: 1px;
     margin: 0 0 16px;
@@ -493,7 +487,7 @@ body.public-landing{
     white-space: normal;            /* autorise 2 lignes comme "Voir les cadeaux" */
   }
   .public-landing .hero__actions{
-    max-width: 280px;
+    max-width: 260px;
     margin-left: auto;
     margin-right: auto;
   }
