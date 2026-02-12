@@ -35,6 +35,8 @@ body.public-landing{
    ========================= */
 
 .public-landing .hero{
+  margin-left: auto;
+  margin-right: auto;
   min-height: 700px;
   padding: 40px 48px 80px;
   position: relative;
@@ -671,21 +673,27 @@ body.public-landing{
 }
 /* responsive mobile -> colonne */
 @media (max-width: 500px){
+  .public-landing .gifts__container{
+    margin-left: auto;
+    margin-right: auto;
+  }
   .public-landing .gifts__grid{
     grid-template-columns: 1fr;
-    gap: 18px;
+    gap: 12px;
   }
   .public-landing .gift-pill{
-    height: 76px;
-    width:  350px;
+    height: 72px;
+    width:  290px;
     padding: 0 12px;
+    margin-left: auto;
+    margin-right: auto;
   }
   .gift-icon-img{
     width: 48px;      /* ajuste si besoin */
     height: 48px;
   } 
  .public-landing .gift-pill__text{
-    font-size: 30px;
+    font-size: 26px;
   }
 
   .public-landing .gift-pill__icon{
@@ -696,11 +704,12 @@ body.public-landing{
 .public-landing .gifts__subtitle{
   margin-top: 50px;
   font-weight: 600;
-  font-size: clamp(25px, 4.3vw, 68px);
+  font-size: clamp(26px, 4.3vw, 68px);
   line-height: 1.49;
+  letter-spacing: 2px;
   }
   .public-landing .gifts__title{
-  font-size: clamp(31px, 5.2vw, 44px);
+  font-size: clamp(25px, 5.2vw, 44px);
 }
 
   .public-landing .ultra-arrow{
@@ -1031,7 +1040,7 @@ body.public-landing{
     margin-left: 15px; }
   .public-landing .ultra__subtitle{ margin-left: 15px; }
   .public-landing .ultra__card{
-    width: 350px;
+    width: 330px;
     padding: 26px 0px 18px;
     border-radius: 32px;
     margin: 0 auto;
@@ -1053,20 +1062,32 @@ body.public-landing{
   .public-landing .ultra-step{
     position: relative;
     display: grid;
-    grid-template-columns: 55px 1fr;
+    grid-template-columns: 45px 1fr;
     gap: 22px;
     align-items: center;
     margin-bottom: 10px;
-
+    
     border: 5px solid var(--pink);
     border-radius: 24px;
-    padding: 10px 0px;
+    padding: 0px 0px;
     min-height: 15px;
-    width: 300px;
+    height: 75px;
+    width: 290px;
     margin-left: auto;
     margin-right: auto;
   }
 
+   .public-landing .ultra-step--tall{
+     height: 85px;
+  }
+  .public-landing .ultra-step__icon img{
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    margin-left: 0; /* ✅ stop débord mobile */
+  }
+  
   /* ✅ Flèches plus grosses */
   .public-landing .ultra-arrow{
     width: 52px;
@@ -1074,10 +1095,10 @@ body.public-landing{
     border-radius: 999px;
     background: #0b0b0f;
     color: #fff;
-
+    
     display: grid;
     place-items: center;
-
+    
     margin: -6px auto;
     font-size: 48px;
     font-weight: 1000;
@@ -1089,32 +1110,32 @@ body.public-landing{
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin-top: 50px;
-    max-width: 320px;
+    max-width: 300px;
     margin-left: auto;
     margin-right: auto; 
-  
-
+    
+    
   }
-   .public-landing .ultra-mini{
+  .public-landing .ultra-mini{
     box-sizing: border-box;
     padding: 5px 0px 5px;
     width: 100%;
   }
   .public-landing .ultra-mini__title{
-  font-weight: 600;
-  font-size: 19px;
- 
+    font-weight: 600;
+    font-size: 19px;
+    
   }
-
+  
   .public-landing .ultra-mini__note{
     font-size: 15px;
   }
- .public-landing .ultra-step__text{
-    font-size: 17px;
-    
+  .public-landing .ultra-step__text{
+    font-size: 15px;
   }
+ 
   .public-landing .ultra-mini{
-  border: 5px solid var(--pink);
+    border: 5px solid var(--pink);
   }
   .public-landing .ultra-mini--purple{
     border-color: rgb(124, 72, 228);
