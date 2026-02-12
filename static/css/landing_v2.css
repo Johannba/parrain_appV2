@@ -1800,7 +1800,7 @@ body.public-landing #perks .perks__btn{
 
   body.public-landing #perks .perks__btn{
     width: min(190px, calc(100% - 48px)) !important;
-    height: 48px !important;
+    height: 53px !important;
     font-size: 15px !important;
     border-radius: 14px !important;
   }
