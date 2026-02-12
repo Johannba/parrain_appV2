@@ -472,7 +472,7 @@ body.public-landing{
     line-height: 1.04;
     letter-spacing: 1px;
     margin: 0 0 16px;
-    font-weight: 800;
+    font-weight: 900;
   }
 
   .public-landing .hero__btn{
@@ -1027,9 +1027,12 @@ body.public-landing{
 
 /* Responsive */
 @media (max-width: 500px){
+  .public-landing .ultra__title{ font-size: 28px;
+    margin-left: 15px; }
+  .public-landing .ultra__subtitle{ margin-left: 15px; }
   .public-landing .ultra__card{
-    width: min(360px, 92vw);
-    padding: 26px 18px 18px;
+    width: 350px;
+    padding: 26px 0px 18px;
     border-radius: 32px;
     margin: 0 auto;
     background: #ffffff;
@@ -1057,9 +1060,11 @@ body.public-landing{
 
     border: 5px solid var(--pink);
     border-radius: 24px;
-    padding: 10px 14px;
+    padding: 10px 0px;
     min-height: 15px;
-    width: 320px;
+    width: 300px;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   /* ✅ Flèches plus grosses */
@@ -1084,24 +1089,39 @@ body.public-landing{
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin-top: 50px;
-    max-width: 650px;
-    justify-content: center; 
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto; 
+  
 
   }
    .public-landing .ultra-mini{
-    border-width: 5px;
-    padding: 10px 5px 10px;
+    box-sizing: border-box;
+    padding: 5px 0px 5px;
+    width: 100%;
   }
   .public-landing .ultra-mini__title{
   font-weight: 600;
-  font-size: 22px;
+  font-size: 19px;
  
   }
 
   .public-landing .ultra-mini__note{
-    font-size: 16px;
+    font-size: 15px;
   }
-
+ .public-landing .ultra-step__text{
+    font-size: 17px;
+    
+  }
+  .public-landing .ultra-mini{
+  border: 5px solid var(--pink);
+  }
+  .public-landing .ultra-mini--purple{
+    border-color: rgb(124, 72, 228);
+  }
+  .public-landing .ultra-mini__gift img{
+  width: 52px;
+  }
  
 }
 @media (max-width: 500px){
@@ -1128,6 +1148,8 @@ body.public-landing{
     width: min(260px, 100%);
     box-sizing: border-box;
   }
+
+
 }
 
 
