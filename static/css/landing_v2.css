@@ -5,7 +5,6 @@
 /* FIX anti-zoom mobile */
 
 
-
 body.public-landing{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
@@ -441,7 +440,9 @@ body.public-landing{
 }
     /* Photo plein large, gros arrondi */
   .public-landing .hero__photo{
-    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    width: 95%;
     max-width: 100%;
     height: clamp(190px, 52vw, 590px);
     border-radius: 34px;
@@ -467,15 +468,15 @@ body.public-landing{
   .public-landing .hero__card{
     margin: -49px auto 0 0px;
     padding: 0px;      /* chevauche */
-    width: 300px;
-    height: 190px;
+    width: 325px;
+    height: 220px;
     padding: 12px 0px 0px;   /* ⬅️ padding-top ajouté */
     border-radius: 18px;
   }
 
     /* Titre comme maquette */
   .public-landing .hero__title{
-    font-size: clamp(18px, 9vw, 16px);
+    font-size: clamp(21px, 9vw, 16px);
     line-height: 1.04;
     letter-spacing: 1px;
     margin: 0 0 16px;
@@ -1069,7 +1070,7 @@ body.public-landing{
   .public-landing .ultra-step{
     position: relative;
     display: grid;
-    grid-template-columns: 45px 1fr;
+    grid-template-columns: 42px 1fr;
     gap: 22px;
     align-items: center;
     margin-bottom: 10px;
@@ -1078,14 +1079,14 @@ body.public-landing{
     border-radius: 24px;
     padding: 0px 0px;
     min-height: 15px;
-    height: 75px;
-    width: 290px;
+    height: 80px;
+    width: 300px;
     margin-left: auto;
     margin-right: auto;
   }
 
    .public-landing .ultra-step--tall{
-     height: 85px;
+     height: 90px;
   }
   .public-landing .ultra-step__icon img{
     width: 48px;
@@ -1138,7 +1139,7 @@ body.public-landing{
     font-size: 15px;
   }
   .public-landing .ultra-step__text{
-    font-size: 15px;
+    font-size: 18px;
   }
  
   .public-landing .ultra-mini{
