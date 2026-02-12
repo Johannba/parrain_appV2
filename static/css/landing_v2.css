@@ -736,10 +736,7 @@ body.public-landing{
    SECTION — ULTRA SIMPLE (V2) — CANVA LOOK
    ========================= */
 
-.public-landing .ultra{
-  padding: 70px 22px 90px;
-  background: #101727;
-}
+
 
 /* ✅ Carte beaucoup plus large (comme Canva) */
 .public-landing .ultra__card{
@@ -1054,8 +1051,11 @@ body.public-landing{
   
   }
   .public-landing .ultra{
-    padding: 0px 22px 90px;
+    padding: 0px px 90px;
     background: #101727;
+    margin-left: auto;
+    margin-right: auto;
+    margin: 0%;
   }
   /* FLOW */
   .public-landing .ultra__flow{
@@ -1657,6 +1657,7 @@ body.public-landing #perks .perk__icon--star img{
   }
   .public-landing #perks .perk{
     grid-template-columns: 42px 1fr !important;
+
   }
 
   .public-landing #perks .perks__list{
