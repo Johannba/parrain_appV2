@@ -434,6 +434,10 @@ body.public-landing{
 /* Très petit mobile : chevauchement un poil réduit */
 @media (max-width: 500px){
 
+  /* Photo plein large, gros arrondi */
+.public-landing .hero{
+    padding: 0px 0px 0px;
+}
     /* Photo plein large, gros arrondi */
   .public-landing .hero__photo{
     width: 100%;
@@ -673,9 +677,10 @@ body.public-landing{
 }
 /* responsive mobile -> colonne */
 @media (max-width: 500px){
-  .public-landing .gifts__container{
+  .public-landing .gifts{
     margin-left: auto;
     margin-right: auto;
+    padding: 0px 0px 0px;
   }
   .public-landing .gifts__grid{
     grid-template-columns: 1fr;
@@ -702,11 +707,12 @@ body.public-landing{
   }
   /* texte central bas */
 .public-landing .gifts__subtitle{
-  margin-top: 50px;
+  margin-top: 30px;
   font-weight: 600;
   font-size: clamp(26px, 4.3vw, 68px);
   line-height: 1.49;
   letter-spacing: 2px;
+  margin-bottom: 30px;
   }
   .public-landing .gifts__title{
   font-size: clamp(25px, 5.2vw, 44px);
