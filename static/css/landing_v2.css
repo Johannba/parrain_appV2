@@ -437,6 +437,7 @@ body.public-landing{
   /* Photo plein large, gros arrondi */
 .public-landing .hero{
     padding: 0px 0px 0px;
+    margin-bottom: 40px;
 }
     /* Photo plein large, gros arrondi */
   .public-landing .hero__photo{
