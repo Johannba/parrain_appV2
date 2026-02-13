@@ -1688,8 +1688,8 @@ body.public-landing #perks .perk__icon--star img{
   .public-landing #perks .perk__pill_2{
     height:100% !important; /* ✅ prend toute la largeur dispo */
     max-height: 40px !important; /* ✅ mais pas trop haut */
-    padding: 15px 9px 11px 12px !important;
-    font-size: clamp(12px, 4.6vw, 17px) !important;
+    padding: 15px 5px 11px 12px !important;
+    font-size: clamp(11px, 4.6vw, 17px) !important;
     border-radius: 24px !important;
   }
   .public-landing #perks .perk__pill_2{
