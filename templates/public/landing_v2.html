@@ -10,6 +10,16 @@
 </head>
 
 <body class="public-landing v2">
+  {% if messages %}
+  <div class="public-flash-wrapper">
+    {% for message in messages %}
+      <div class="public-flash public-flash--{{ message.tags }}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
 
   {% include "public/partials/_hero_v2.html" %}
   {% include "public/partials/_gifts_v2.html" %}
@@ -163,6 +173,13 @@
   {% if open_register_modal %}
     openRegister();
   {% endif %}
+    setTimeout(() => {
+    document.querySelectorAll('.public-flash').forEach(el => {
+      el.style.opacity = '0';
+      el.style.transition = 'opacity .4s ease';
+      setTimeout(() => el.remove(), 400);
+    });
+  }, 4000);
 </script>
 
 

@@ -476,11 +476,12 @@ body.public-landing{
 
     /* Titre comme maquette */
   .public-landing .hero__title{
-    font-size: clamp(21px, 9vw, 16px);
-    line-height: 1.04;
-    letter-spacing: 1px;
+    font-size: clamp(23px, 9vw, 16px);
+    line-height: 1.19;
+    letter-spacing: 0px;
     margin: 0 0 16px;
     font-weight: 900;
+    margin-bottom: 0px
   }
 
   .public-landing .hero__btn{
@@ -498,6 +499,8 @@ body.public-landing{
     max-width: 260px;
     margin-left: auto;
     margin-right: auto;
+    margin-top: 15px;
+
   }
  
 }  
@@ -729,9 +732,6 @@ body.public-landing{
   }
   
 }
-
-
-
 
 
 /* =========================
@@ -1556,6 +1556,9 @@ body.public-landing #perks .perk__icon--star img{
   .public-landing #perks .perks__title{
     font-size: clamp(42px, 7vw, 62px);
     margin-bottom: 26px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+
   }
 
   .public-landing #perks .perks__list{
@@ -1655,10 +1658,10 @@ body.public-landing #perks .perk__icon--star img{
   .perks__title{
     font-size: clamp(22px, 7vw, 42px) !important;
     margin-bottom: 28px !important;
-
   }
   .public-landing #perks .perk{
     grid-template-columns: 42px 1fr !important;
+    width: 320px !important;
 
   }
 
@@ -1685,7 +1688,7 @@ body.public-landing #perks .perk__icon--star img{
   .public-landing #perks .perk__pill_2{
     height:100% !important; /* ✅ prend toute la largeur dispo */
     max-height: 40px !important; /* ✅ mais pas trop haut */
-    padding: 15px 18px !important;
+    padding: 15px 9px 11px 12px !important;
     font-size: clamp(12px, 4.6vw, 17px) !important;
     border-radius: 24px !important;
   }
@@ -1989,3 +1992,43 @@ body.public-landing #perks .perks__btn{
 
 }
 
+/* =========================
+   MESSAGE INSCRIPTION SUCCESS
+   ========================= */
+
+.public-flash-wrapper{
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  width: min(520px, 92vw);
+}
+
+.public-flash{
+  padding: 18px 22px;
+  border-radius: 18px;
+  font-weight: 700;
+  font-size: 16px;
+  text-align: center;
+  animation: slideDown .35s ease;
+  box-shadow: 0 12px 40px rgba(0,0,0,.25);
+}
+
+/* Success */
+.public-flash--success{
+  background: #1ec97f;
+  color: #fff;
+}
+
+/* Error */
+.public-flash--error{
+  background: #ff3c5f;
+  color: #fff;
+}
+
+/* Animation */
+@keyframes slideDown{
+  from { opacity:0; transform: translate(-50%, -12px); }
+  to   { opacity:1; transform: translate(-50%, 0); }
+}
