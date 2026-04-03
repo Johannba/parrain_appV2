@@ -34,9 +34,22 @@ class RewardTemplateForm(forms.ModelForm):
         })
     )
 
+    only_on_some_items = forms.BooleanField(
+        required=False,
+        label="Valable sur certains articles",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"})
+    )
+
+    expires_at = forms.DateField(
+        required=False,
+        label="Date limite",
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}, format="%Y-%m-%d")
+    )
+
     class Meta:
         model = RewardTemplate
-        fields = ("label", "cooldown_months", "min_referrals_required")
+        fields = ("label", "cooldown_months", "min_referrals_required", "only_on_some_items", "expires_at")
 
     def clean_label(self):
         """Validation supplémentaire (au cas où, après trim)."""

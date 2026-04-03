@@ -57,6 +57,12 @@ class RewardTemplate(models.Model):
         help_text="Nombre minimum de parrainages requis pour débloquer cette récompense."
     )
 
+    # Restriction articles
+    only_on_some_items = models.BooleanField(default=False, verbose_name="Valable sur certains articles")
+
+    # Date limite
+    expires_at = models.DateField(null=True, blank=True, verbose_name="Date limite")
+
     # Purement affichage (ex. '980/1000')
     probability_display = models.CharField(max_length=20, default="", editable=False)
 

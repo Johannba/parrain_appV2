@@ -39,7 +39,7 @@ BUCKET_UI = {
 
 STATE_UI = {
     "PENDING":  {"label": "En attente",   "badge": "warning"},
-    "SENT":     {"label": "Envoyée",      "badge": "success"},
+    "SENT":     {"label": "Distribué",      "badge": "success"},
 }
 
 
@@ -409,8 +409,13 @@ def use_reward(request, token):
 
     claim_absolute = request.build_absolute_uri(reward.claim_path) if reward.claim_path else ""
 
+    template = RewardTemplate.objects.filter(
+        company=reward.company, bucket=reward.bucket
+    ).first()
+
     context = {
         "reward": reward,
+        "template": template,
         "headline": headline,
         "celebrate": celebrate,
         "subline": subline,

@@ -35,7 +35,7 @@
         </select>
       </div>
 
-      <div class="col-lg-3">
+      <div class="col-lg-2">
         <label class="form-label mb-1">Type</label>
         <select name="bucket" class="form-select">
           <option value="">— Tous —</option>
@@ -46,7 +46,7 @@
       </div>
 
       <div class="col-lg-2 d-flex gap-2">
-        <button class="btn btn-primary w-100" type="submit">Filtrer</button>
+        <button class="btn btn-primary w-100" type="submit">Rechercher</button>
         {# ✅ réinitialiser tout en gardant le contexte company pour superadmin #}
         <a class="btn btn-outline-secondary"
            href="{% url 'rewards:history_company' %}{% if company and company.id %}?company={{ company.id }}{% endif %}">
