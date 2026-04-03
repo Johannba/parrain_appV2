@@ -18,7 +18,7 @@ class RewardTemplateForm(forms.ModelForm):
     )
 
     cooldown_months = forms.TypedChoiceField(
-        choices=[(i, f"{i} mois") for i in range(1, 7)],
+        choices=[(i, f"{i} mois") for i in range(1, 13)] + [(24, "24 mois")],
         coerce=int,
         label="Délai",
         widget=forms.Select(attrs={"class": "form-select"})
